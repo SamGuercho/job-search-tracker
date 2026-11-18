@@ -91,8 +91,16 @@ you want other folders. Save and close.
 
 Copy your existing data files — `master_cv.json`, `companies.json`, `chats.json` (and the `backups` folder if
 you want it) — into `C:\JobSearch\data`. Ways to get them from a Mac:
-- **Taildrop** (built into Tailscale), on the Mac: `tailscale file cp master_cv.json companies.json chats.json <pc-name>:`
-  then on the PC they arrive in *Downloads*; move them to `C:\JobSearch\data`.
+- **Taildrop** (built into Tailscale), on the Mac, **from the folder that holds them** (find the PC's name with
+  `tailscale status`):
+  ```bash
+  cd "<your data folder>"   # e.g. ~/Library/Mobile Documents/com~apple~CloudDocs/Documents/Job Search/data
+  tailscale file cp master_cv.json companies.json chats.json <pc-name>:
+  ```
+  On the PC they arrive in *Downloads*; move them into place:
+  ```powershell
+  Move-Item "$env:USERPROFILE\Downloads\master_cv.json","$env:USERPROFILE\Downloads\companies.json","$env:USERPROFILE\Downloads\chats.json" C:\JobSearch\data -Force
+  ```
 - or **icloud.com → iCloud Drive → Documents/Job Search/data**, download the files on the PC.
 
 New user? Skip this step: the app starts with example data you replace from the *Master CV* page.
