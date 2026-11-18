@@ -1,0 +1,268 @@
+{
+  "profile": {
+    "name": "Your Name",
+    "title": "Senior Product Data Analyst",
+    "email": "you@example.com",
+    "phone": "+33 6 00 00 00 00",
+    "location": "Paris, France",
+    "linkedin": "linkedin.com/in/yourname",
+    "website": "",
+    "summary": "Data analyst with 7 years of experience turning product and business data into decisions. Replace this example with your own profile in the Master CV tab."
+  },
+  "experiences": [
+    {
+      "id": "2925840051",
+      "company": "Acme Corp",
+      "role": "Senior Data Analyst",
+      "location": "Paris",
+      "start": "2022",
+      "end": "Present",
+      "bullets": [
+        {
+          "id": "604915557f",
+          "text": "Led the redesign of the product analytics stack (dbt, Snowflake, Looker), cutting dashboard load times by 60%.",
+          "keywords": [
+            "dbt",
+            "Snowflake",
+            "Looker",
+            "Analytics Engineering",
+            "Leadership"
+          ],
+          "pinned": false,
+          "priority": 3
+        },
+        {
+          "id": "ca7cdbd4a3",
+          "text": "Built a churn prediction model in Python (scikit-learn) that identified 80% of at-risk accounts two months in advance.",
+          "keywords": [
+            "Python",
+            "Machine Learning",
+            "scikit-learn",
+            "Churn"
+          ],
+          "pinned": false,
+          "priority": 2
+        },
+        {
+          "id": "5a3e4291a1",
+          "text": "Designed and analysed 40+ A/B tests with product teams, adding €2M in annual recurring revenue.",
+          "keywords": [
+            "A/B Testing",
+            "Experimentation",
+            "Product",
+            "Statistics"
+          ],
+          "pinned": false,
+          "priority": 3
+        },
+        {
+          "id": "07cfa9bafa",
+          "text": "Mentored 3 junior analysts and introduced code review and SQL style guidelines across the data team.",
+          "keywords": [
+            "Mentoring",
+            "Leadership",
+            "SQL"
+          ],
+          "pinned": false,
+          "priority": 1
+        },
+        {
+          "id": "b91a4967af",
+          "text": "Partnered with Finance to automate monthly revenue reporting, saving 5 days of manual work per month.",
+          "keywords": [
+            "Automation",
+            "Finance",
+            "Stakeholder Management"
+          ],
+          "pinned": false,
+          "priority": 0
+        },
+        {
+          "id": "81be0a68d1",
+          "text": "Presented quarterly insights to the C-level, shaping the 2024 pricing strategy.",
+          "keywords": [
+            "Communication",
+            "Stakeholder Management",
+            "Pricing"
+          ],
+          "pinned": false,
+          "priority": 1
+        }
+      ]
+    },
+    {
+      "id": "ced4642e30",
+      "company": "Globex",
+      "role": "Data Analyst",
+      "location": "Lyon",
+      "start": "2019",
+      "end": "2022",
+      "bullets": [
+        {
+          "id": "d471d1c082",
+          "text": "Created self-service Tableau dashboards used weekly by 200+ sales and marketing employees.",
+          "keywords": [
+            "Tableau",
+            "Data Visualization",
+            "Sales",
+            "Marketing"
+          ],
+          "pinned": false,
+          "priority": 2
+        },
+        {
+          "id": "dc49c7ab41",
+          "text": "Wrote complex SQL pipelines on BigQuery to unify CRM and web tracking data.",
+          "keywords": [
+            "SQL",
+            "BigQuery",
+            "ETL",
+            "CRM"
+          ],
+          "pinned": false,
+          "priority": 2
+        },
+        {
+          "id": "4246f01993",
+          "text": "Built marketing attribution models that reallocated 15% of paid budget to higher-ROI channels.",
+          "keywords": [
+            "Marketing",
+            "Attribution",
+            "Statistics",
+            "Python"
+          ],
+          "pinned": false,
+          "priority": 1
+        },
+        {
+          "id": "d9ffa6d1c4",
+          "text": "Ran customer segmentation (k-means) to personalise CRM campaigns, lifting open rates by 18%.",
+          "keywords": [
+            "Machine Learning",
+            "Segmentation",
+            "CRM",
+            "Python"
+          ],
+          "pinned": false,
+          "priority": 0
+        },
+        {
+          "id": "9d4a0eba55",
+          "text": "Documented KPIs and data definitions in a shared data catalogue adopted by 6 teams.",
+          "keywords": [
+            "Data Governance",
+            "Documentation"
+          ],
+          "pinned": false,
+          "priority": 0
+        }
+      ]
+    },
+    {
+      "id": "de6bd30395",
+      "company": "Initech",
+      "role": "Business Analyst Intern",
+      "location": "Paris",
+      "start": "2018",
+      "end": "2019",
+      "bullets": [
+        {
+          "id": "4c4d8f5af9",
+          "text": "Automated Excel reporting with VBA and Python, reducing weekly reporting time from 6 hours to 30 minutes.",
+          "keywords": [
+            "Excel",
+            "VBA",
+            "Python",
+            "Automation"
+          ],
+          "pinned": false,
+          "priority": 1
+        },
+        {
+          "id": "457d215f39",
+          "text": "Analysed supply-chain data to identify €300k of yearly savings on logistics costs.",
+          "keywords": [
+            "Supply Chain",
+            "Excel",
+            "Cost Reduction"
+          ],
+          "pinned": false,
+          "priority": 0
+        },
+        {
+          "id": "f7608f7515",
+          "text": "Supported the PMO in tracking a 12-month ERP migration across 4 countries.",
+          "keywords": [
+            "Project Management",
+            "ERP",
+            "Agile"
+          ],
+          "pinned": false,
+          "priority": 0
+        }
+      ]
+    }
+  ],
+  "education": [
+    {
+      "id": "455f47c794",
+      "school": "Université Paris-Saclay",
+      "degree": "MSc Data Science",
+      "location": "Paris",
+      "start": "2016",
+      "end": "2018",
+      "details": "Statistics, machine learning, optimisation."
+    },
+    {
+      "id": "8af56c2173",
+      "school": "Université de Lyon",
+      "degree": "BSc Mathematics",
+      "location": "Lyon",
+      "start": "2013",
+      "end": "2016",
+      "details": ""
+    }
+  ],
+  "skills": [
+    {
+      "id": "e5c4f9eb7d",
+      "name": "Data",
+      "items": [
+        "SQL",
+        "Python",
+        "dbt",
+        "Snowflake",
+        "BigQuery",
+        "Looker",
+        "Tableau",
+        "Excel"
+      ]
+    },
+    {
+      "id": "62a6f77896",
+      "name": "Methods",
+      "items": [
+        "A/B Testing",
+        "Statistics",
+        "Machine Learning",
+        "Segmentation"
+      ]
+    },
+    {
+      "id": "6b7cf55794",
+      "name": "Languages",
+      "items": [
+        "French (native)",
+        "English (fluent)",
+        "Spanish (intermediate)"
+      ]
+    }
+  ],
+  "extra_keywords": [
+    "Power BI",
+    "Airflow",
+    "Spark",
+    "Kubernetes",
+    "Stakeholder Management"
+  ]
+}

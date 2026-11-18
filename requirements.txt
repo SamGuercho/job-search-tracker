@@ -1,0 +1,9 @@
+fastapi==0.163.2
+uvicorn==0.54.0
+pydantic==2.14.3
+python-docx==1.2.0
+docx2pdf==0.1.8
+pypdf==7.1.0
+openai==3.55.0
+python-multipart==0.0.34
+certifi==2026.10.23

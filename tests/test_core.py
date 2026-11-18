@@ -1,0 +1,138 @@
+"""Core behaviour tests. Run: .venv/bin/python -m unittest discover tests"""
+import os
+import shutil
+import tempfile
+import unittest
+from pathlib import Path
+
+TMP = Path(tempfile.mkdtemp())
+os.environ["JOBTRACKER_DATA_DIR"] = str(TMP / "data")
+os.environ["JOBTRACKER_OUTPUT_DIR"] = str(TMP / "out")
+os.environ["JOBTRACKER_PDF_ENGINE"] = "none"
+os.environ["OPENAI_API_KEY"] = ""  # tests never call OpenAI, even if .env has a key
+
+from jobtracker import actions, config, registry  # noqa: E402,F401
+from jobtracker.services import companies, cv_builder, master_cv, pdf  # noqa: E402
+
+
+def reset():
+    shutil.rmtree(TMP, ignore_errors=True)
+
+
+class KeywordTests(unittest.TestCase):
+    def setUp(self):
+        reset()
+
+    def test_extract_known_keywords_from_description(self):
+        found = master_cv.extract_keywords("Strong SQL and Python. SQL is a must. Looker is a plus.")
+        self.assertEqual(found[0], "SQL")  # most frequent first
+        self.assertIn("Python", found)
+        self.assertIn("Looker", found)
+
+    def test_whole_word_match_with_symbols(self):
+        self.assertTrue(master_cv.keyword_pattern("C++").search("I write C++ daily"))
+        self.assertFalse(master_cv.keyword_pattern("SQL").search("NoSQLish"))
+        self.assertTrue(master_cv.keyword_pattern("Time Series").search("time-series models"))
+
+    def test_bullet_matches_only_words_in_text(self):
+        b = master_cv.Bullet(lead="Copilot:", text="Built dashboards in Tableau for LLMs", keywords=["Data Visualization"])
+        self.assertEqual(master_cv.bullet_matches(b, ["tableau", "Data Visualization", "LLM", "copilot", "SQL"]),
+                         ["tableau", "LLM", "copilot"])
+
+
+class SelectionTests(unittest.TestCase):
+    def setUp(self):
+        reset()
+
+    def test_only_matching_bullets_plus_fallback(self):
+        cv = cv_builder.select_bullets(["Tableau"])
+        globex = next(e for e in cv.experiences if e.company == "Globex")
+        self.assertTrue(all("Tableau" in b.matched for b in globex.bullets))
+        acme = next(e for e in cv.experiences if e.company == "Acme Corp")
+        self.assertEqual(len(acme.bullets), 1)
+        self.assertTrue(acme.bullets[0].fallback)
+
+    def test_trimming_respects_budget_and_pins(self):
+        exp = master_cv.get_master().experiences[0]
+        pinned = master_cv.add_bullet(exp.id, "Pinned achievement " * 5, ["Python"], pinned=True)
+        for i in range(40):
+            master_cv.add_bullet(exp.id, f"Long Python bullet number {i} " * 6, ["Python"])
+        cv = cv_builder.fit_estimate(cv_builder.select_bullets(["Python"]), budget=0.97)
+        from jobtracker.cv_templates import get_template
+        self.assertLessEqual(get_template(None).estimate_pages(cv), 0.97)
+        self.assertTrue(cv.removed)
+        kept_ids = {b.id for e in cv.experiences for b in e.bullets}
+        self.assertIn(pinned.id, kept_ids)
+
+
+class GenerationTests(unittest.TestCase):
+    def setUp(self):
+        reset()
+
+    def test_generate_writes_docx_in_company_folder_and_links_it(self):
+        company = companies.create_company(name="ACME & Sons")
+        r = registry.run("cv.generate", {"keywords": ["SQL"], "company_id": company.id})
+        self.assertTrue((config.OUTPUT_DIR / r["docx"]).exists())
+        self.assertEqual(r["docx"], "ACME & Sons/Your_Name_CV.docx")
+        self.assertEqual(companies.get_company(company.id).documents[0].docx, r["docx"])
+
+    def test_templates_render_lead_group_and_languages(self):
+        from docx import Document
+        exp = master_cv.get_master().experiences[0]
+        master_cv.add_bullet(exp.id, "Shipped a coding assistant.", ["Copilot"], lead="Copilot:", group="Atlas Copilot")
+        master_cv.set_languages(["French (Native)"])
+        for template in ("elegant",):
+            r = cv_builder.generate_cv(["Copilot"], company_name=f"T {template}", template=template)
+            doc = Document(str(config.OUTPUT_DIR / r["docx"]))
+            texts = [p.text for p in doc.paragraphs]
+            self.assertIn("Atlas Copilot", texts)
+            bullet = next(p for p in doc.paragraphs if p.text.startswith("Copilot:"))
+            self.assertTrue(bullet.runs[0].bold)
+            self.assertTrue(any("French (Native)" in t for t in texts), template)
+
+    def test_existing_cv_is_archived_not_overwritten(self):
+        first = cv_builder.generate_cv(["SQL"], company_name="Again")
+        cv_builder.generate_cv(["Python"], company_name="Again")
+        archived = list((config.OUTPUT_DIR / "Again" / "archive").glob("Your_Name_CV_*.docx"))
+        self.assertEqual(len(archived), 1)
+        self.assertTrue((config.OUTPUT_DIR / first["docx"]).exists())
+
+    def test_pdf_loop_removes_bullets_until_one_page(self):
+        pages = iter([3, 2, 1])
+        originals = pdf.available_engine, pdf.convert, pdf.page_count
+        pdf.available_engine = lambda: "fake"
+        pdf.convert = lambda d, p: p.write_bytes(b"%PDF") or p
+        pdf.page_count = lambda p: next(pages)
+        try:
+            r = cv_builder.generate_cv(["SQL", "Python"], company_name="Fake")
+        finally:
+            pdf.available_engine, pdf.convert, pdf.page_count = originals
+        self.assertEqual(r["pages"], 1)
+        self.assertEqual(len(r["removed"]), 2)
+
+
+class ActionTests(unittest.TestCase):
+    def setUp(self):
+        reset()
+
+    def test_update_changes_only_given_fields(self):
+        c = registry.run("company.create", {"name": "X", "position": "Analyst", "location": "Paris"})
+        u = registry.run("company.update", {"id": c["id"], "fields": {"location": "Lyon"}})
+        self.assertEqual((u["position"], u["location"]), ("Analyst", "Lyon"))
+
+    def test_workflow_new_application(self):
+        r = registry.run("workflow.new_application", {
+            "name": "Agent Co", "position": "Data Analyst",
+            "job_description": "We use SQL, dbt and Snowflake.", "generate_cv": False})
+        self.assertEqual(set(r["keywords"]), {"SQL", "dbt", "Snowflake"})
+        self.assertIn("gaps", r)
+        self.assertEqual(len(registry.run("company.list", {"query": "Agent"})), 1)
+
+    def test_every_action_has_schema_and_description(self):
+        for a in registry.manifest():
+            self.assertTrue(a["description"], a["name"])
+            self.assertEqual(a["input_schema"]["type"], "object")
+
+
+if __name__ == "__main__":
+    unittest.main()

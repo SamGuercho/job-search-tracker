@@ -1,0 +1,107 @@
+{
+  "companies": [
+    {
+      "id": "c667fada8b",
+      "name": "Example Analytics",
+      "position": "Lead Data Analyst",
+      "status": "Interviewing",
+      "contact": {
+        "name": "Jane Doe",
+        "role": "Talent Acquisition",
+        "email": "jane@example.com",
+        "phone": "",
+        "linkedin": ""
+      },
+      "referee": "John Smith (ex-colleague)",
+      "location": "Paris (hybrid)",
+      "website": "https://example.com",
+      "seniority": "Lead / 7+ years",
+      "qualities": [
+        "SQL",
+        "Experimentation",
+        "Leadership",
+        "Stakeholder management"
+      ],
+      "notes": "Example company: delete it once you add your own.",
+      "job_description": "",
+      "keywords": [
+        "SQL",
+        "A/B Testing",
+        "Leadership",
+        "Looker"
+      ],
+      "last_update": "2026-11-14",
+      "last_update_by": "them",
+      "steps": [
+        {
+          "id": "1794deebfa",
+          "name": "Application sent",
+          "date": "2026-10-29",
+          "status": "done",
+          "notes": ""
+        },
+        {
+          "id": "9f9aa1782b",
+          "name": "HR call",
+          "date": "2026-11-06",
+          "status": "done",
+          "notes": "Salary range discussed."
+        },
+        {
+          "id": "e9a81f9ed4",
+          "name": "Technical case",
+          "date": "2026-11-14",
+          "status": "done",
+          "notes": ""
+        },
+        {
+          "id": "7d5c1c4b9d",
+          "name": "Panel interview",
+          "date": "2026-11-21",
+          "status": "planned",
+          "notes": ""
+        }
+      ],
+      "documents": [],
+      "created_at": "2026-11-18"
+    },
+    {
+      "id": "7676192da5",
+      "name": "Sample Retail",
+      "position": "Senior Data Analyst",
+      "status": "Applied",
+      "contact": {
+        "name": "Alex Martin",
+        "role": "Head of Data",
+        "email": "",
+        "phone": "",
+        "linkedin": ""
+      },
+      "referee": "",
+      "location": "Lyon",
+      "website": "https://example.org",
+      "seniority": "Senior",
+      "qualities": [
+        "Python",
+        "Tableau",
+        "Marketing analytics"
+      ],
+      "notes": "",
+      "job_description": "",
+      "keywords": [],
+      "last_update": "2026-11-02",
+      "last_update_by": "me",
+      "steps": [
+        {
+          "id": "34cac86724",
+          "name": "Application sent",
+          "date": "2026-11-02",
+          "status": "done",
+          "notes": ""
+        }
+      ],
+      "documents": [],
+      "created_at": "2026-11-18"
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Job Search Tracker</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="/favicon-32.png" type="image/png" sizes="32x32">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="#/">Job Search</a>
+    <nav>
+      <a href="#/" data-nav="tracker">Follow-up</a>
+      <a href="#/cv" data-nav="cv">CV builder</a>
+      <a href="#/cv/master" data-nav="master">Master CV</a>
+      <a href="#/analytics" data-nav="analytics">Analytics</a>
+      <a href="#/chat" data-nav="chat">Assistant</a>
+    </nav>
+  </header>
+  <main id="app"></main>
+  <div id="toasts" aria-live="polite"></div>
+  <script type="module" src="/js/app.js"></script>
+</body>
+</html>

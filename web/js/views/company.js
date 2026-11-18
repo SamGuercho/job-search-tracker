@@ -1,0 +1,208 @@
+// Company page: details, follow-up counter, process graph, generated CVs.
+import { call, fileUrl } from "../api.js";
+import { attempt, chips, daysBadge, field, formatDate, h, joinList, mapsUrl, mount, readForm, toast } from "../ui.js";
+import { processCard } from "./process-graph.js";
+
+export async function renderCompany(root, id) {
+  const [company, info, master] = await Promise.all([call("company.get", { id }), call("app.info"), call("cv.master.get")]);
+  let review = null;   // last AI review of the summary, kept across re-renders
+
+  const save = async (fields, msg = "Saved") => {
+    const updated = await attempt(() => call("company.update", { id, fields }), msg);
+    if (updated) Object.assign(company, updated);
+    return updated;
+  };
+
+  // ---------------------------------------------------------------- header
+  const header = () => h("div", { class: "page-head" },
+    h("div", {},
+      h("a", { href: "#/", class: "small" }, "← Follow-up"),
+      h("h1", {}, company.name),
+      h("div", { class: "sub muted" }, company.position,
+        (company.location || company.address) && [" · ", h("a", { href: mapsUrl(company), target: "_blank" }, "📍 ", company.location || company.address)],
+        company.work_model && [" · ", company.work_model],
+        company.website && [" · ", h("a", { href: company.website, target: "_blank" }, "Website ↗")],
+        company.job_url && [" · ", h("a", { href: company.job_url, target: "_blank" }, "Job posting ↗")])),
+    h("div", { class: "row" },
+      h("a", { class: "btn primary", href: `#/cv?company=${id}` }, "Create tailored CV"),
+      h("button", {
+        class: "danger", onclick: async () => {
+          if (!confirm(`Delete ${company.name}? This cannot be undone.`)) return;
+          if (await attempt(() => call("company.delete", { id }), "Company deleted")) location.hash = "#/";
+        },
+      }, "Delete")));
+
+  // -------------------------------------------------------------- follow-up
+  const followUp = () => h("div", { class: "card" },
+    h("h2", {}, "Follow-up"),
+    h("div", { class: "row", style: "gap:16px" },
+      daysBadge(company.days_since_update, company.last_update_by),
+      h("div", { class: "muted small" }, `Last update ${formatDate(company.last_update)}`),
+      h("span", { class: "spacer" }),
+      h("button", { onclick: () => logUpdate("me") }, "I followed up today"),
+      h("button", { onclick: () => logUpdate("them") }, "They replied today")),
+    h("div", { class: "row", style: "margin-top:10px" },
+      h("input", { id: "update-note", placeholder: "Optional note added to the log (e.g. 'Sent thank-you email')" })));
+
+  const logUpdate = async (by) => {
+    const note = root.querySelector("#update-note").value;
+    const updated = await attempt(() => call("company.log_update", { id, by, note }), "Update logged");
+    if (updated) { Object.assign(company, updated); render(); }
+  };
+
+  // --------------------------------------------------------- process graph
+  // The graph keeps its own state (selection, forms); it re-renders the page after each change.
+  const process = () => processCard(company, { stepTypes: info.step_types, onChange: async () => { await reload(); render(); } });
+
+  // ---------------------------------------------------------------- details
+  const select = (name, options, value) => h("select", { name },
+    h("option", { value: "" }, "Unknown"), options.map((o) => h("option", { value: o, selected: o === value }, o)));
+
+  const details = () => {
+    const c = company.contact;
+    const form = h("form", { class: "form-grid" },
+      field("Position", h("input", { name: "position", value: company.position })),
+      field("Seniority", h("input", { name: "seniority", value: company.seniority })),
+      field("Location", h("input", { name: "location", value: company.location })),
+      field("Work model", select("work_model", info.work_models, company.work_model)),
+      field("Exact address (for the map)", h("input", { name: "address", value: company.address, placeholder: "Optional" })),
+      field("Website", h("input", { name: "website", type: "url", value: company.website })),
+      field("Job posting link", h("input", { name: "job_url", type: "url", value: company.job_url })),
+      field("Source", select("source_type", info.source_types, company.source_type)),
+      field("Source detail", h("input", { name: "source_detail", value: company.source_detail, placeholder: "LinkedIn, Dana from TalentCo…" })),
+      field("My salary expectation", h("input", { name: "salary_expectation", value: company.salary_expectation, placeholder: "e.g. 38k ILS/month" })),
+      field("Salary posted", h("input", { name: "salary_posted", value: company.salary_posted, placeholder: "Range in the ad, if any" })),
+      field("Contact name", h("input", { name: "contact.name", value: c.name })),
+      field("Contact role", h("input", { name: "contact.role", value: c.role })),
+      field("Contact email", h("input", { name: "contact.email", type: "email", value: c.email })),
+      field("Contact phone", h("input", { name: "contact.phone", value: c.phone })),
+      field("Contact LinkedIn", h("input", { name: "contact.linkedin", value: c.linkedin })),
+      field("Referee", h("input", { name: "referee", value: company.referee })),
+      field("Main qualities required (comma separated)", h("input", { name: "qualities", "data-list": true, value: joinList(company.qualities) }), "wide"),
+      field("Notes", h("textarea", { name: "notes", rows: 6 }, company.notes), "wide"),
+      field("CV keywords (comma separated)", h("input", { name: "keywords", "data-list": true, value: joinList(company.keywords) }), "wide"),
+      field("Job description", h("textarea", { name: "job_description", rows: 6 }, company.job_description), "wide"),
+      h("div", { class: "row wide" },
+        h("button", { type: "button", onclick: extract }, "Match job description with my CV"),
+        h("span", { class: "spacer" }), h("button", { type: "submit", class: "primary" }, "Save details")));
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      if (await save(readForm(form), "Details saved")) render();
+    });
+    return h("div", { class: "card" }, h("h2", {}, "Details"), form);
+  };
+
+  async function extract() {
+    const text = root.querySelector("[name=job_description]").value;
+    if (!text.trim()) return toast("Paste the job description first", true);
+    toast("Matching the job description with your CV…");
+    const r = await attempt(() => call("cv.keywords.match_job", { text }));
+    if (!r) return;
+    const found = r.keywords;
+    const input = root.querySelector("[name=keywords]");
+    const merged = [...new Set([...input.value.split(",").map((s) => s.trim()).filter(Boolean), ...found])];
+    input.value = merged.join(", ");
+    toast(`${found.length} keywords from your CV match${r.gaps.length ? `; not in your CV: ${r.gaps.map((g) => g.jd_term).join(", ")}` : ""}. Save to keep them.`);
+  }
+
+  // -------------------------------------------------------------- CV summary
+  // The application's own summary if it has one, else the master CV summary.
+  const summaryCard = () => {
+    const tailored = !!company.cv_summary;
+    const text = h("textarea", { rows: 5 }, company.cv_summary || master.profile.summary);
+    const checkBtn = h("button", {
+      disabled: !info.llm_available || !company.job_description,
+      title: !company.job_description ? "Add the job description first" : !info.llm_available ? "Needs OPENAI_API_KEY" : "",
+      onclick: async () => {
+        checkBtn.disabled = true;
+        checkBtn.textContent = "Checking…";
+        review = await attempt(() => call("cv.summary.review", { company: id, summary: text.value }));
+        render();
+      },
+    }, "✨ Check relevance with AI");
+    return h("div", { class: "card" },
+      h("div", { class: "row" }, h("h2", { style: "margin:0" }, "CV summary"), h("span", { class: "spacer" }),
+        h("span", { class: `pill ${tailored ? "applied" : "not-applied"}` }, tailored ? "Tailored for this application" : "Master CV summary")),
+      h("p", { class: "small muted" }, "The paragraph at the top of this application's CV. Saving here changes this application only."),
+      text,
+      h("div", { class: "row", style: "margin-top:8px" },
+        checkBtn,
+        h("span", { class: "spacer" }),
+        tailored && h("button", { class: "ghost", onclick: () => saveSummary("", "Back to the master summary") }, "Use master summary"),
+        h("button", { class: "primary", onclick: () => saveSummary(text.value, "Summary saved for this application") }, "Save for this application")),
+      review && reviewPanel(review, text));
+  };
+
+  const saveSummary = async (value, msg) => {
+    if (await attempt(() => call("company.set_cv_summary", { company: id, summary: value }), msg)) {
+      await reload();
+      render();
+      toast("Regenerate the CV to apply it");
+    }
+  };
+
+  const VERDICT = { relevant: "offer", "partly relevant": "in-process", "not relevant": "rejected" };
+  const reviewPanel = (r, text) => h("div", { class: "review stack-tight" },
+    h("div", { class: "row" },
+      h("span", { class: `pill ${VERDICT[r.verdict]}` }, `${r.verdict} · ${r.score}/100`),
+      h("span", { class: "small muted" }, "for the summary as written above"),
+      h("span", { class: "spacer" }), h("button", { class: "ghost small", onclick: () => { review = null; render(); } }, "Close")),
+    r.strengths.length > 0 && h("div", {}, h("div", { class: "small muted" }, "Already fits"), chips(r.strengths, "ok")),
+    r.missing_but_in_cv.length > 0 && h("div", {}, h("div", { class: "small muted" }, "The job wants it, your CV has it, the summary doesn't say it"),
+      h("ul", { class: "small" }, r.missing_but_in_cv.map((m) => h("li", {}, h("b", {}, m.requirement), m.evidence ? ` — ${m.evidence}` : "")))),
+    r.gaps.length > 0 && h("div", {}, h("div", { class: "small muted" }, "Not in your CV (don't claim it)"), chips(r.gaps, "bad")),
+    r.warnings.map((w) => h("p", { class: "small", style: "color:var(--amber)" }, `⚠ ${w}`)),
+    r.suggestion && h("div", {},
+      h("div", { class: "small muted" }, "Suggested summary (only facts from your CV)"),
+      h("blockquote", {}, r.suggestion),
+      h("p", { class: "small muted" }, r.explanation),
+      h("button", { onclick: () => { text.value = r.suggestion; text.focus(); toast("Suggestion copied above: edit it if needed, then save"); } }, "Use this suggestion")));
+
+  // ------------------------------------------------- saved job description
+  const jobDescription = () => h("div", { class: "card" },
+    h("h2", {}, "Job description"),
+    company.job_description_file
+      ? h("div", { class: "stack-tight" },
+        h("div", { class: "row" },
+          h("a", { class: "btn", href: fileUrl(company.job_description_file), target: "_blank" }, "📄 Open saved copy"),
+          h("span", { class: "small muted" }, `Saved ${formatDate(company.job_description_saved_at) || ""} in ${company.job_description_file}`)),
+        h("p", { class: "small muted", style: "margin:0" }, "Kept even if the company removes the posting. Updated automatically when you change the description (older copies go to archive/)."))
+      : h("p", { class: "muted" }, company.job_description ? "Not saved yet." : "Paste the job description in Details: a copy is saved in the company folder."),
+    company.job_description && h("details", { style: "margin-top:8px" }, h("summary", { class: "small" }, "Read it here"),
+      h("div", { class: "jd-text" }, company.job_description)));
+
+  // ---------------------------------------------------------------------- map
+  const map = () => (company.location || company.address) && h("div", { class: "card", style: "padding:0; overflow:hidden" },
+    h("iframe", {
+      class: "map", referrerpolicy: "no-referrer-when-downgrade", title: "Map",
+      // the embedded map shows the address, or the city (Google picks a sensible zoom); the link below
+      // searches company + city, which finds the office itself when Google knows it
+      src: `https://www.google.com/maps?q=${encodeURIComponent(company.address || company.location)}&output=embed`,
+    }),
+    h("div", { class: "row", style: "padding:8px 12px" },
+      h("span", { class: "small muted" }, company.address || company.location), h("span", { class: "spacer" }),
+      h("a", { href: mapsUrl(company), target: "_blank", class: "small" }, "Open in Google Maps ↗")));
+
+  // -------------------------------------------------------------- documents
+  const documents = () => h("div", { class: "card" },
+    h("h2", {}, "Generated CVs"),
+    company.documents.length
+      ? company.documents.map((d) => h("div", { class: "row", style: "padding:6px 0; border-top:1px solid var(--border)" },
+        h("span", { class: "small muted" }, d.created_at.replace("T", " ")),
+        h("span", { class: "spacer" }),
+        d.docx && h("a", { class: "btn", href: fileUrl(d.docx) }, "Word"),
+        d.pdf && h("a", { class: "btn", href: fileUrl(d.pdf), target: "_blank" }, "PDF")))
+      : h("p", { class: "muted" }, "No CV generated yet."));
+
+  const reload = async () => Object.assign(company, await call("company.get", { id }));
+
+  function render() {
+    mount(root, header(),
+      h("div", { class: "stack" },
+        process(),
+        h("div", { class: "grid cols-main" },
+          h("div", { class: "stack" }, summaryCard(), details()),
+          h("div", { class: "stack" }, followUp(), jobDescription(), documents(), map()))));
+  }
+  render();
+}

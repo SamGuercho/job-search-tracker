@@ -1,0 +1,16 @@
+# --- Personal data: never commit ---------------------------------------------
+# Your master CV, applications, chats, uploaded CVs and backups
+data/*
+!data/seed/
+# Generated CVs and job descriptions (when not redirected to another folder)
+output/
+# Secrets (OpenAI key) and local paths
+.env
+
+# --- Local tooling -------------------------------------------------------------
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+.claude/
+~$*
