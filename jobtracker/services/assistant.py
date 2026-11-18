@@ -277,9 +277,9 @@ def fix_links(text: str) -> str:
 def _converse(chat: Chat, input_items: list) -> Chat:
     if not llm.available():
         raise llm.LLMUnavailable("OPENAI_API_KEY is not set: add it to the .env file and restart the server.")
-    from openai import OpenAI, OpenAIError
+    from openai import OpenAIError
 
-    client = OpenAI()
+    client = llm.client()
     try:
         for _ in range(MAX_STEPS):
             response = client.responses.create(

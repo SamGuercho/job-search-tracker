@@ -91,3 +91,21 @@ class AnalyticsTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ApiKeyTests(unittest.TestCase):
+    """Pasting a key into .env on Windows (Notepad) or with quotes must still work."""
+
+    def tearDown(self):
+        import os
+        os.environ["OPENAI_API_KEY"] = ""
+
+    def test_key_is_cleaned_before_use(self):
+        import os
+
+        from jobtracker.services import llm
+        for raw in ("sk-abc123\r", '  "sk-abc123"  ', "'sk-abc123'", "“sk-abc123”", "OPENAI_API_KEY=sk-abc123"):
+            os.environ["OPENAI_API_KEY"] = raw
+            self.assertEqual(llm.api_key(), "sk-abc123", repr(raw))
+        os.environ["OPENAI_API_KEY"] = "  \r "
+        self.assertFalse(llm.available())
