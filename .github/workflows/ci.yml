@@ -31,7 +31,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.10", "3.13"]   # oldest supported and current
+        python-version: ["3.11", "3.13"]   # oldest supported (FastAPI needs 3.11) and current
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

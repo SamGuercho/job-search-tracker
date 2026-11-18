@@ -26,7 +26,7 @@ unless you add an OpenAI key (then only the text needed for AI features goes to 
 ## Quick start
 
 **You need**
-- **Python 3.10+** (`python3 --version`). macOS: `brew install python` or python.org. Windows: python.org.
+- **Python 3.11+** (`python3 --version`). macOS: `brew install python` or python.org. Windows: python.org.
 - **For PDF export** (optional but recommended), one of:
   - **LibreOffice** (free, recommended): `brew install --cask libreoffice` on macOS, or libreoffice.org.
   - **Microsoft Word** (macOS/Windows). The first export asks permission to control Word: accept it.
@@ -286,7 +286,7 @@ test checks it, so they can never touch your data, your output folder or `.env`.
 don't need a PDF engine.
 
 **CI** (`.github/workflows/ci.yml`, GitHub Actions): on every push and pull request, lint (ruff) and tests on
-Python 3.10 and 3.13; on `main`, build the Docker image, start it and check `/health` (including the PDF engine),
+Python 3.11 and 3.13; on `main`, build the Docker image, start it and check `/health` (including the PDF engine),
 then publish it to the GitHub Container Registry as `ghcr.io/<owner>/job-search-tracker:latest`.
 
 ### Docker image

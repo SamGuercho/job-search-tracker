@@ -5,8 +5,8 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)' \
-  || { echo "Python 3.10 or newer is required (found $(python3 --version 2>&1))."; exit 1; }
+python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)' \
+  || { echo "Python 3.11 or newer is required (found $(python3 --version 2>&1))."; exit 1; }
 
 if [ ! -d .venv ]; then
   echo "Creating virtual environment…"

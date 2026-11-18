@@ -2,12 +2,12 @@
 name = "job-search-tracker"
 version = "1.0.0"
 description = "Local web app to follow job applications and generate tailored one-page CVs, with an AI assistant and an MCP server."
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 readme = "README.md"
 
 [tool.ruff]
 line-length = 125
-target-version = "py310"
+target-version = "py311"
 extend-exclude = [".venv", "data", "output"]
 
 [tool.ruff.lint]
