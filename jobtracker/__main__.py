@@ -1,6 +1,6 @@
 """CLI over the action registry.
 
-  python -m jobtracker serve [--port 8000]
+  python -m jobtracker serve [--port 8000] [--host 127.0.0.1]
   python -m jobtracker mcp                          # MCP server over stdio (for Cursor, Claude…)
   python -m jobtracker mcp-config                   # print the MCP configuration for this machine
   python -m jobtracker actions                      # list actions + schemas
@@ -15,8 +15,10 @@ from __future__ import annotations
 import json
 import sys
 
-from . import actions  # noqa: F401  (registers the actions)
-from . import registry
+from . import (
+    actions,  # noqa: F401  (registers the actions)
+    registry,
+)
 
 
 def main(argv: list[str]) -> int:
@@ -26,8 +28,12 @@ def main(argv: list[str]) -> int:
         return 0
     if argv[0] == "serve":
         import uvicorn
-        port = int(argv[argv.index("--port") + 1]) if "--port" in argv else 8000
-        uvicorn.run("jobtracker.api:app", host="127.0.0.1", port=port)
+
+        from . import config
+        port = int(argv[argv.index("--port") + 1]) if "--port" in argv else config.PORT
+        host = argv[argv.index("--host") + 1] if "--host" in argv else config.HOST
+        uvicorn.run("jobtracker.api:app", host=host, port=port, proxy_headers=True, forwarded_allow_ips="*",
+                    access_log=False)  # requests are logged by jobtracker.logs
         return 0
     if argv[0] == "mcp":
         from .mcp_server import main as serve_mcp

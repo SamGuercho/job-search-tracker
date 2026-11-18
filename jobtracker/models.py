@@ -7,8 +7,7 @@ from typing import Literal
 from pydantic import BaseModel, Field, model_validator
 
 from .models_base import new_id, today  # noqa: E402  (re-exported)
-from .process import STATUSES, Process, default_process, from_legacy  # noqa: E402
-
+from .process import STATUSES, Process, default_process, from_legacy  # noqa: E402, F401  (STATUSES re-exported)
 
 # ---------------------------------------------------------------- companies
 
@@ -119,7 +118,7 @@ class Bullet(BaseModel):
     priority: int = 0      # higher = kept longer when trimming to one page
     variants: list[Variant] = []
 
-    def wordings(self) -> list["Bullet | Variant"]:
+    def wordings(self) -> list[Bullet | Variant]:
         return [self, *self.variants]
 
 

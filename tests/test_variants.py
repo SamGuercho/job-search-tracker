@@ -1,9 +1,9 @@
 """Achievements with several wordings + coverage-based selection."""
 import unittest
 
-from tests.test_core import reset  # sets the temp data/output env vars first
 from jobtracker import registry
 from jobtracker.services import cv_builder, master_cv
+from tests.test_core import reset  # sets the temp data/output env vars first
 
 
 def chosen(cv):

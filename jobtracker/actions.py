@@ -6,16 +6,30 @@ Keep business logic in services/; actions only adapt inputs and outputs.
 """
 from __future__ import annotations
 
-from typing import Literal, Optional
-
 from pathlib import Path
+from typing import Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, create_model
 
 from .cv_templates import TEMPLATES
-from .models import (SOURCE_TYPES, STATUSES, WORK_MODELS, Bullet, SourceType, WorkModel, Company, Contact, Education, Experience,
-                     MasterCV, Profile, SkillGroup, UpdateSide, Variant)
-from .process import CATEGORIES, Category, Node, NodeKind, NodeState
+from .models import (
+    SOURCE_TYPES,
+    STATUSES,
+    WORK_MODELS,
+    Bullet,
+    Company,
+    Contact,
+    Education,
+    Experience,
+    MasterCV,
+    Profile,
+    SkillGroup,
+    SourceType,
+    UpdateSide,
+    Variant,
+    WorkModel,
+)
+from .process import CATEGORIES, Node, NodeState
 from .registry import action
 from .services import analytics, assistant, companies, cv_builder, cv_import, jd_match, llm, master_cv, web, wording
 from .services import summary as summary_service  # `summary` is also a parameter name below

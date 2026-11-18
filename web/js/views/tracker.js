@@ -75,7 +75,7 @@ export async function renderTracker(root) {
     }, c.label, state.sort === c.key ? (state.dir > 0 ? " ▲" : " ▼") : "")), h("th", {}, "")));
 
     mount(tbody, rows.length ? rows.map((c) => h("tr", { onclick: () => (location.hash = `#/company/${c.id}`) },
-      cols.map((col) => h("td", {}, col.render(c))),
+      cols.map((col) => h("td", { "data-label": col.label }, col.render(c))),
       h("td", {}, h("button", {
         class: "icon", title: "I followed up today (resets the counter)",
         onclick: async (e) => {

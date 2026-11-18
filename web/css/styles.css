@@ -253,3 +253,31 @@ td .chip { display: inline-block; max-width: 170px; white-space: nowrap; overflo
 .review { margin-top: 12px; padding: 12px; border-radius: 8px; background: var(--surface-2); }
 .review blockquote { margin: 6px 0; padding: 10px 12px; background: var(--surface); border-left: 3px solid var(--accent); border-radius: 0 6px 6px 0; }
 .review ul { margin: 4px 0; padding-left: 18px; }
+
+/* ------------------------------------------------------------------ phone */
+@media (max-width: 760px) {
+  .topbar { gap: 12px; padding: 0 12px; overflow-x: auto; scrollbar-width: none; }
+  .brand { white-space: nowrap; font-size: 15px; }
+  .topbar nav { flex-wrap: nowrap; }
+  .topbar nav a { white-space: nowrap; padding: 6px 9px; }
+  main { padding: 14px 12px; }
+  .page-head { gap: 10px; }
+  .page-head h1 { font-size: 20px; }
+  .toolbar > input, .toolbar > select { max-width: none !important; flex: 1 1 140px; }
+  .chat-bar input { font-size: 14px; }
+  .form-grid { grid-template-columns: 1fr; }
+  .modal { padding: 16px; }
+
+  /* Follow-up table -> one card per application, each value with its label (analytics tables stay tables) */
+  .table-wrap table:not(.data), .table-wrap table:not(.data) tbody,
+  .table-wrap table:not(.data) tr, .table-wrap table:not(.data) td { display: block; width: 100%; }
+  .table-wrap table:not(.data) thead { display: none; }
+  .table-wrap table:not(.data) tbody tr { border-bottom: 8px solid var(--bg); padding: 10px 12px; }
+  .table-wrap table:not(.data) td { border: 0; padding: 4px 0; display: grid; grid-template-columns: 110px 1fr; gap: 8px; align-items: start; }
+  .table-wrap table:not(.data) td::before { content: attr(data-label); font-size: 12px; color: var(--muted); font-weight: 600; padding-top: 2px; }
+  .table-wrap table:not(.data) td:not([data-label]) { grid-template-columns: 1fr; }
+  .table-wrap table:not(.data) td:not([data-label])::before { content: none; }
+  .table-wrap table:not(.data) td:first-child { grid-template-columns: 1fr; font-size: 16px; }
+  .table-wrap table:not(.data) td:first-child::before { content: none; }
+  td .chip { max-width: 100%; }
+}

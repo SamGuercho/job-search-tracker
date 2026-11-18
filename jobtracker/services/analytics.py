@@ -66,7 +66,7 @@ def summary() -> dict:
     count = lambda key, pool=applied: sum(bool(a[key]) for a in pool)
 
     funnel = [{"key": k, "label": label, "count": count(k)} for k, label in FUNNEL]
-    for step, prev in zip(funnel[1:], funnel):
+    for step, prev in zip(funnel[1:], funnel, strict=False):
         step["from_previous"] = _rate(step["count"], prev["count"])
 
     start = min((a["applied_date"] for a in applied if a["applied_date"]), default=None)

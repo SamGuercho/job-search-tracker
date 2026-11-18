@@ -4,8 +4,8 @@ import pathlib
 import re
 import unittest
 
-from tests.test_core import reset  # noqa: F401  (sets the temp data/output env vars first)
 from jobtracker import registry
+from tests.test_core import reset  # noqa: F401  (sets the temp data/output env vars first)
 
 SKILL = pathlib.Path(__file__).resolve().parent.parent / "skills" / "job-search" / "SKILL.md"
 

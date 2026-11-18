@@ -158,7 +158,7 @@ def set_skills(groups: list[dict]) -> list[SkillGroup]:
 
 def set_languages(languages: list[str]) -> list[str]:
     with store.transaction() as cv:
-        cv.languages = [l.strip() for l in languages if l.strip()]
+        cv.languages = [lang.strip() for lang in languages if lang.strip()]
     return cv.languages
 
 

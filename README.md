@@ -1,5 +1,7 @@
 # Job Search Tracker
 
+[![CI](https://github.com/SamGuercho/job-search-tracker/actions/workflows/ci.yml/badge.svg)](https://github.com/SamGuercho/job-search-tracker/actions/workflows/ci.yml)
+
 A local web app to run a job search: follow every application through its process, keep one
 **master CV** and generate a **one-page CV tailored to each job** (Word + PDF), with an optional
 **AI assistant** that can do it all for you from a job link.
@@ -50,7 +52,24 @@ copy .env.example .env
 .venv\Scripts\python -m jobtracker serve --port 8000
 ```
 
-**Updating:** `git pull`, then `./run.sh` (new dependencies are installed automatically).
+**Or with Docker** (nothing else to install: LibreOffice and the CV font are in the image)
+```bash
+git clone <this repository's URL> job-search-tracker
+cd job-search-tracker
+cp .env.example .env        # optional: OpenAI key, password…
+docker compose up --build
+```
+Open **http://127.0.0.1:8000**. Data stays in `./data` (shared with `./run.sh`), CVs go to `./output`
+(or `HOST_OUTPUT_DIR` in `.env`). Linux hosts: the container runs as user id 10001, so give it write access
+to `./data` and `./output` (e.g. `sudo chown -R 10001 data output`).
+
+**Updating:** `git pull`, then `./run.sh` (new dependencies are installed automatically) or
+`docker compose up --build`.
+
+**On your phone:** the app is installable (home-screen icon, full screen). Make it reachable from your phone
+(same network with `JOBTRACKER_HOST=0.0.0.0`, or a private network such as Tailscale), **set
+`JOBTRACKER_PASSWORD` first**, open it in the phone's browser and choose *Install app* / *Add to Home Screen*.
+Installing needs https or localhost; over plain http on your network it still works as a web page.
 
 ---
 
@@ -176,6 +195,10 @@ All settings live in `.env` (created from `.env.example` on first run). Restart 
 | `JOBTRACKER_DATA_DIR` | `./data` | Where your data files live. |
 | `JOBTRACKER_CV_FILENAME` | `{name}_CV` | CV file name; `{name}` = your name, `{company}` = the company. |
 | `JOBTRACKER_PDF_ENGINE` | auto | `libreoffice`, `word` or `none`. |
+| `JOBTRACKER_PASSWORD` | empty | When set, every page and API call requires signing in (signed, HTTP-only session cookie). |
+| `JOBTRACKER_SESSION_DAYS` | `30` | How long a sign-in lasts. Changing the password signs everyone out. |
+| `JOBTRACKER_HOST` / `PORT` | `127.0.0.1` / `8000` | Where the server listens (`0.0.0.0` to reach it from other devices: set a password). |
+| `LOG_FORMAT` / `LOG_LEVEL` | `text` / `INFO` | `json` writes one JSON object per request (method, path, status, duration). |
 
 The CV font is **STIX Two Text** (included in macOS). On Windows/Linux, install it from
 github.com/stipub/stixfonts for the PDF to look identical; otherwise a similar serif font is used.
@@ -198,6 +221,28 @@ github.com/stipub/stixfonts for the PDF to look identical; otherwise a similar s
 ## For developers
 
 ### Architecture
+```mermaid
+flowchart LR
+  subgraph Clients
+    UI[Web UI / installable app]
+    CLI[CLI]
+    MCPC[Cursor · Claude Code · Claude Desktop]
+    AS[In-app assistant]
+  end
+  UI -- "POST /api/actions/name" --> API[FastAPI · login · logs · /health]
+  CLI --> REG
+  MCPC -- "MCP (stdio)" --> MCPS[MCP server]
+  API --> REG
+  MCPS --> REG
+  AS -- "OpenAI tool calls" --> REG
+  API --> AS
+  REG[Action registry · 58 typed actions] --> SVC[Services: applications · process graph · master CV · matching · CV builder · analytics]
+  SVC --> DATA[(data/*.json)]
+  SVC --> OUT[(CVs + job descriptions per company)]
+  SVC --> LO[LibreOffice / Word → PDF]
+  SVC -. "optional" .-> OAI[OpenAI]
+```
+
 ```
 jobtracker/
   models.py, process.py   data models; process graph (steps, links, derived status) 
@@ -207,7 +252,8 @@ jobtracker/
   services/               business logic (no HTTP): companies, master_cv, cv_builder, jd_match, wording,
                           summary, analytics, cv_import, assistant, llm, pdf, files, web
   cv_templates/           Word templates (elegant.py); add one and register it in __init__.py
-  api.py                  FastAPI: POST /api/actions/<name>, GET /api/actions, /files/…, the web UI
+  api.py                  FastAPI: POST /api/actions/<name>, GET /api/actions, /files/…, /health, the web UI
+  auth.py, logs.py        optional password login; request logging (text or JSON)
   __main__.py             CLI
   mcp_server.py           MCP server: one tool per action, generated from the registry
 web/                      vanilla JavaScript UI, no build step (js/views/<page>.js)
@@ -230,8 +276,20 @@ JSON schema and its docstring the description, so it is automatically:
 ```
 External agents: connect over MCP (above) or use the CLI, with `skills/job-search/SKILL.md` as their guide.
 
-### Tests
+### Tests, lint, CI
 ```bash
 .venv/bin/python -m unittest discover -t . -s tests
+.venv/bin/pip install ruff && .venv/bin/ruff check .
 ```
-Tests run on a temporary data folder, never call OpenAI and don't need a PDF engine.
+Tests always run on throwaway folders: `tests/__init__.py` configures them before the app is imported and every
+test checks it, so they can never touch your data, your output folder or `.env`. They never call OpenAI and
+don't need a PDF engine.
+
+**CI** (`.github/workflows/ci.yml`, GitHub Actions): on every push and pull request, lint (ruff) and tests on
+Python 3.10 and 3.13; on `main`, build the Docker image, start it and check `/health` (including the PDF engine),
+then publish it to the GitHub Container Registry as `ghcr.io/<owner>/job-search-tracker:latest`.
+
+### Docker image
+`Dockerfile`: Python 3.13 slim + LibreOffice (PDF export) + STIX Two Text (pinned release) · non-root user ·
+`/data` and `/output` volumes · health check on `/health` · JSON logs. `compose.yaml` runs it locally on the same
+`./data` folder as `./run.sh`.

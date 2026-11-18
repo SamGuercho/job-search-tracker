@@ -17,8 +17,10 @@ from mcp import types
 from mcp.server.lowlevel import Server
 from mcp.server.stdio import stdio_server
 
-from . import actions  # noqa: F401  (registers the actions)
-from . import registry
+from . import (
+    actions,  # noqa: F401  (registers the actions)
+    registry,
+)
 
 HIDDEN = ("chat.",)  # the in-app assistant's own conversations
 READ_ONLY = {

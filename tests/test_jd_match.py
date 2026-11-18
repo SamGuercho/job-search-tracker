@@ -1,9 +1,9 @@
 """Job description matching (AI pass stubbed)."""
 import unittest
 
-from tests.test_core import reset  # sets the temp data/output env vars first
 from jobtracker import registry
 from jobtracker.services import jd_match, master_cv
+from tests.test_core import reset  # sets the temp data/output env vars first
 
 JD = """Build AI agents using retrieval-augmented generation and large language models.
 Strong Python required. Kubernetes is a plus. Experience with vector databases."""

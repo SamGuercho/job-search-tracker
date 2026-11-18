@@ -4,10 +4,11 @@ import os
 import unittest
 from types import SimpleNamespace as NS
 
-from tests.test_core import reset  # sets the temp data/output env vars first
 import openai
+
 from jobtracker import registry
 from jobtracker.services import assistant, companies
+from tests.test_core import reset  # sets the temp data/output env vars first
 
 
 def call(name, args, call_id="c1"):

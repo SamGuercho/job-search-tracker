@@ -7,8 +7,6 @@ Pipeline (each step is a separate function so an agent can call them alone):
 """
 from __future__ import annotations
 
-from pathlib import Path
-
 from pydantic import BaseModel
 
 from .. import config

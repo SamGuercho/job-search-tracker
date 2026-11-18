@@ -1,11 +1,13 @@
 """Application process graph: operations, derived status/stage, tools, migration."""
 import unittest
 
-from tests.test_core import reset  # sets the temp data/output env vars first
+from pydantic import ValidationError
+
 from jobtracker import registry
 from jobtracker.models import Company
 from jobtracker.process import DEFAULT_STEPS, GraphError, Node, default_process
 from jobtracker.services import companies
+from tests.test_core import reset  # sets the temp data/output env vars first
 
 
 def names(p):
@@ -100,7 +102,7 @@ class ToolTests(unittest.TestCase):
 
     def test_status_cannot_be_set_by_hand(self):
         c = companies.find_by_name("Nimbus")
-        with self.assertRaises(Exception):
+        with self.assertRaises(ValidationError):
             registry.run("company.update", {"id": c.id, "fields": {"status": "Offer"}})
 
 

@@ -1,10 +1,12 @@
 """Salary/work model/source fields, saved job descriptions, step types, analytics."""
 import unittest
 
-from tests.test_core import TMP, reset  # sets the temp data/output env vars first
+from pydantic import ValidationError
+
 from jobtracker import config, registry
 from jobtracker.process import Node
 from jobtracker.services import companies
+from tests.test_core import reset  # sets the temp data/output env vars first
 
 
 class FieldTests(unittest.TestCase):
@@ -16,7 +18,7 @@ class FieldTests(unittest.TestCase):
                                             "source_detail": "LinkedIn", "salary_expectation": "38k ILS",
                                             "salary_posted": "30-40k", "job_url": "https://nimbus.example/job"})
         self.assertEqual((c["work_model"], c["source_detail"], c["salary_expectation"]), ("Hybrid", "LinkedIn", "38k ILS"))
-        with self.assertRaises(Exception):
+        with self.assertRaises(ValidationError):
             registry.run("company.update", {"id": c["id"], "fields": {"work_model": "Sometimes"}})
 
 

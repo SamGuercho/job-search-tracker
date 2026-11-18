@@ -1,9 +1,9 @@
 """CV import tests (the LLM is replaced by a stub)."""
 import unittest
 
-from tests.test_core import TMP, reset  # sets the temp data/output env vars first
 from jobtracker import registry
 from jobtracker.services import cv_builder, cv_import, llm, master_cv
+from tests.test_core import TMP, reset  # sets the temp data/output env vars first
 
 
 def fake_structured(instructions, text, schema):

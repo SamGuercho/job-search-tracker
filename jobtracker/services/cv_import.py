@@ -190,8 +190,8 @@ def apply_import(draft: MasterCV, mode: ImportMode = "merge") -> MasterCV:
         schools = {key(e.school, e.degree) for e in cv.education}
         cv.education += [e for e in draft.education if key(e.school, e.degree) not in schools]
 
-        have_langs = {l.lower() for l in cv.languages}
-        cv.languages += [l for l in draft.languages if l.lower() not in have_langs]
+        have_langs = {lang.lower() for lang in cv.languages}
+        cv.languages += [lang for lang in draft.languages if lang.lower() not in have_langs]
 
         groups = {g.name.strip().lower(): g for g in cv.skills}
         for g in draft.skills:

@@ -5,6 +5,7 @@ export async function call(action, payload = {}) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
+  if (res.status === 401) { location.href = "/login"; throw new Error("Login required"); }
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
     const detail = Array.isArray(body.detail)

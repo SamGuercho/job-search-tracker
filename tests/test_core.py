@@ -1,21 +1,15 @@
 """Core behaviour tests. Run: .venv/bin/python -m unittest discover tests"""
-import os
 import shutil
-import tempfile
 import unittest
-from pathlib import Path
-
-TMP = Path(tempfile.mkdtemp())
-os.environ["JOBTRACKER_DATA_DIR"] = str(TMP / "data")
-os.environ["JOBTRACKER_OUTPUT_DIR"] = str(TMP / "out")
-os.environ["JOBTRACKER_PDF_ENGINE"] = "none"
-os.environ["OPENAI_API_KEY"] = ""  # tests never call OpenAI, even if .env has a key
 
 from jobtracker import actions, config, registry  # noqa: E402,F401
 from jobtracker.services import companies, cv_builder, master_cv, pdf  # noqa: E402
+from tests import TMP, assert_isolated  # tests/__init__.py set up the throwaway folders first
 
 
 def reset():
+    """Fresh, empty test folders. Refuses to continue if the app points anywhere else."""
+    assert_isolated()
     shutil.rmtree(TMP, ignore_errors=True)
 
 

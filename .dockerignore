@@ -1,0 +1,14 @@
+# Keep the image small and free of personal data
+.git
+.github
+.venv
+.env
+.claude
+.cursor
+data
+!data/seed
+output
+tests
+**/__pycache__
+*.pyc
+.DS_Store

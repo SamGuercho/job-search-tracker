@@ -5,9 +5,9 @@ import unittest
 import anyio
 from mcp import Client
 
-from tests.test_core import reset  # sets the temp data/output env vars first
 from jobtracker import registry
 from jobtracker.mcp_server import build_server
+from tests.test_core import reset  # sets the temp data/output env vars first
 
 
 def with_client(fn):

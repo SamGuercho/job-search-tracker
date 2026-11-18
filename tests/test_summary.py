@@ -2,10 +2,11 @@
 import unittest
 
 from docx import Document
+from pydantic import ValidationError
 
-from tests.test_core import reset  # sets the temp data/output env vars first
 from jobtracker import config, registry
 from jobtracker.services import companies, cv_builder, summary
+from tests.test_core import reset  # sets the temp data/output env vars first
 
 
 def fake(review):
@@ -56,7 +57,7 @@ class SummaryTests(unittest.TestCase):
         self.assertTrue(registry.ACTIONS["company.set_cv_summary"].confirm)
         self.assertTrue(registry.ACTIONS["cv.profile.update"].confirm)
         self.assertFalse(registry.ACTIONS["cv.summary.review"].confirm)
-        with self.assertRaises(Exception):
+        with self.assertRaises(ValidationError):
             registry.run("company.update", {"id": self.c.id, "fields": {"cv_summary": "sneaky"}})
 
     def test_needs_a_job_description(self):

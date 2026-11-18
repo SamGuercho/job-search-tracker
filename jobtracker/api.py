@@ -3,18 +3,28 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import Body, FastAPI, File, HTTPException, UploadFile
+from fastapi import Body, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import ValidationError
 
-from . import actions  # noqa: F401  (registers the actions)
-from . import config, registry
+from . import (
+    __version__,
+    actions,  # noqa: F401  (registers the actions)
+    auth,
+    config,
+    logs,
+    registry,
+)
+from .services import llm, pdf
 from .services.companies import NotFound
 from .services.cv_import import SUPPORTED
 from .services.llm import LLMUnavailable
 
-app = FastAPI(title="Job Search Tracker")
+logs.setup()
+app = FastAPI(title="Job Search Tracker", version=__version__)
+app.middleware("http")(auth.middleware)   # registered first = runs innermost, after logging
+app.middleware("http")(logs.access_log)
 
 
 @app.middleware("http")
@@ -24,6 +34,28 @@ async def no_stale_ui(request, call_next):
     if not request.url.path.startswith(("/api/", "/files/")):
         response.headers["Cache-Control"] = "no-cache"
     return response
+
+
+@app.get("/health")
+def health():
+    """For container / cloud health checks. Public, reveals no data."""
+    return {"status": "ok", "version": __version__, "pdf_engine": pdf.available_engine(),
+            "ai": llm.available(), "login": auth.enabled()}
+
+
+@app.get("/login")
+def login_form():
+    return auth.login_page()
+
+
+@app.post("/login")
+async def login(request: Request):
+    return await auth.login(request)
+
+
+@app.get("/logout")
+def logout():
+    return auth.logout()
 
 
 @app.get("/api/actions")
@@ -39,13 +71,13 @@ def run_action(name: str, payload: dict = Body(default={})):
     try:
         return {"ok": True, "result": registry.run(name, payload)}
     except NotFound as e:
-        raise HTTPException(404, str(e))
+        raise HTTPException(404, str(e)) from e
     except LLMUnavailable as e:
-        raise HTTPException(503, str(e))
+        raise HTTPException(503, str(e)) from e
     except ValidationError as e:
-        raise HTTPException(422, e.errors(include_url=False, include_context=False))
+        raise HTTPException(422, e.errors(include_url=False, include_context=False)) from e
     except ValueError as e:
-        raise HTTPException(400, str(e))
+        raise HTTPException(400, str(e)) from e
 
 
 @app.post("/api/cv/import")

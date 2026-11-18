@@ -1,0 +1,25 @@
+# One-command run with Docker: `docker compose up --build`, then http://127.0.0.1:8000
+# Uses the same ./data folder as ./run.sh. Settings (OpenAI key, password…) come from .env.
+services:
+  app:
+    build: .
+    image: job-search-tracker:local
+    ports:
+      - "127.0.0.1:${PORT:-8000}:8000"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      # Paths inside the container (they override the ones in .env)
+      JOBTRACKER_DATA_DIR: /data
+      JOBTRACKER_OUTPUT_DIR: /output
+      LOG_FORMAT: text
+    volumes:
+      - type: bind
+        source: ./data
+        target: /data
+      - type: bind
+        # Generated CVs: ./output by default, or any folder (e.g. iCloud/Google Drive) via HOST_OUTPUT_DIR in .env
+        source: ${HOST_OUTPUT_DIR:-./output}
+        target: /output
+    restart: unless-stopped

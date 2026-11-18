@@ -18,4 +18,4 @@ def get_template(name: str | None):
     try:
         return TEMPLATES[name or DEFAULT_TEMPLATE]
     except KeyError:
-        raise ValueError(f"Unknown template {name!r}. Available: {', '.join(TEMPLATES)}")
+        raise ValueError(f"Unknown template {name!r}. Available: {', '.join(TEMPLATES)}") from None

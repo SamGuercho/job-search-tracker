@@ -32,3 +32,6 @@ async function route() {
 
 window.addEventListener("hashchange", route);
 route();
+
+// Installable app: register the service worker (needs https, or localhost)
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
