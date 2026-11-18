@@ -5,7 +5,9 @@ description: Track job applications and generate tailored one-page CVs with the 
 
 # Job Search Tracker
 
-Every operation is a named **action** with a JSON input. Call it either way, from the project root:
+Every operation is a named **action** with a JSON input. If the `job-search-tracker` MCP server is connected,
+use its tools: same names with `_` instead of `.` (`process.set_state` → `process_set_state`). Otherwise call
+the action from the project root:
 
 - CLI: `.venv/bin/python -m jobtracker <action> '<json>'` (or `@file.json`, or `-` to read stdin).
   Output: `{"ok": true, "result": ...}` or `{"ok": false, "error": "..."}`.

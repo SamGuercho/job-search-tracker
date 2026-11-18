@@ -13,10 +13,11 @@ unless you add an OpenAI key (then only the text needed for AI features goes to 
 1. [Quick start](#quick-start)
 2. [First steps](#first-steps)
 3. [What you can do](#what-you-can-do)
-4. [Your data and privacy](#your-data-and-privacy)
-5. [Configuration](#configuration)
-6. [Troubleshooting](#troubleshooting)
-7. [For developers](#for-developers)
+4. [Use it from Cursor / Claude (MCP)](#use-it-from-cursor--claude-mcp)
+5. [Your data and privacy](#your-data-and-privacy)
+6. [Configuration](#configuration)
+7. [Troubleshooting](#troubleshooting)
+8. [For developers](#for-developers)
 
 ---
 
@@ -119,6 +120,31 @@ overwrites data, or adds text to your CV, waits for your Approve / Reject**. Con
 
 ---
 
+## Use it from Cursor / Claude (MCP)
+
+The app is also an **MCP server**: AI tools like Cursor, Claude Code or Claude Desktop get every feature as a
+tool (52 of them: add an application, update its process, generate a CV, analytics…), with the same data as
+the web app. Example prompts once connected: *"Add this job to my tracker and make my CV: <text>"*,
+*"I had the HR interview with Nimbus today"*, *"Which applications need a follow-up?"*.
+
+1. Install the app once (`./run.sh`, see Quick start), then print the configuration for your machine:
+   ```bash
+   .venv/bin/python -m jobtracker mcp-config
+   ```
+2. Add it to your tool:
+   - **Cursor**: Settings → MCP → *Add new MCP server*, or paste the printed JSON into `~/.cursor/mcp.json`
+     (merge it into `mcpServers` if the file already exists).
+   - **Claude Code**: run the printed `claude mcp add …` command.
+   - **Claude Desktop**: Settings → Developer → *Edit Config*, paste the JSON, restart Claude Desktop.
+3. The client starts the server itself when needed; the web app doesn't have to be running.
+
+Tools that delete or overwrite data, or add text to your CV, are flagged *destructive* and tell the AI to ask
+you first; most clients also ask for your confirmation before any tool call. The AI-powered tools (matching,
+drafts, reviews, import) use the `OPENAI_API_KEY` from `.env`. Pair it with the instructions in
+`skills/job-search/SKILL.md` (Claude Code: copy the folder to `~/.claude/skills/`).
+
+---
+
 ## Your data and privacy
 
 | What | Where | In git? |
@@ -183,6 +209,7 @@ jobtracker/
   cv_templates/           Word templates (elegant.py); add one and register it in __init__.py
   api.py                  FastAPI: POST /api/actions/<name>, GET /api/actions, /files/…, the web UI
   __main__.py             CLI
+  mcp_server.py           MCP server: one tool per action, generated from the registry
 web/                      vanilla JavaScript UI, no build step (js/views/<page>.js)
 skills/job-search/        SKILL.md: instructions for AI agents (e.g. Claude Code)
 tests/                    unit tests (no network; OpenAI is stubbed)
@@ -193,13 +220,15 @@ Every feature is a function in `actions.py` decorated with `@action("group.verb"
 JSON schema and its docstring the description, so it is automatically:
 - an HTTP endpoint: `POST /api/actions/company.create` with a JSON body;
 - a CLI command: `.venv/bin/python -m jobtracker company.create '{"name": "Acme"}'`;
-- a tool of the in-app assistant (`@action(..., confirm=True)` makes it wait for the user's approval).
+- a tool of the in-app assistant (`@action(..., confirm=True)` makes it wait for the user's approval);
+- an MCP tool (`process_set_state`…), flagged destructive when `confirm=True` and read-only when listed in
+  `READ_ONLY` in `jobtracker/mcp_server.py`.
 
 ```bash
 .venv/bin/python -m jobtracker help        # list actions
 .venv/bin/python -m jobtracker actions     # JSON schemas (e.g. to expose them as MCP tools)
 ```
-External agents: see `skills/job-search/SKILL.md` (copy the folder to `~/.claude/skills/` for Claude Code).
+External agents: connect over MCP (above) or use the CLI, with `skills/job-search/SKILL.md` as their guide.
 
 ### Tests
 ```bash
