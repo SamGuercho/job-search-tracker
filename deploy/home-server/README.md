@@ -54,10 +54,10 @@ administrator PowerShell.
 
 ## 3. Install Tailscale (3 min)
 
-```powershell
-winget install -e --id tailscale.tailscale
-```
-Open Tailscale from the system tray and **sign in with the same account as on your phone and Mac**.
+Download and run the installer from **https://tailscale.com/download/windows**
+(or with winget: `winget search tailscale`, then `winget install -e --id <Id shown>`; package ids change over time).
+Open Tailscale from the system tray (bottom right, maybe under **^**) and **sign in with the same account as on
+your phone and Mac**. Reopen PowerShell afterwards so it finds the `tailscale` command.
 
 ✅ Check: `tailscale status` lists this PC (and your other devices).
 
