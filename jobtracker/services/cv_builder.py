@@ -3,7 +3,7 @@
 Pipeline (each step is a separate function so an agent can call them alone):
   1. select_bullets(keywords)  -> TailoredCV with every matching bullet
   2. fit_to_page(...)          -> drops the weakest bullets until it fits 1 page
-  3. generate_cv(...)          -> writes output/<Company>/CV_<...>.docx and .pdf
+  3. generate_cv(...)          -> writes <output folder>/<Company>/<Name>_CV.docx and .pdf
 """
 from __future__ import annotations
 
