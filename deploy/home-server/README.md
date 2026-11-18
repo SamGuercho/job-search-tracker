@@ -13,6 +13,7 @@ GitHub ── CI publishes a new image ──→ the PC installs it within 15 mi
 
 Nothing is built on the PC: it runs the image that CI tests and publishes on every push to `main`.
 Allow **30 minutes**, mostly downloads. Run the commands in **PowerShell** (Start menu → "PowerShell").
+If a `winget install` answers "No package found", refresh its catalogue first: `winget source update`.
 
 ---
 
