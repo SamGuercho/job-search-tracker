@@ -35,7 +35,20 @@ winget install -e --id Docker.DockerDesktop
 Restart when asked, open **Docker Desktop**, accept the terms, keep the recommended **WSL 2** setting. Then in
 Docker Desktop → **Settings → General**, tick **Start Docker Desktop when you sign in**.
 
-If it complains about virtualisation, enable *Intel VT-x* / *AMD-V (SVM)* in the BIOS.
+If Docker says **WSL needs the "Virtual Machine Platform"**, enable it from an **administrator** PowerShell
+(Start → type PowerShell → right-click → *Run as administrator*; a normal window answers "requires elevation"):
+```powershell
+wsl --install --no-distribution
+```
+(older Windows 10: `dism.exe /online /enable-feature /featurename:VirtualMachinePlatform /all /norestart` and the same
+with `/featurename:Microsoft-Windows-Subsystem-Linux`), **restart the PC**, then run `wsl --update` and reopen Docker Desktop.
+
+If it complains about virtualisation, enable *Intel VT-x* / *AMD-V (SVM)* in the BIOS (check first: Task Manager →
+Performance → CPU → "Virtualization: Enabled"). Easiest way into the BIOS: Settings → System → Recovery →
+Advanced startup → *Restart now* → Troubleshoot → Advanced options → *UEFI Firmware Settings*.
+
+Any later command answering "requires elevation" (e.g. `powercfg`, the scheduled tasks): run it in an
+administrator PowerShell.
 
 ✅ Check: `docker run --rm hello-world` prints "Hello from Docker!".
 
