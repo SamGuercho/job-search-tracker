@@ -1,6 +1,6 @@
 # Job Search Tracker
 
-[![CI](https://github.com/SamGuercho/job-search-tracker/actions/workflows/ci.yml/badge.svg)](https://github.com/SamGuercho/job-search-tracker/actions/workflows/ci.yml)
+[![CI](https://github.com/SamGuercho/job-search-tracker/actions/workflows/ci.yml/badge.svg)](https://github.com/SamGuercho/job-search-tracker/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 A local web app to run a job search: follow every application through its process, keep one
 **master CV** and generate a **one-page CV tailored to each job** (Word + PDF), with an optional
@@ -293,3 +293,8 @@ then publish it to the GitHub Container Registry as `ghcr.io/<owner>/job-search-
 `Dockerfile`: Python 3.13 slim + LibreOffice (PDF export) + STIX Two Text (pinned release) · non-root user ·
 `/data` and `/output` volumes · health check on `/health` · JSON logs. `compose.yaml` runs it locally on the same
 `./data` folder as `./run.sh`.
+
+---
+
+## License
+[MIT](LICENSE): free to use, modify and share, keeping the copyright notice.
