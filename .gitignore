@@ -14,3 +14,8 @@ __pycache__/
 .DS_Store
 .claude/
 ~$*
+
+# Home server deployment: local data, CVs, settings and logs
+deploy/home-server/data/
+deploy/home-server/companies/
+deploy/home-server/update.log

@@ -1,0 +1,26 @@
+# Home server deployment: runs the image published by CI (no build, no source code needed).
+# Start: docker compose up -d     Update: docker compose pull && docker compose up -d (update.ps1 does it)
+name: jobsearch
+
+services:
+  app:
+    image: ghcr.io/samguercho/job-search-tracker:${IMAGE_TAG:-latest}
+    # Only reachable from this machine; Tailscale (`tailscale serve`) publishes it to your devices over https
+    ports:
+      - "127.0.0.1:${PORT:-8000}:8000"
+    env_file:
+      - .env
+    environment:
+      # Inside the container: fixed. PORT in .env only chooses the port on this PC (see ports above).
+      PORT: "8000"
+      JOBTRACKER_DATA_DIR: /data
+      JOBTRACKER_OUTPUT_DIR: /output
+    volumes:
+      - ${HOST_DATA_DIR:-./data}:/data
+      - ${HOST_OUTPUT_DIR:-./companies}:/output
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

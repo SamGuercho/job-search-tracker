@@ -66,10 +66,14 @@ to `./data` and `./output` (e.g. `sudo chown -R 10001 data output`).
 **Updating:** `git pull`, then `./run.sh` (new dependencies are installed automatically) or
 `docker compose up --build`.
 
-**On your phone:** the app is installable (home-screen icon, full screen). Make it reachable from your phone
-(same network with `JOBTRACKER_HOST=0.0.0.0`, or a private network such as Tailscale), **set
-`JOBTRACKER_PASSWORD` first**, open it in the phone's browser and choose *Install app* / *Add to Home Screen*.
-Installing needs https or localhost; over plain http on your network it still works as a web page.
+**On your phone:** the app is installable (home-screen icon, full screen), and reachable from anywhere through
+[Tailscale](https://tailscale.com) (free private network between your devices, with https):
+- **Always on (recommended): a home server.** Run it on a computer that stays on at home, with Docker and
+  automatic updates: step-by-step guide in [`deploy/home-server/`](deploy/home-server/README.md) (Windows).
+- **From your laptop**, while it's awake: set `JOBTRACKER_PASSWORD` in `.env`, run `./run.sh --tailscale`, and
+  open the printed `https://….ts.net` address on your phone.
+
+Then *Install app* (Chrome on Android) or *Add to Home Screen* (Safari on iPhone).
 
 ---
 
@@ -284,6 +288,10 @@ External agents: connect over MCP (above) or use the CLI, with `skills/job-searc
 Tests always run on throwaway folders: `tests/__init__.py` configures them before the app is imported and every
 test checks it, so they can never touch your data, your output folder or `.env`. They never call OpenAI and
 don't need a PDF engine.
+
+**Deployment:** CI publishes `ghcr.io/samguercho/job-search-tracker` on every push to `main`;
+[`deploy/home-server/`](deploy/home-server/README.md) runs it with Docker Compose behind Tailscale https, and a
+scheduled task pulls each new image (continuous deployment to a home server), with backup and update scripts.
 
 **CI** (`.github/workflows/ci.yml`, GitHub Actions): on every push and pull request, lint (ruff) and tests on
 Python 3.11 and 3.13; on `main`, build the Docker image, start it and check `/health` (including the PDF engine),
