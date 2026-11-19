@@ -13,6 +13,8 @@ GitHub ── CI publishes a new image ──→ the PC installs it within 15 mi
 
 Nothing is built on the PC: it runs the image that CI tests and publishes on every push to `main`.
 Allow **30 minutes**, mostly downloads. Run the commands in **PowerShell** (Start menu → "PowerShell").
+Windows blocks `.ps1` scripts by default ("running scripts is disabled"): run them as
+`powershell -ExecutionPolicy Bypass -File .\script.ps1`, as below; this changes no setting.
 If a `winget install` answers "No package found", refresh its catalogue first: `winget source update`.
 
 ---
@@ -134,15 +136,15 @@ powershell -ExecutionPolicy Bypass -File .\install-update-task.ps1
 ```
 Every 15 minutes (and at sign-in), `update.ps1` pulls the newest image published by CI and restarts the app if it
 changed. Push to `main` → CI tests and publishes → the server updates itself. History: `update.log`.
-Update by hand any time with `.\update.ps1`. To stay on a version, set `IMAGE_TAG` in `.env` to a commit tag
+Update by hand any time with `powershell -ExecutionPolicy Bypass -File .\update.ps1`. To stay on a version, set `IMAGE_TAG` in `.env` to a commit tag
 (e.g. `sha-ade50a6`, see the repository's *Packages*).
 
 ## 10. Backups (recommended)
 
 Your data lives only on this PC. Copy it regularly to a synced folder:
 ```powershell
-.\backup.ps1                                   # → OneDrive\JobSearch-backups (default)
-.\backup.ps1 -Destination "D:\Backups\JobSearch"
+powershell -ExecutionPolicy Bypass -File .\backup.ps1                                   # → OneDrive\JobSearch-backups (default)
+powershell -ExecutionPolicy Bypass -File .\backup.ps1 -Destination "D:\Backups\JobSearch"
 ```
 Automate it like the update task, e.g. daily:
 ```powershell
