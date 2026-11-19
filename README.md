@@ -72,8 +72,8 @@ to `./data` and `./output` (e.g. `sudo chown -R 10001 data output`).
   automatic updates: step-by-step guide in [`deploy/home-server/`](deploy/home-server/README.md) (Windows).
 - **From your laptop**, while it's awake: set `JOBTRACKER_PASSWORD` in `.env`, run `./run.sh --tailscale`, and
   open the printed `https://….ts.net` address on your phone.
-- **Friends** can use your home server with their own separate data, signed in by Tailscale: see
-  [Share with friends](deploy/home-server/README.md#11-share-with-friends-optional).
+- **Friends** can use your home server with their own separate data: share the PC with them in Tailscale,
+  nothing else to set up. See [Share with friends](deploy/home-server/README.md#11-share-with-friends).
 
 Then *Install app* (Chrome on Android) or *Add to Home Screen* (Safari on iPhone).
 
@@ -204,9 +204,9 @@ All settings live in `.env` (created from `.env.example` on first run). Restart 
 | `JOBTRACKER_CV_FILENAME` | `{name}_CV` | CV file name; `{name}` = your name, `{company}` = the company. |
 | `JOBTRACKER_PDF_ENGINE` | auto | `libreoffice`, `word` or `none`. |
 | `JOBTRACKER_PASSWORD` | empty | When set, every page and API call requires signing in (signed, HTTP-only session cookie). |
-| `JOBTRACKER_OWNER` | empty | Your Tailscale login. Enables several users behind `tailscale serve`: only the Tailscale identity counts (the password is ignored; requests without it are refused). Only with the app listening on 127.0.0.1. |
-| `JOBTRACKER_FRIENDS` | empty | Comma-separated Tailscale logins of friends; each gets `JOBTRACKER_USERS_DIR/<login>/data` and `/companies`. |
-| `JOBTRACKER_USERS_DIR` | `<data>/users` | Where friends' data lives. |
+| `JOBTRACKER_TAILSCALE_USERS` | off | Several users behind `tailscale serve` (on in the home-server deployment): each Tailscale login gets its own space, Tailscale decides who gets in, requests without Tailscale identity are refused (no password). Only with the app listening on 127.0.0.1. |
+| `JOBTRACKER_OWNER` | from the CV | Who keeps the existing data: by default the login equal to the master CV's email, remembered in `<data>/owner.txt`. Set it only if your Tailscale login differs. |
+| `JOBTRACKER_USERS_DIR` | `<data>/users` | Where the other users' data lives. |
 | `JOBTRACKER_SESSION_DAYS` | `30` | How long a sign-in lasts. Changing the password signs everyone out. |
 | `JOBTRACKER_HOST` / `PORT` | `127.0.0.1` / `8000` | Where the server listens (`0.0.0.0` to reach it from other devices: set a password). |
 | `LOG_FORMAT` / `LOG_LEVEL` | `text` / `INFO` | `json` writes one JSON object per request (method, path, status, duration). |

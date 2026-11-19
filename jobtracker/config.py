@@ -29,10 +29,9 @@ SEED_DIR = ROOT / "data" / "seed"
 OUTPUT_DIR = Path(os.environ.get("JOBTRACKER_OUTPUT_DIR", ROOT / "output")).expanduser()
 WEB_DIR = ROOT / "web"
 
-# Several users (see jobtracker/users.py): the owner keeps DATA_DIR / OUTPUT_DIR; each friend gets
-# USERS_DIR/<login>/data and USERS_DIR/<login>/companies. Off unless OWNER is set.
-OWNER = os.environ.get("JOBTRACKER_OWNER", "").strip().lower()      # your Tailscale login (email)
-FRIENDS = {f.strip().lower() for f in os.environ.get("JOBTRACKER_FRIENDS", "").split(",") if f.strip()}
+# Several users behind `tailscale serve` (see jobtracker/users.py). Turned on by deploy/home-server/compose.yaml.
+TAILSCALE_USERS = os.environ.get("JOBTRACKER_TAILSCALE_USERS", "").lower() in ("1", "true", "yes")
+OWNER = os.environ.get("JOBTRACKER_OWNER", "").strip().lower()  # rarely needed: see users.owner()
 USERS_DIR = Path(os.environ.get("JOBTRACKER_USERS_DIR", DATA_DIR / "users")).expanduser()
 
 # Generated CV file name, without extension. {name} = your name with underscores.

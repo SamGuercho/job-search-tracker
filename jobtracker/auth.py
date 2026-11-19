@@ -1,8 +1,8 @@
 """Who may use the app.
 
-- With JOBTRACKER_OWNER set (behind `tailscale serve`): only the Tailscale identity counts (see users.py). The
-  owner and invited friends get in, anyone else is refused, and so is any request without the identity, even
-  with the password: otherwise anyone knowing the password would be the owner.
+- Behind `tailscale serve` with JOBTRACKER_TAILSCALE_USERS=1: only the Tailscale identity counts (see users.py).
+  Tailscale decides who reaches the app; each login gets its own space. Requests without the identity are
+  refused, even with the password: otherwise anyone knowing the password would be the owner.
 - Otherwise, optional password login. Off unless JOBTRACKER_PASSWORD is set (local use needs none).
 
 A successful login sets a signed, HTTP-only cookie "<expiry>.<hmac>". The signing key is derived from the
@@ -62,11 +62,7 @@ async def middleware(request: Request, call_next):
         login = request.headers.get(users.HEADER, "").strip()
         if not login:  # not through tailscale serve: no way to know who it is
             return _refused(request, "Open the app through its Tailscale address (https://…ts.net).")
-        try:
-            user = users.resolve(login)
-        except users.NotInvited:
-            return _refused(request, f"{login} is not invited to this Job Search Tracker. Ask its owner to add you.")
-        with users.acting_as(user):  # every data path in this request is this user's
+        with users.acting_as(users.resolve(login)):  # every data path in this request is this user's
             return await call_next(request)
     if not enabled() or valid(request.cookies.get(COOKIE)):
         return await call_next(request)

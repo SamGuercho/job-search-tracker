@@ -15,6 +15,9 @@ services:
       PORT: "8000"
       JOBTRACKER_DATA_DIR: /data
       JOBTRACKER_OUTPUT_DIR: /output
+      # Several users: Tailscale says who is visiting (only reachable through `tailscale serve`, see ports);
+      # each Tailscale login gets its own data. Whoever you share this PC with in Tailscale can use it.
+      JOBTRACKER_TAILSCALE_USERS: "1"
     volumes:
       - ${HOST_DATA_DIR:-./data}:/data
       - ${HOST_OUTPUT_DIR:-./companies}:/output

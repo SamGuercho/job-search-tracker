@@ -85,8 +85,7 @@ New-Item -ItemType Directory -Force C:\JobSearch\data, C:\JobSearch\companies | 
 Copy-Item .env.example .env
 notepad .env
 ```
-Set at least **`JOBTRACKER_PASSWORD`** (required: you'll type it once per device) and, for the AI features,
-**`OPENAI_API_KEY`**. Keep `HOST_DATA_DIR=C:/JobSearch/data` and `HOST_OUTPUT_DIR=C:/JobSearch/companies` unless
+For the AI features, set **`OPENAI_API_KEY`**. No password: Tailscale decides who gets in (step 8). Keep `HOST_DATA_DIR=C:/JobSearch/data` and `HOST_OUTPUT_DIR=C:/JobSearch/companies` unless
 you want other folders. Save and close.
 
 ## 6. Bring your data (5 min)
@@ -113,7 +112,7 @@ New user? Skip this step: the app starts with example data you replace from the 
 docker compose up -d
 ```
 ✅ Check: `curl.exe http://127.0.0.1:8000/health` returns `"status":"ok"` and `"pdf_engine":"libreoffice"`.
-Open http://127.0.0.1:8000 on the PC, sign in with your password: your CV and applications are there.
+The app itself opens only through Tailscale (step 8): `http://127.0.0.1:8000` answers "No access".
 
 The container restarts by itself after a crash or a reboot (`restart: unless-stopped`).
 
@@ -126,7 +125,8 @@ tailscale serve status
 The address shown (`https://<pc-name>.<tailnet>.ts.net`) works on **all your Tailscale devices** and nowhere else
 (not on the internet). `tailscale serve` is remembered across reboots. Stop it with `tailscale serve --https=443 off`.
 
-✅ Check: on your phone (Tailscale app on), open the address, sign in.
+✅ Check: on your phone (Tailscale app on), open the address: your CV and applications are there, no password.
+(You see example data instead? Your Tailscale login isn't the email in your master CV: see step 11.)
 **Install it as an app**: Chrome menu ⋮ → *Install app* (Android) · Safari → Share → *Add to Home Screen* (iPhone).
 
 ## 9. Automatic updates (1 min)
@@ -152,30 +152,20 @@ $a = New-ScheduledTaskAction -Execute powershell.exe -Argument "-NoProfile -Exec
 Register-ScheduledTask -TaskName JobSearchTracker-Backup -Action $a -Trigger (New-ScheduledTaskTrigger -Daily -At 3am) -Force
 ```
 
-## 11. Share with friends (optional)
+## 11. Share with friends
 
-Friends use **your** server with **their own** data: their own master CV, applications, chats and CVs. No
-password and no account to create in the app: Tailscale tells the app who is visiting.
-
-**Once**, in `.env`, set your own Tailscale login (the email shown at the top of https://login.tailscale.com):
-```
-JOBTRACKER_OWNER=you@example.com
-```
-From then on **only the Tailscale identity counts**: the password is no longer used, and the app opens only
-through its `https://….ts.net` address (also on this PC; `http://127.0.0.1:8000` answers "No access").
-That's deliberate: with a password, anyone who knows it would be you.
+Friends use **your** server with **their own** space: their own master CV, applications, chats and CVs.
+There's nothing to configure in the app: **Tailscale decides who gets in** (your devices, and the people
+you share this PC with) and tells the app who is visiting. Each person gets their own space on first visit.
 
 **For each friend:**
 1. **They** install Tailscale (App Store / Play Store / tailscale.com/download) and sign in with any account.
 2. **You** share the PC: https://login.tailscale.com/admin/machines → this PC → ⋯ → **Share…** → invite by
    email or send the link. **They** open it and accept. Your other devices stay invisible to them.
-3. **You** add their Tailscale login to `.env`, comma-separated, then `docker compose up -d`:
-   ```
-   JOBTRACKER_FRIENDS=friend@example.com,other.friend@example.com
-   ```
-   Not sure of their login? Let them open the address: the "Not invited" page shows it.
-4. **They** open `https://<pc-name>.<tailnet>.ts.net` → *Install app* (Android, Chrome) or *Add to Home Screen*
+3. **They** open `https://<pc-name>.<tailnet>.ts.net` → *Install app* (Android, Chrome) or *Add to Home Screen*
    (iPhone, Safari). They start from example data and import their CV from the *Master CV* page.
+
+To remove someone: revoke their share on the same Machines page. Their folder stays until you delete it.
 
 **Limit friends to the app** (recommended, once): https://login.tailscale.com/admin/acls → if the policy has a
 rule that lets everyone reach everything (`"src": ["*"]`), replace it with these two, then *Save*:
@@ -186,13 +176,18 @@ rule that lets everyone reach everything (`"src": ["*"]`), replace it with these
 Your own devices keep full access; people you shared with reach only the https app on this PC.
 
 **Good to know**
-- Their data: `C:\JobSearch\data\users\<login>\` (included in `backup.ps1`). Removing a friend from
-  `JOBTRACKER_FRIENDS` blocks them; their folder stays until you delete it.
+- **You** are recognised by the email in your master CV: your Tailscale login must be that email (it is if you
+  sign in to Tailscale with it). The app remembers you in `data\owner.txt` on your first visit, so changing the
+  CV email later changes nothing. Your Tailscale login is a different email? Add `JOBTRACKER_OWNER=<that login>`
+  to `.env`, then `docker compose up -d`.
+- **Open the app through its `https://….ts.net` address, also on this PC.** `http://127.0.0.1:8000` answers
+  "No access" and the password is not used: with a password, anyone who knew it would be you.
+- Friends' data: `C:\JobSearch\data\users\<their login>\` (included in `backup.ps1`).
 - AI features use **your** OpenAI key for everyone (cents per action).
 - You hold their CVs: same trust as handing you a copy.
 - How it's safe: `tailscale serve` adds the visitor's identity (`Tailscale-User-Login`) to each request and removes
   any copy a visitor tries to send; the app only listens on `127.0.0.1`, so requests can't bypass Tailscale.
-  Only set `JOBTRACKER_OWNER` with that setup.
+  This is turned on in `compose.yaml` (`JOBTRACKER_TAILSCALE_USERS`), which publishes the app on 127.0.0.1 only.
 
 ---
 
@@ -216,7 +211,10 @@ run `./run.sh` on a laptop against a copy of the same data, or the two copies wi
 - **The phone can't open the address** → Tailscale switched on on the phone? `tailscale status` on the PC shows it
   online? `tailscale serve status` shows the address?
 - **"tailscale serve" fails about certificates** → enable HTTPS at https://login.tailscale.com/admin/dns.
-- **Health OK but pages ask for a password you don't know** → it's `JOBTRACKER_PASSWORD` in `.env`.
+- **"No access: open the app through its Tailscale address"** → use `https://<pc-name>.<tailnet>.ts.net`, not
+  `127.0.0.1` or the PC's IP; on the PC too.
+- **You see example data instead of yours** → your Tailscale login isn't the email in your master CV: set
+  `JOBTRACKER_OWNER=<your Tailscale login>` in `.env`, then `docker compose up -d` (step 11).
 - **CVs have no PDF** → `curl.exe http://127.0.0.1:8000/health` must show `"pdf_engine":"libreoffice"`
   (it does with the published image).
 - **Something else** → `docker compose logs --tail 100 app`.

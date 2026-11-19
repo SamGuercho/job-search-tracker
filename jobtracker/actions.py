@@ -11,7 +11,7 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, create_model
 
-from . import config, users
+from . import users
 from .cv_templates import TEMPLATES
 from .models import (
     SOURCE_TYPES,
@@ -65,7 +65,7 @@ def app_info():
     return {"statuses": STATUSES, "step_states": ["todo", "planned", "done"], "step_types": CATEGORIES,
             "work_models": WORK_MODELS, "source_types": SOURCE_TYPES,
             "templates": [{"name": t.name, "label": t.label} for t in TEMPLATES.values()],
-            "llm_available": llm.available(), "user": users.current() or config.OWNER}
+            "llm_available": llm.available(), "user": users.current() or users.owner()}
 
 
 @action("company.list")

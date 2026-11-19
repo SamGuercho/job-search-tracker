@@ -1,20 +1,25 @@
 """Who is using the app, and where their data lives.
 
-Identity comes from Tailscale: `tailscale serve` adds a `Tailscale-User-Login` header to every request it
-forwards (also for friends a machine is shared with) and strips any copy sent by the client. The app
-listens on localhost only, so the header can't be forged. It is trusted only when JOBTRACKER_OWNER is set.
+Behind `tailscale serve` (JOBTRACKER_TAILSCALE_USERS=1, set by deploy/home-server/compose.yaml), Tailscale
+decides who gets in: your own devices and the people you shared the machine with. `tailscale serve` adds a
+`Tailscale-User-Login` header to every request (also for shared users) and strips any copy sent by the
+client; the app listens on localhost only, so the header can't be forged. There is no list to maintain:
 
-- the owner (JOBTRACKER_OWNER) uses DATA_DIR and OUTPUT_DIR, as with a single user
-- a friend (JOBTRACKER_FRIENDS) uses USERS_DIR/<login>/data and USERS_DIR/<login>/companies
-- anyone else on the tailnet is refused, and so are HTTP requests without the header (the password no longer
-  applies); the CLI and MCP server, which don't go through HTTP, act as the owner
+- every Tailscale login gets its own space, created on first visit: USERS_DIR/<login>/data and /companies
+- the owner keeps DATA_DIR / OUTPUT_DIR (the data from before several users). The owner is the login equal
+  to the email in that master CV, recorded in DATA_DIR/owner.txt on first visit so that changing the CV
+  email later changes nothing. JOBTRACKER_OWNER overrides it (Tailscale login different from the CV email).
+- HTTP requests without the header are refused (the password is not used: anyone knowing it would be the
+  owner). The CLI and the MCP server don't go through HTTP and act as the owner.
 
 Every data and file path in the app goes through data_dir() / output_dir(), which read the current user
 from a context variable set once per request: isolation is structural, not a check in each action.
 """
 from __future__ import annotations
 
+import json
 import re
+import threading
 from contextlib import contextmanager
 from contextvars import ContextVar
 from pathlib import Path
@@ -23,14 +28,11 @@ from . import config
 
 HEADER = "tailscale-user-login"
 _current: ContextVar[str] = ContextVar("jobtracker_user", default="")  # "" = the owner
-
-
-class NotInvited(Exception):
-    pass
+_lock = threading.Lock()
 
 
 def enabled() -> bool:
-    return bool(config.OWNER)
+    return config.TAILSCALE_USERS
 
 
 def current() -> str:
@@ -38,14 +40,36 @@ def current() -> str:
     return _current.get()
 
 
-def resolve(login: str | None) -> str:
-    """Map a Tailscale login to a user: "" for the owner, the login for a friend; NotInvited otherwise."""
-    login = (login or "").strip().lower()
-    if not enabled() or not login or login == config.OWNER:
+def _owner_file() -> Path:
+    return config.DATA_DIR / "owner.txt"
+
+
+def owner() -> str:
+    """The owner's Tailscale login, or "" while unknown."""
+    if config.OWNER:
+        return config.OWNER
+    path = _owner_file()
+    return path.read_text(encoding="utf-8").strip().lower() if path.exists() else ""
+
+
+def _cv_email() -> str:
+    try:
+        cv = json.loads((config.DATA_DIR / "master_cv.json").read_text(encoding="utf-8"))
+        return str(cv.get("profile", {}).get("email", "")).strip().lower()
+    except (OSError, ValueError, AttributeError):
         return ""
-    if login in config.FRIENDS:
-        return login
-    raise NotInvited(login)
+
+
+def resolve(login: str) -> str:
+    """Map a Tailscale login to a user: "" for the owner, the login for anyone else."""
+    login = login.strip().lower()
+    with _lock:
+        known = owner()
+        if not known and login and login == _cv_email():  # first visit of the owner: remember them
+            _owner_file().parent.mkdir(parents=True, exist_ok=True)
+            _owner_file().write_text(login + "\n", encoding="utf-8")
+            known = login
+    return "" if login == known else login
 
 
 @contextmanager

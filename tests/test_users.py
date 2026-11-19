@@ -1,4 +1,5 @@
-"""Several users behind Tailscale: identity from the Tailscale-User-Login header, one data folder each."""
+"""Several users behind Tailscale: identity from the Tailscale-User-Login header, one data folder each,
+no list of users: whoever Tailscale lets in gets their own space."""
 import hashlib
 import unittest
 
@@ -10,6 +11,11 @@ from jobtracker.services import web
 from tests.test_core import reset  # sets the temp data/output env vars first
 
 OWNER, FRIEND, OTHER_FRIEND = "owner@example.com", "friend@example.com", "other@example.com"
+
+
+def set_cv_email(email):
+    with users.acting_as(""):
+        registry.run("cv.profile.update", {"fields": {"email": email}})
 
 
 def snapshot(*folders):
@@ -25,11 +31,12 @@ def snapshot(*folders):
 class MultiUserTests(unittest.TestCase):
     def setUp(self):
         reset()
-        config.OWNER, config.FRIENDS = OWNER, {FRIEND, OTHER_FRIEND}
+        config.TAILSCALE_USERS = True
+        set_cv_email(OWNER.upper())  # the owner is recognised by the email in the existing master CV
         self.client = TestClient(app)
 
     def tearDown(self):
-        config.OWNER, config.FRIENDS, config.PASSWORD = "", set(), ""
+        config.TAILSCALE_USERS, config.OWNER, config.PASSWORD = False, "", ""
 
     def act(self, login, action, payload=None):
         headers = {"Tailscale-User-Login": login} if login else {}
@@ -76,14 +83,30 @@ class MultiUserTests(unittest.TestCase):
         escape = "/files/..%2F..%2F..%2Fdata%2Fcompanies.json"
         self.assertEqual(self.client.get(escape, headers={"Tailscale-User-Login": FRIEND}).status_code, 404)
 
-    def test_strangers_on_the_tailnet_are_refused(self):
-        self.assertEqual(self.act("stranger@example.com", "company.list").status_code, 403)
-        page = self.client.get("/", headers={"Tailscale-User-Login": "stranger@example.com"})
-        self.assertEqual(page.status_code, 403)
-        self.assertIn("not invited", page.text)
-        self.assertIn("stranger@example.com", page.text)  # tells the owner which login to add
-        health = self.client.get("/health", headers={"Tailscale-User-Login": "stranger@example.com"})
-        self.assertEqual(health.status_code, 200)
+    def test_anyone_tailscale_lets_in_gets_a_fresh_space_without_any_list(self):
+        r = self.act("new.person@example.com", "cv.master.get")
+        self.assertEqual(r.status_code, 200)
+        self.assertNotEqual(r.json()["result"]["profile"]["email"].lower(), OWNER)  # example data, not yours
+        self.assertTrue((config.USERS_DIR / "new.person@example.com" / "data").exists())
+
+    def test_owner_is_remembered_after_changing_the_cv_email(self):
+        self.act(OWNER, "company.create", {"name": "OwnerCo", "position": "PM"})
+        self.assertEqual(users.owner(), OWNER)
+        set_cv_email("new.address@example.com")
+        self.assertIn("OwnerCo", self.names(OWNER))
+        self.assertNotIn("OwnerCo", self.names("new.address@example.com"))
+
+    def test_a_friend_visiting_first_does_not_become_the_owner(self):
+        self.act(FRIEND, "company.list")
+        self.assertEqual(users.owner(), "")
+        self.act(OWNER, "company.list")
+        self.assertEqual(users.owner(), OWNER)
+
+    def test_owner_override_when_tailscale_login_differs_from_cv_email(self):
+        registry.run("company.create", {"name": "OwnerCo", "position": "PM"})  # the existing data (CLI = owner)
+        config.OWNER = "other.login@example.com"
+        self.assertIn("OwnerCo", self.names("other.login@example.com"))
+        self.assertNotIn("OwnerCo", self.names(OWNER))
 
     def test_tailscale_users_need_no_password(self):
         config.PASSWORD = "secret"
@@ -98,7 +121,7 @@ class MultiUserTests(unittest.TestCase):
         self.assertEqual(self.client.get("/files/x.pdf").status_code, 403)
 
     def test_header_is_ignored_when_multi_user_is_off(self):
-        config.OWNER, config.PASSWORD = "", "secret"
+        config.TAILSCALE_USERS, config.PASSWORD = False, "secret"
         self.assertEqual(self.act(FRIEND, "company.list").status_code, 401)
 
     def test_logins_are_case_insensitive(self):
