@@ -11,6 +11,7 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, create_model
 
+from . import config, users
 from .cv_templates import TEMPLATES
 from .models import (
     SOURCE_TYPES,
@@ -64,7 +65,7 @@ def app_info():
     return {"statuses": STATUSES, "step_states": ["todo", "planned", "done"], "step_types": CATEGORIES,
             "work_models": WORK_MODELS, "source_types": SOURCE_TYPES,
             "templates": [{"name": t.name, "label": t.label} for t in TEMPLATES.values()],
-            "llm_available": llm.available()}
+            "llm_available": llm.available(), "user": users.current() or config.OWNER}
 
 
 @action("company.list")
@@ -369,7 +370,11 @@ def cv_import_parse(file_path: Optional[str] = None, text: Optional[str] = None)
     skills). Nothing is saved: review the draft, then call cv.import.apply."""
     if not (file_path or text):
         raise ValueError("Give file_path or text")
-    draft = cv_import.parse_cv(text or cv_import.extract_text(Path(file_path).expanduser()))
+    if file_path:
+        path = Path(file_path).expanduser().resolve()
+        if users.current() and not path.is_relative_to(users.data_dir().resolve()):  # friends: own files only
+            raise ValueError("Upload the file first: only your own uploaded files can be read")
+    draft = cv_import.parse_cv(text or cv_import.extract_text(path))
     return {"draft": draft, "stats": {
         "experiences": len(draft.experiences),
         "bullets": sum(len(e.bullets) for e in draft.experiences),
@@ -443,8 +448,8 @@ def cv_keywords_extract(text: str):
 @action("cv.preview")
 def cv_preview(keywords: list[str], keep_unmatched_roles: bool = True, template: Optional[str] = None,
                required: list[str] = [], company: Optional[str] = None):
-    """Dry run: which achievements (and which wording of each) would be selected for these keywords,
-    and which would be cut to fit one page. `required` keywords (must-haves) weigh double. With `company`,
+    """Dry run: every achievement in the wording that best fits these keywords, and which would be cut to
+    fit one page (those matching no keyword go first). `required` keywords (must-haves) weigh double. With `company`,
     that application's tailored summary is used (it changes the space left for bullets)."""
     cv = cv_builder.select_bullets(keywords, keep_unmatched_roles, required)
     cv_builder.use_summary(cv, companies.resolve(company) if company else None)
@@ -463,8 +468,9 @@ def cv_generate_general(template: Optional[str] = None):
 def cv_generate(keywords: list[str], company_id: Optional[str] = None, company_name: Optional[str] = None,
                 template: Optional[str] = None, export_pdf: bool = True, keep_unmatched_roles: bool = True,
                 required: list[str] = []):
-    """Build a one-page CV covering as many keywords as possible (one wording per achievement, `required`
-    keywords weigh double), save it as Word + PDF in <output>/<Company>/ and attach it to the company."""
+    """Build a full one-page CV: every achievement in its most relevant wording (`required` keywords weigh
+    double), cutting the least relevant only if it doesn't fit.
+    Saved as Word + PDF in <output>/<Company>/ and attached to the company."""
     return cv_builder.generate_cv(keywords, company_id, company_name, template, export_pdf, keep_unmatched_roles, required)
 
 

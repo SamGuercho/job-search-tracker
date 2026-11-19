@@ -5,7 +5,7 @@ import re
 from datetime import datetime
 from pathlib import Path
 
-from .. import config
+from .. import users
 
 
 def safe_name(name: str, sep: str = "_") -> str:
@@ -15,7 +15,7 @@ def safe_name(name: str, sep: str = "_") -> str:
 def output_folder(company_name: str) -> Path:
     """One folder per company, named like the company ("Sensi AI")."""
     folder = re.sub(r'[/\\:*?"<>|]+', " ", company_name)
-    return config.OUTPUT_DIR / (" ".join(folder.split()).strip(" .") or "Unknown")
+    return users.output_dir() / (" ".join(folder.split()).strip(" .") or "Unknown")
 
 
 def archive_previous(*paths: Path) -> None:
@@ -29,4 +29,4 @@ def archive_previous(*paths: Path) -> None:
 
 
 def relative(path: Path) -> str:
-    return path.relative_to(config.OUTPUT_DIR).as_posix()
+    return path.relative_to(users.output_dir()).as_posix()

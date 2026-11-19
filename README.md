@@ -72,6 +72,8 @@ to `./data` and `./output` (e.g. `sudo chown -R 10001 data output`).
   automatic updates: step-by-step guide in [`deploy/home-server/`](deploy/home-server/README.md) (Windows).
 - **From your laptop**, while it's awake: set `JOBTRACKER_PASSWORD` in `.env`, run `./run.sh --tailscale`, and
   open the printed `https://….ts.net` address on your phone.
+- **Friends** can use your home server with their own separate data, signed in by Tailscale: see
+  [Share with friends](deploy/home-server/README.md#11-share-with-friends-optional).
 
 Then *Install app* (Chrome on Android) or *Add to Home Screen* (Safari on iPhone).
 
@@ -120,7 +122,9 @@ visible columns (**Columns**), and log a follow-up in one click. The chat bar se
 Pick the application or paste the job description → **Find matching keywords**: each requirement of the
 ad is matched to the words **actually written in your CV** (same word, synonym, or AI), with the
 requirements your CV doesn't cover listed as gaps. The preview shows which achievements are used and why;
-**Create CV** writes `<Company>/<Your_Name>_CV.docx` and `.pdf`, trimmed to one page.
+**Create CV** writes `<Company>/<Your_Name>_CV.docx` and `.pdf`. Every achievement is used, each in its wording
+that best fits the job, so a short job description still gets a full CV; only when it exceeds one page are
+bullets cut, those matching no keyword first, then those repeating covered keywords.
 
 ### Master CV
 Your whole career, as **achievements** (one fact each) with keywords. An achievement can have several
@@ -200,6 +204,9 @@ All settings live in `.env` (created from `.env.example` on first run). Restart 
 | `JOBTRACKER_CV_FILENAME` | `{name}_CV` | CV file name; `{name}` = your name, `{company}` = the company. |
 | `JOBTRACKER_PDF_ENGINE` | auto | `libreoffice`, `word` or `none`. |
 | `JOBTRACKER_PASSWORD` | empty | When set, every page and API call requires signing in (signed, HTTP-only session cookie). |
+| `JOBTRACKER_OWNER` | empty | Your Tailscale login. Enables several users behind `tailscale serve` (identity from Tailscale, no password). Only with the app listening on 127.0.0.1. |
+| `JOBTRACKER_FRIENDS` | empty | Comma-separated Tailscale logins of friends; each gets `JOBTRACKER_USERS_DIR/<login>/data` and `/companies`. |
+| `JOBTRACKER_USERS_DIR` | `<data>/users` | Where friends' data lives. |
 | `JOBTRACKER_SESSION_DAYS` | `30` | How long a sign-in lasts. Changing the password signs everyone out. |
 | `JOBTRACKER_HOST` / `PORT` | `127.0.0.1` / `8000` | Where the server listens (`0.0.0.0` to reach it from other devices: set a password). |
 | `LOG_FORMAT` / `LOG_LEVEL` | `text` / `INFO` | `json` writes one JSON object per request (method, path, status, duration). |
@@ -257,7 +264,8 @@ jobtracker/
                           summary, analytics, cv_import, assistant, llm, pdf, files, web
   cv_templates/           Word templates (elegant.py); add one and register it in __init__.py
   api.py                  FastAPI: POST /api/actions/<name>, GET /api/actions, /files/…, /health, the web UI
-  auth.py, logs.py        optional password login; request logging (text or JSON)
+  users.py, auth.py       who is visiting (Tailscale identity, per-user folders), optional password
+  logs.py                 request logging (text or JSON)
   __main__.py             CLI
   mcp_server.py           MCP server: one tool per action, generated from the registry
 web/                      vanilla JavaScript UI, no build step (js/views/<page>.js)

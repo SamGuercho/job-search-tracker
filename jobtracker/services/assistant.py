@@ -12,13 +12,13 @@ import re
 from datetime import date
 from urllib.parse import quote, unquote
 
-from .. import config, registry
+from .. import config, registry, users
 from ..models import Chat, ChatBook, ChatMessage, ToolEvent
-from ..storage import JsonDocument
+from ..storage import UserDocument
 from . import companies, llm, master_cv
 from .companies import NotFound
 
-store = JsonDocument(config.CHATS_FILE, ChatBook)
+store = UserDocument("chats.json", ChatBook)
 
 MAX_STEPS = 12               # model round-trips per user message
 MAX_TOOL_OUTPUT = 30_000     # characters sent back to the model per tool call
@@ -239,8 +239,9 @@ _LOCAL = re.compile(r"^https?://(?:localhost|127\.0\.0\.1)(?::\d+)?", re.IGNOREC
 
 def _file_link(path: str) -> str | None:
     rel = path.removeprefix("/files/").lstrip("/")
-    target = (config.OUTPUT_DIR / rel).resolve()
-    if target.is_relative_to(config.OUTPUT_DIR.resolve()) and target.is_file():
+    root = users.output_dir()
+    target = (root / rel).resolve()
+    if target.is_relative_to(root.resolve()) and target.is_file():
         return "/files/" + "/".join(quote(part) for part in rel.split("/"))
     return None
 

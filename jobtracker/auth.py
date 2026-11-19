@@ -1,4 +1,8 @@
-"""Optional password login. Off unless JOBTRACKER_PASSWORD is set (local use needs none).
+"""Who may use the app.
+
+- Behind `tailscale serve` with JOBTRACKER_OWNER set: the Tailscale identity decides (see users.py); the owner
+  and invited friends get in without a password, anyone else is refused.
+- Otherwise, optional password login. Off unless JOBTRACKER_PASSWORD is set (local use needs none).
 
 A successful login sets a signed, HTTP-only cookie "<expiry>.<hmac>". The signing key is derived from the
 password, so changing the password signs everyone out. Health checks and the login page stay public.
@@ -14,7 +18,7 @@ import time
 from fastapi import Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
-from . import config
+from . import config, users
 
 COOKIE = "jt_session"
 PUBLIC = ("/login", "/health", "/favicon.svg", "/favicon-32.png", "/apple-touch-icon.png",
@@ -51,11 +55,32 @@ def is_public(path: str) -> bool:
 
 
 async def middleware(request: Request, call_next):
-    if not enabled() or is_public(request.url.path) or valid(request.cookies.get(COOKIE)):
+    if is_public(request.url.path):
+        return await call_next(request)
+    login = request.headers.get(users.HEADER) if users.enabled() else None
+    if login:  # came through tailscale serve: Tailscale already authenticated this person
+        try:
+            user = users.resolve(login)
+        except users.NotInvited:
+            return _not_invited(request, login)
+        with users.acting_as(user):  # every data path in this request is this user's
+            return await call_next(request)
+    if not enabled() or valid(request.cookies.get(COOKIE)):  # the owner
         return await call_next(request)
     if request.url.path.startswith(("/api/", "/files/")):
         return JSONResponse({"detail": "Login required"}, status_code=401)
     return RedirectResponse("/login", status_code=303)
+
+
+def _not_invited(request: Request, login: str):
+    message = f"{login} is not invited to this Job Search Tracker. Ask its owner to add you."
+    if request.url.path.startswith(("/api/", "/files/")):
+        return JSONResponse({"detail": message}, status_code=403)
+    return HTMLResponse(f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>Job Search · Not invited</title>
+<style>body{{font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;max-width:32em;margin:15vh auto;
+padding:0 16px;color:#1c2430}}@media(prefers-color-scheme:dark){{body{{background:#12151b;color:#e6e9ee}}}}</style>
+</head><body><h1>Not invited</h1><p>{html.escape(message)}</p></body></html>""", status_code=403)
 
 
 def _secure(request: Request) -> bool:

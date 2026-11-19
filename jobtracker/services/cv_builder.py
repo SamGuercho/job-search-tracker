@@ -1,15 +1,15 @@
-"""Tailored CV generation: select bullets by keyword, fit to one page, export.
+"""Tailored CV generation: take every achievement in its most relevant wording, fit to one page, export.
 
 Pipeline (each step is a separate function so an agent can call them alone):
-  1. select_bullets(keywords)  -> TailoredCV with every matching bullet
-  2. fit_to_page(...)          -> drops the weakest bullets until it fits 1 page
+  1. select_bullets(keywords)  -> TailoredCV with every achievement, ranked by relevance to the job
+  2. fit_estimate(...)         -> drops the least relevant bullets until it fits 1 page
   3. generate_cv(...)          -> writes <output folder>/<Company>/<Name>_CV.docx and .pdf
 """
 from __future__ import annotations
 
 from pydantic import BaseModel
 
-from .. import config
+from .. import config, users
 from ..cv_templates import get_template
 from ..models import Education, GeneratedDocument, Profile, SkillGroup
 from . import companies, master_cv, pdf
@@ -32,7 +32,7 @@ class TailoredBullet(BaseModel):
     pinned: bool = False
     priority: int = 0
     redundant: bool = False  # matches, but only keywords other bullets already cover
-    fallback: bool = False   # kept only so the role isn't empty
+    fallback: bool = False   # matches none of the job's keywords: fills the page, cut first
 
 
 class TailoredExperience(BaseModel):
@@ -64,13 +64,14 @@ REQUIRED_WEIGHT = 2.0
 
 def select_bullets(keywords: list[str], keep_unmatched_roles: bool = True,
                    required: list[str] | None = None, everything: bool = False) -> TailoredCV:
-    """Choose achievements to cover as many job keywords as possible, never twice the same achievement.
+    """Take every achievement once, in the wording most relevant to the job; trimming to the page comes later.
 
-    Greedy coverage: repeatedly take the achievement whose best wording covers the most keywords not
-    covered yet (`required` keywords weigh double; priority breaks ties). Achievements that match only
-    already-covered keywords are kept as `redundant` (first to go when trimming). Pinned achievements
-    are always in. A role left empty keeps its highest-priority achievement as a `fallback`, unless
-    keep_unmatched_roles=False, in which case the role is dropped.
+    Greedy coverage ranks them: repeatedly take the achievement whose best wording covers the most keywords
+    not covered yet (`required` keywords weigh double; priority breaks ties). Achievements that match only
+    already-covered keywords are `redundant`; those matching no keyword are `fallback` (main wording) and are
+    the first cut when the CV is too long, then the redundant ones. Pinned achievements are never cut.
+    keep_unmatched_roles=False drops the roles where nothing matches. A short job description therefore
+    still gets a full CV: nothing is removed unless the page is full.
     """
     keywords = [k.strip() for k in keywords if k.strip()]
     required_set = {k.strip().lower() for k in (required or [])}
@@ -125,19 +126,19 @@ def select_bullets(keywords: list[str], keep_unmatched_roles: bool = True,
         if best is None:
             break
         pick(best)
-    for bid in order:  # matching, but nothing new: keep for now, trimmed first
+    for bid in order:  # matching, but nothing new: kept, trimmed after the unmatched ones
         if bid not in chosen and any(m for _, m in options[bid][2]):
             pick(bid, redundant=True)
+    for bid in order:  # matching nothing: kept to fill the page, trimmed first
+        if bid not in chosen:
+            pick(bid)
+            chosen[bid].fallback = not everything
 
     experiences = []
     for exp in cv.experiences:
         bullets = [chosen[b.id] for b in exp.bullets if b.id in chosen]  # CV order, not pick order
-        if not bullets and exp.bullets:
-            if not keep_unmatched_roles:
-                continue
-            best = max(exp.bullets, key=lambda b: b.priority)
-            bullets = [TailoredBullet(id=best.id, experience_id=exp.id, wordings=len(best.wordings()), text=best.text,
-                                      lead=best.lead, group=best.group, priority=best.priority, fallback=True)]
+        if not keep_unmatched_roles and bullets and all(b.fallback for b in bullets):
+            continue
         experiences.append(TailoredExperience(
             **exp.model_dump(include={"id", "company", "role", "location", "start", "end"}), bullets=bullets))
 
@@ -168,14 +169,14 @@ def use_summary(cv: TailoredCV, company) -> TailoredCV:
 # ------------------------------------------------------------- 2. trimming
 
 def _remove_weakest(cv: TailoredCV) -> TailoredBullet | None:
-    """Drop the least useful bullet: redundant ones first, then fallbacks, then the smallest
-    coverage gain and priority, avoiding emptying a role, latest in the CV."""
+    """Drop the least useful bullet: those matching no keyword first, then those only repeating covered
+    keywords, then the smallest coverage gain and priority, avoiding emptying a role, latest in the CV."""
     candidates = []
     for ei, exp in enumerate(cv.experiences):
         for bi, b in enumerate(exp.bullets):
             if b.pinned:
                 continue
-            key = (not b.redundant, not b.fallback, len(exp.bullets) == 1, b.gain, b.priority, len(b.matched), -ei, -bi)
+            key = (not b.fallback, not b.redundant, len(exp.bullets) == 1, b.gain, b.priority, len(b.matched), -ei, -bi)
             candidates.append((key, exp, b))
     if not candidates:
         return None
@@ -241,7 +242,7 @@ def generate_cv(keywords: list[str], company_id: str | None = None, company_name
         if export_pdf:
             warnings.append("No PDF engine found (install LibreOffice or Microsoft Word); page fit is estimated.")
 
-    rel = lambda p: p.relative_to(config.OUTPUT_DIR).as_posix() if p and p.exists() else None
+    rel = lambda p: p.relative_to(users.output_dir()).as_posix() if p and p.exists() else None
     document = GeneratedDocument(keywords=cv.keywords, docx=rel(docx_path), pdf=rel(pdf_path))
     if company:
         companies.add_document(company.id, document)

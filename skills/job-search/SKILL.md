@@ -40,7 +40,7 @@ the action from the project root:
 3. It creates the application (or updates the one with that name), saves the description as
    `Job_Description.md`, matches it against the master CV and writes `<Company>/<Name>_CV.docx` + `.pdf`.
 4. Report from the result: the files (`cv.docx`, `cv.pdf`), `gaps` (requirements the CV doesn't cover:
-   suggest rewording a true achievement, never invent), `cv.removed` (cut to fit one page), `cv.warnings`.
+   suggest rewording a true achievement, never invent), `cv.removed` (cut to fit one page: unmatched first, then redundant), `cv.warnings`.
 
 ## A CV
 - For a job, step by step: `cv.keywords.match_job {"text"}` → pass its `keywords` and `required` to

@@ -29,9 +29,11 @@ SEED_DIR = ROOT / "data" / "seed"
 OUTPUT_DIR = Path(os.environ.get("JOBTRACKER_OUTPUT_DIR", ROOT / "output")).expanduser()
 WEB_DIR = ROOT / "web"
 
-COMPANIES_FILE = DATA_DIR / "companies.json"
-MASTER_CV_FILE = DATA_DIR / "master_cv.json"
-UPLOADS_DIR = DATA_DIR / "uploads"
+# Several users (see jobtracker/users.py): the owner keeps DATA_DIR / OUTPUT_DIR; each friend gets
+# USERS_DIR/<login>/data and USERS_DIR/<login>/companies. Off unless OWNER is set.
+OWNER = os.environ.get("JOBTRACKER_OWNER", "").strip().lower()      # your Tailscale login (email)
+FRIENDS = {f.strip().lower() for f in os.environ.get("JOBTRACKER_FRIENDS", "").split(",") if f.strip()}
+USERS_DIR = Path(os.environ.get("JOBTRACKER_USERS_DIR", DATA_DIR / "users")).expanduser()
 
 # Generated CV file name, without extension. {name} = your name with underscores.
 CV_FILENAME = os.environ.get("JOBTRACKER_CV_FILENAME", "{name}_CV")
@@ -46,4 +48,3 @@ LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
 
 OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-5.4-mini")
 OPENAI_CHAT_MODEL = os.environ.get("OPENAI_CHAT_MODEL", OPENAI_MODEL)
-CHATS_FILE = DATA_DIR / "chats.json"

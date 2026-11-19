@@ -38,13 +38,22 @@ class SelectionTests(unittest.TestCase):
     def setUp(self):
         reset()
 
-    def test_only_matching_bullets_plus_fallback(self):
+    def test_every_achievement_kept_unmatched_ones_flagged(self):
         cv = cv_builder.select_bullets(["Tableau"])
-        globex = next(e for e in cv.experiences if e.company == "Globex")
-        self.assertTrue(all("Tableau" in b.matched for b in globex.bullets))
+        total = sum(len(e.bullets) for e in master_cv.get_master().experiences)
+        kept = [b for e in cv.experiences for b in e.bullets]
+        self.assertEqual(len(kept), total)  # a shallow job description still gets a full CV
+        self.assertTrue(all(b.fallback == (not b.matched) for b in kept))
         acme = next(e for e in cv.experiences if e.company == "Acme Corp")
-        self.assertEqual(len(acme.bullets), 1)
-        self.assertTrue(acme.bullets[0].fallback)
+        self.assertTrue(all(b.fallback for b in acme.bullets))
+
+    def test_unmatched_bullets_are_cut_first(self):
+        cv = cv_builder.select_bullets(["Tableau"])
+        self.assertTrue(cv_builder._remove_weakest(cv).fallback)
+
+    def test_roles_with_no_match_can_be_dropped(self):
+        cv = cv_builder.select_bullets(["Tableau"], keep_unmatched_roles=False)
+        self.assertNotIn("Acme Corp", [e.company for e in cv.experiences])
 
     def test_trimming_respects_budget_and_pins(self):
         exp = master_cv.get_master().experiences[0]

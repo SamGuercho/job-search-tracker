@@ -6,6 +6,8 @@ server and a CLI/agent can safely share the same data folder.
 
 To move to a database later, replace this module: services only use
 `load()` and `save()`.
+
+`UserDocument` is the same, but in the current user's data folder (see users.py).
 """
 from __future__ import annotations
 
@@ -76,3 +78,33 @@ class _Transaction(Generic[M]):
         finally:
             self.store._lock.release()
         return False
+
+
+class UserDocument(Generic[M]):
+    """A JsonDocument per user: `filename` inside the current user's data folder."""
+
+    def __init__(self, filename: str, model: type[M], seed_name: str | None = None):
+        self.filename, self.model, self.seed_name = filename, model, seed_name
+        self._docs: dict[Path, JsonDocument[M]] = {}
+        self._lock = threading.Lock()
+
+    def document(self) -> JsonDocument[M]:
+        from . import users
+        path = users.data_dir() / self.filename
+        with self._lock:
+            if path not in self._docs:
+                self._docs[path] = JsonDocument(path, self.model, self.seed_name)
+            return self._docs[path]
+
+    @property
+    def path(self) -> Path:
+        return self.document().path
+
+    def load(self) -> M:
+        return self.document().load()
+
+    def save(self, doc: M) -> None:
+        self.document().save(doc)
+
+    def transaction(self):
+        return self.document().transaction()

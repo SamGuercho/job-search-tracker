@@ -3,13 +3,12 @@ from __future__ import annotations
 
 import re
 
-from .. import config
 from ..models import Company, CompanyBook, GeneratedDocument, today
 from ..process import GraphError, Node, Process, default_process
-from ..storage import JsonDocument
+from ..storage import UserDocument
 from . import files
 
-store = JsonDocument(config.COMPANIES_FILE, CompanyBook, seed_name="companies.json")
+store = UserDocument("companies.json", CompanyBook, seed_name="companies.json")
 
 
 class NotFound(LookupError):

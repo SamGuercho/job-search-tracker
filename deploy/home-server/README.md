@@ -150,6 +150,45 @@ $a = New-ScheduledTaskAction -Execute powershell.exe -Argument "-NoProfile -Exec
 Register-ScheduledTask -TaskName JobSearchTracker-Backup -Action $a -Trigger (New-ScheduledTaskTrigger -Daily -At 3am) -Force
 ```
 
+## 11. Share with friends (optional)
+
+Friends use **your** server with **their own** data: their own master CV, applications, chats and CVs. No
+password and no account to create in the app: Tailscale tells the app who is visiting.
+
+**Once**, in `.env`, set your own Tailscale login (the email shown at the top of https://login.tailscale.com):
+```
+JOBTRACKER_OWNER=you@example.com
+```
+
+**For each friend:**
+1. **They** install Tailscale (App Store / Play Store / tailscale.com/download) and sign in with any account.
+2. **You** share the PC: https://login.tailscale.com/admin/machines → this PC → ⋯ → **Share…** → invite by
+   email or send the link. **They** open it and accept. Your other devices stay invisible to them.
+3. **You** add their Tailscale login to `.env`, comma-separated, then `docker compose up -d`:
+   ```
+   JOBTRACKER_FRIENDS=friend@example.com,other.friend@example.com
+   ```
+   Not sure of their login? Let them open the address: the "Not invited" page shows it.
+4. **They** open `https://<pc-name>.<tailnet>.ts.net` → *Install app* (Android, Chrome) or *Add to Home Screen*
+   (iPhone, Safari). They start from example data and import their CV from the *Master CV* page.
+
+**Limit friends to the app** (recommended, once): https://login.tailscale.com/admin/acls → if the policy has a
+rule that lets everyone reach everything (`"src": ["*"]`), replace it with these two, then *Save*:
+```json
+{"action": "accept", "src": ["autogroup:member"], "dst": ["*:*"]},
+{"action": "accept", "src": ["autogroup:shared"], "dst": ["*:443"]}
+```
+Your own devices keep full access; people you shared with reach only the https app on this PC.
+
+**Good to know**
+- Their data: `C:\JobSearch\data\users\<login>\` (included in `backup.ps1`). Removing a friend from
+  `JOBTRACKER_FRIENDS` blocks them; their folder stays until you delete it.
+- AI features use **your** OpenAI key for everyone (cents per action).
+- You hold their CVs: same trust as handing you a copy.
+- How it's safe: `tailscale serve` adds the visitor's identity (`Tailscale-User-Login`) to each request and removes
+  any copy a visitor tries to send; the app only listens on `127.0.0.1`, so requests can't bypass Tailscale.
+  Only set `JOBTRACKER_OWNER` with that setup.
+
 ---
 
 ## Everyday use

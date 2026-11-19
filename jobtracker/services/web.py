@@ -1,8 +1,11 @@
 """Fetch a job posting page and keep its readable text."""
 from __future__ import annotations
 
+import ipaddress
 import re
+import socket
 import ssl
+import urllib.parse
 import urllib.request
 from html.parser import HTMLParser
 
@@ -12,6 +15,28 @@ MAX_BYTES = 2_000_000
 MAX_CHARS = 20_000
 SKIP = {"script", "style", "noscript", "svg", "head", "nav", "footer", "form"}
 BLOCK = {"p", "div", "li", "br", "h1", "h2", "h3", "h4", "tr", "section", "article", "ul", "ol"}
+
+
+def check_public(url: str) -> None:
+    """Refuse links to this machine or the private network: fetching e.g. http://127.0.0.1:8000/files/...
+    from the server would bypass the per-user login (a request without Tailscale identity is the owner)."""
+    if not re.match(r"^https?://", url, re.I):
+        raise ValueError("Only http(s) links are supported")
+    host = urllib.parse.urlsplit(url).hostname or ""
+    try:
+        addresses = {info[4][0] for info in socket.getaddrinfo(host, None)}
+    except OSError as e:
+        raise ValueError(f"Could not open {url}: {e}") from e
+    for address in addresses:
+        ip = ipaddress.ip_address(address.split("%", 1)[0])
+        if not ip.is_global or ip in ipaddress.ip_network("100.64.0.0/10"):  # incl. Tailscale addresses
+            raise ValueError(f"Not a public web page: {url}")
+
+
+class _PublicRedirects(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        check_public(newurl)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
 class _Text(HTMLParser):
@@ -35,12 +60,12 @@ class _Text(HTMLParser):
 
 
 def fetch_text(url: str) -> dict:
-    if not re.match(r"^https?://", url):
-        raise ValueError("Only http(s) links are supported")
+    check_public(url)
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (job-search-tracker)"})
     try:
         context = ssl.create_default_context(cafile=certifi.where())
-        with urllib.request.urlopen(req, timeout=20, context=context) as resp:
+        opener = urllib.request.build_opener(urllib.request.HTTPSHandler(context=context), _PublicRedirects())
+        with opener.open(req, timeout=20) as resp:
             raw = resp.read(MAX_BYTES).decode(resp.headers.get_content_charset() or "utf-8", errors="replace")
     except OSError as e:
         raise ValueError(f"Could not open {url}: {e}") from e

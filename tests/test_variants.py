@@ -38,8 +38,9 @@ class VariantSelectionTests(unittest.TestCase):
         cv = cv_builder.select_bullets(["guardrails"])
         flags = {b.id: b.redundant for b in chosen(cv) if b.experience_id == self.exp.id}
         self.assertEqual(sorted(flags.values()), [False, True])
-        removed = cv_builder._remove_weakest(cv)
-        self.assertTrue(removed.redundant)
+        while (removed := cv_builder._remove_weakest(cv)).fallback:  # bullets matching nothing go first
+            pass
+        self.assertTrue(removed.redundant)                             # then those repeating covered keywords
 
     def test_required_keywords_weigh_more(self):
         master_cv.add_bullet(self.exp.id, "Led a SQL migration.", priority=5)

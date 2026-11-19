@@ -15,6 +15,7 @@ from . import (
     config,
     logs,
     registry,
+    users,
 )
 from .services import llm, pdf
 from .services.companies import NotFound
@@ -86,8 +87,9 @@ async def import_cv_file(file: UploadFile = File(...)):
     name = Path(file.filename or "cv").name
     if Path(name).suffix.lower() not in SUPPORTED:
         raise HTTPException(400, f"Unsupported file: use {', '.join(sorted(SUPPORTED))}")
-    config.UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
-    target = config.UPLOADS_DIR / name
+    uploads = users.uploads_dir()
+    uploads.mkdir(parents=True, exist_ok=True)
+    target = uploads / name
     target.write_bytes(await file.read())
     return run_action("cv.import.parse", {"file_path": str(target)})
 
@@ -95,8 +97,9 @@ async def import_cv_file(file: UploadFile = File(...)):
 @app.get("/files/{path:path}")
 def get_file(path: str):
     """Download a generated document from the output folder."""
-    target = (config.OUTPUT_DIR / path).resolve()
-    if not target.is_relative_to(config.OUTPUT_DIR.resolve()) or not target.is_file():
+    root = users.output_dir()
+    target = (root / path).resolve()
+    if not target.is_relative_to(root.resolve()) or not target.is_file():
         raise HTTPException(404, "File not found")
     if target.suffix.lower() in {".md", ".txt"}:  # readable in the browser instead of downloaded
         return FileResponse(target, media_type="text/plain; charset=utf-8", filename=target.name,

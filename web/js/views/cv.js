@@ -112,7 +112,7 @@ export async function renderCvBuilder(root, params) {
       h("div", { class: "legend", style: "margin-bottom:10px" },
         h("span", { class: "l-in" }, `brings new keywords (${count((b) => !b.fallback && !b.redundant)})`),
         h("span", { class: "l-rd" }, `only repeats covered keywords (${count((b) => b.redundant)})`),
-        h("span", { class: "l-fb" }, `kept so the role isn't empty (${count((b) => b.fallback)})`),
+        h("span", { class: "l-fb" }, `no job keyword, fills the page (${count((b) => b.fallback)})`),
         h("span", { class: "l-cut" }, `cut to fit 1 page (${p.removed.length})`)),
       p.unmatched_keywords.length > 0 && h("p", { class: "small", style: "color:var(--amber)" },
         `Not written in any bullet: ${p.unmatched_keywords.join(", ")}. Rewrite a bullet in the Master CV to include it.`),

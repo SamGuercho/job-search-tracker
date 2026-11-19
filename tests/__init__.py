@@ -23,6 +23,6 @@ os.environ.update({
 def assert_isolated() -> None:
     """Abort before any write if the app is not pointed at the temporary folders."""
     from jobtracker import config
-    for path in (config.DATA_DIR, config.OUTPUT_DIR):
+    for path in (config.DATA_DIR, config.OUTPUT_DIR, config.USERS_DIR):
         if not path.resolve().is_relative_to(TMP.resolve()):
             raise RuntimeError(f"Refusing to run tests against {path}: not a temporary test folder")

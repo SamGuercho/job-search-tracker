@@ -3,12 +3,11 @@ from __future__ import annotations
 
 import re
 
-from .. import config
 from ..models import Bullet, Education, Experience, MasterCV, Profile, SkillGroup, Variant
-from ..storage import JsonDocument
+from ..storage import UserDocument
 from .companies import NotFound
 
-store = JsonDocument(config.MASTER_CV_FILE, MasterCV, seed_name="master_cv.json")
+store = UserDocument("master_cv.json", MasterCV, seed_name="master_cv.json")
 
 
 def get_master() -> MasterCV:
