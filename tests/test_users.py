@@ -47,10 +47,10 @@ class MultiUserTests(unittest.TestCase):
         self.assertNotIn("OwnerCo", self.names(FRIEND))
         self.assertNotIn("FriendCo", self.names(OTHER_FRIEND))
 
-    def test_owner_without_header_is_the_same_as_owner_through_tailscale(self):
+    def test_cli_and_mcp_act_as_the_owner(self):
         self.act(OWNER, "company.create", {"name": "OwnerCo", "position": "PM"})
-        self.assertIn("OwnerCo", self.names(None))  # CLI, MCP, the server's own browser
-        self.assertEqual(users.current(), "")         # nothing leaks out of a request
+        self.assertIn("OwnerCo", {c["name"] for c in registry.run("company.list", {})})  # no HTTP, no header
+        self.assertEqual(users.current(), "")                                       # nothing leaks out of a request
 
     def test_friend_data_lives_in_their_own_folders(self):
         self.act(FRIEND, "company.create", {"name": "FriendCo", "position": "Dev"})
@@ -81,13 +81,21 @@ class MultiUserTests(unittest.TestCase):
         page = self.client.get("/", headers={"Tailscale-User-Login": "stranger@example.com"})
         self.assertEqual(page.status_code, 403)
         self.assertIn("not invited", page.text)
+        self.assertIn("stranger@example.com", page.text)  # tells the owner which login to add
         health = self.client.get("/health", headers={"Tailscale-User-Login": "stranger@example.com"})
         self.assertEqual(health.status_code, 200)
 
-    def test_tailscale_users_need_no_password_but_others_do(self):
+    def test_tailscale_users_need_no_password(self):
         config.PASSWORD = "secret"
         self.assertEqual(self.act(FRIEND, "company.list").status_code, 200)
-        self.assertEqual(self.act(None, "company.list").status_code, 401)
+
+    def test_the_password_never_makes_someone_the_owner(self):
+        config.PASSWORD = "secret"
+        self.client.post("/login", data={"password": "secret"})  # a friend who knows the password
+        self.assertTrue(self.client.cookies)
+        self.assertEqual(self.act(None, "company.list").status_code, 403)
+        self.assertEqual(self.client.get("/", follow_redirects=False).status_code, 403)
+        self.assertEqual(self.client.get("/files/x.pdf").status_code, 403)
 
     def test_header_is_ignored_when_multi_user_is_off(self):
         config.OWNER, config.PASSWORD = "", "secret"
@@ -103,7 +111,7 @@ class MultiUserTests(unittest.TestCase):
 
     def test_app_info_says_who_is_signed_in(self):
         self.assertEqual(self.act(FRIEND, "app.info").json()["result"]["user"], FRIEND)
-        self.assertEqual(self.act(None, "app.info").json()["result"]["user"], OWNER)
+        self.assertEqual(self.act(OWNER, "app.info").json()["result"]["user"], OWNER)
 
 
 class FetchTests(unittest.TestCase):

@@ -6,8 +6,8 @@ listens on localhost only, so the header can't be forged. It is trusted only whe
 
 - the owner (JOBTRACKER_OWNER) uses DATA_DIR and OUTPUT_DIR, as with a single user
 - a friend (JOBTRACKER_FRIENDS) uses USERS_DIR/<login>/data and USERS_DIR/<login>/companies
-- anyone else on the tailnet is refused
-- requests without the header (the server itself, CLI, MCP, tests) are the owner, behind the optional password
+- anyone else on the tailnet is refused, and so are HTTP requests without the header (the password no longer
+  applies); the CLI and MCP server, which don't go through HTTP, act as the owner
 
 Every data and file path in the app goes through data_dir() / output_dir(), which read the current user
 from a context variable set once per request: isolation is structural, not a check in each action.

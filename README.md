@@ -204,7 +204,7 @@ All settings live in `.env` (created from `.env.example` on first run). Restart 
 | `JOBTRACKER_CV_FILENAME` | `{name}_CV` | CV file name; `{name}` = your name, `{company}` = the company. |
 | `JOBTRACKER_PDF_ENGINE` | auto | `libreoffice`, `word` or `none`. |
 | `JOBTRACKER_PASSWORD` | empty | When set, every page and API call requires signing in (signed, HTTP-only session cookie). |
-| `JOBTRACKER_OWNER` | empty | Your Tailscale login. Enables several users behind `tailscale serve` (identity from Tailscale, no password). Only with the app listening on 127.0.0.1. |
+| `JOBTRACKER_OWNER` | empty | Your Tailscale login. Enables several users behind `tailscale serve`: only the Tailscale identity counts (the password is ignored; requests without it are refused). Only with the app listening on 127.0.0.1. |
 | `JOBTRACKER_FRIENDS` | empty | Comma-separated Tailscale logins of friends; each gets `JOBTRACKER_USERS_DIR/<login>/data` and `/companies`. |
 | `JOBTRACKER_USERS_DIR` | `<data>/users` | Where friends' data lives. |
 | `JOBTRACKER_SESSION_DAYS` | `30` | How long a sign-in lasts. Changing the password signs everyone out. |

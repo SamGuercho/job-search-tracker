@@ -161,6 +161,9 @@ password and no account to create in the app: Tailscale tells the app who is vis
 ```
 JOBTRACKER_OWNER=you@example.com
 ```
+From then on **only the Tailscale identity counts**: the password is no longer used, and the app opens only
+through its `https://….ts.net` address (also on this PC; `http://127.0.0.1:8000` answers "No access").
+That's deliberate: with a password, anyone who knows it would be you.
 
 **For each friend:**
 1. **They** install Tailscale (App Store / Play Store / tailscale.com/download) and sign in with any account.

@@ -1,7 +1,8 @@
 """Who may use the app.
 
-- Behind `tailscale serve` with JOBTRACKER_OWNER set: the Tailscale identity decides (see users.py); the owner
-  and invited friends get in without a password, anyone else is refused.
+- With JOBTRACKER_OWNER set (behind `tailscale serve`): only the Tailscale identity counts (see users.py). The
+  owner and invited friends get in, anyone else is refused, and so is any request without the identity, even
+  with the password: otherwise anyone knowing the password would be the owner.
 - Otherwise, optional password login. Off unless JOBTRACKER_PASSWORD is set (local use needs none).
 
 A successful login sets a signed, HTTP-only cookie "<expiry>.<hmac>". The signing key is derived from the
@@ -57,30 +58,31 @@ def is_public(path: str) -> bool:
 async def middleware(request: Request, call_next):
     if is_public(request.url.path):
         return await call_next(request)
-    login = request.headers.get(users.HEADER) if users.enabled() else None
-    if login:  # came through tailscale serve: Tailscale already authenticated this person
+    if users.enabled():
+        login = request.headers.get(users.HEADER, "").strip()
+        if not login:  # not through tailscale serve: no way to know who it is
+            return _refused(request, "Open the app through its Tailscale address (https://…ts.net).")
         try:
             user = users.resolve(login)
         except users.NotInvited:
-            return _not_invited(request, login)
+            return _refused(request, f"{login} is not invited to this Job Search Tracker. Ask its owner to add you.")
         with users.acting_as(user):  # every data path in this request is this user's
             return await call_next(request)
-    if not enabled() or valid(request.cookies.get(COOKIE)):  # the owner
+    if not enabled() or valid(request.cookies.get(COOKIE)):
         return await call_next(request)
     if request.url.path.startswith(("/api/", "/files/")):
         return JSONResponse({"detail": "Login required"}, status_code=401)
     return RedirectResponse("/login", status_code=303)
 
 
-def _not_invited(request: Request, login: str):
-    message = f"{login} is not invited to this Job Search Tracker. Ask its owner to add you."
+def _refused(request: Request, message: str):
     if request.url.path.startswith(("/api/", "/files/")):
         return JSONResponse({"detail": message}, status_code=403)
     return HTMLResponse(f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1"><title>Job Search · Not invited</title>
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>Job Search · No access</title>
 <style>body{{font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;max-width:32em;margin:15vh auto;
 padding:0 16px;color:#1c2430}}@media(prefers-color-scheme:dark){{body{{background:#12151b;color:#e6e9ee}}}}</style>
-</head><body><h1>Not invited</h1><p>{html.escape(message)}</p></body></html>""", status_code=403)
+</head><body><h1>No access</h1><p>{html.escape(message)}</p></body></html>""", status_code=403)
 
 
 def _secure(request: Request) -> bool:
