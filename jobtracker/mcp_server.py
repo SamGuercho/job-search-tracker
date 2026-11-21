@@ -38,7 +38,7 @@ READ_ONLY = {
 }
 OPEN_WORLD = {"job.fetch_url"}  # reaches outside the app
 
-INSTRUCTIONS = """Job Search Tracker: the user's job applications, their process graphs and their master CV.
+INSTRUCTIONS = """Ezri, the job search tracker: the user's job applications, their process graphs and their master CV.
 - Status is derived from each application's process graph: never try to set it; use process_set_state.
 - `company` parameters take an id or the company name/position; `step` takes an id or a step name.
 - Never invent experience, numbers or dates for the CV. Tools flagged destructive delete or overwrite data,

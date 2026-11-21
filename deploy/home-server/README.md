@@ -1,6 +1,6 @@
 # Home server (Windows, always on)
 
-Run the Job Search Tracker on a computer that stays on at home, and use it from your phone, your laptop and
+Run Ezri (the job search tracker) on a computer that stays on at home, and use it from your phone, your laptop and
 any device signed into your Tailscale account — over **https**, from anywhere, without opening your router.
 
 ```
@@ -203,7 +203,7 @@ Your own devices keep full access; people you shared with reach only the https a
 
 ## Phone features
 
-Nothing to set up: **📅 Add to calendar** on interview steps, **Share → Job Search** from LinkedIn (Android, once
+Nothing to set up: **📅 Add to calendar** on interview steps, **Share → Ezri** from LinkedIn (Android, once
 the app is installed), **🎙 Record** on the application page, and **🔔 notifications** (each person turns them on
 on their own devices; reminders follow each device's time zone). The server creates its notification key on first
 use, in `HOST_DATA_DIR` (`vapid_private.pem`): keep it with your data. Turn the reminder checks off with

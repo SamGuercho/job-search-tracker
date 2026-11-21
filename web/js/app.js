@@ -103,7 +103,7 @@ async function notificationsPanel() {
   const draw = async () => {
     if (!pushSupported) {
       return mount(box, h("p", { class: "small" }, isIOS && !standalone
-        ? "On iPhone, notifications work in the installed app: Share → Add to Home Screen, then open Job Search from the Home Screen."
+        ? "On iPhone, notifications work in the installed app: Share → Add to Home Screen, then open Ezri from the Home Screen."
         : "This browser can't receive notifications."));
     }
     const reg = await navigator.serviceWorker.ready;

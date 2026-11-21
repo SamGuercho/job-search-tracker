@@ -85,7 +85,7 @@ class McpHttpTests(unittest.TestCase):
         with TestClient(app) as client:
             init = self.rpc(client, "initialize", {"protocolVersion": "2025-06-18", "capabilities": {},
                                                    "clientInfo": {"name": "test", "version": "1"}})
-            self.assertIn("Job Search Tracker", init.json()["result"]["instructions"])
+            self.assertIn("Ezri, the job search tracker", init.json()["result"]["instructions"])
             names = {t["name"] for t in self.rpc(client, "tools/list", {}).json()["result"]["tools"]}
             self.assertIn("company_create", names)
             self.call(client, "company_create", {"name": "Nimbus"})

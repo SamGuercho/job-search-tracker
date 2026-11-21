@@ -1,11 +1,11 @@
 {
-  "name": "Job Search Tracker",
-  "short_name": "Job Search",
-  "description": "Follow your applications, prepare your interviews and generate tailored one-page CVs.",
+  "name": "Ezri",
+  "short_name": "Ezri",
+  "description": "Ezri, your job search coach: applications, tailored CVs, interview prep and practice.",
   "start_url": "/#/today",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#f5f6f8",
+  "background_color": "#4934c9",
   "theme_color": "#ffffff",
   "icons": [
     {
@@ -18,12 +18,13 @@
       "src": "/icons/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     },
     {
-      "src": "/favicon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml"
+      "src": "/icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
     }
   ],
   "share_target": {
@@ -42,7 +43,8 @@
       "icons": [
         {
           "src": "/icons/icon-192.png",
-          "sizes": "192x192"
+          "sizes": "192x192",
+          "type": "image/png"
         }
       ]
     },
@@ -52,7 +54,8 @@
       "icons": [
         {
           "src": "/icons/icon-192.png",
-          "sizes": "192x192"
+          "sizes": "192x192",
+          "type": "image/png"
         }
       ]
     },
@@ -62,7 +65,8 @@
       "icons": [
         {
           "src": "/icons/icon-192.png",
-          "sizes": "192x192"
+          "sizes": "192x192",
+          "type": "image/png"
         }
       ]
     }

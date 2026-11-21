@@ -1,16 +1,20 @@
+/* Ezri's colours, from the logo: indigo (brand), lavender, lime (small highlights), on lavender-tinted neutrals.
+   --on-accent is the text colour on an accent fill (white on indigo; dark ink on the lighter lavender in dark mode). */
 :root {
-  --bg: #f5f6f8; --surface: #fff; --surface-2: #f0f2f5; --border: #e1e4e8;
-  --text: #1c2430; --muted: #687384; --accent: #2557d6; --accent-soft: #e6edfc;
+  --bg: #f6f5fb; --surface: #fff; --surface-2: #f1effa; --border: #e4e0f2;
+  --text: #1d1a33; --muted: #6b6688; --accent: #4934c9; --accent-soft: #ece9fd; --on-accent: #fff;
+  --lime: #b9dc3a; --lavender: #9a82f6;
   --green: #1f8a4c; --green-soft: #e3f4ea; --amber: #b26a00; --amber-soft: #fdf1dc;
-  --red: #c4332f; --red-soft: #fbe5e4; --grey-soft: #eceef1;
-  --radius: 10px; --shadow: 0 1px 2px rgba(16,24,40,.06), 0 1px 3px rgba(16,24,40,.08);
+  --red: #c4332f; --red-soft: #fbe5e4; --grey-soft: #eeecf5;
+  --radius: 10px; --shadow: 0 1px 2px rgba(29,26,51,.06), 0 1px 3px rgba(29,26,51,.08);
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #12151b; --surface: #1b2029; --surface-2: #232a35; --border: #2f3744;
-    --text: #e6e9ee; --muted: #98a2b3; --accent: #6d95ff; --accent-soft: #233056;
+    --bg: #121020; --surface: #1b1830; --surface-2: #25213d; --border: #332e52;
+    --text: #ebe8f7; --muted: #a49fbf; --accent: #a898ff; --accent-soft: #2c2557; --on-accent: #17132e;
+    --lime: #d4f066; --lavender: #9a82f6;
     --green: #4cc584; --green-soft: #1d3a2b; --amber: #f0b44c; --amber-soft: #3d311b;
-    --red: #ff7b72; --red-soft: #46221f; --grey-soft: #2a313c; --shadow: none;
+    --red: #ff7b72; --red-soft: #46221f; --grey-soft: #2a2740; --shadow: none;
   }
 }
 * { box-sizing: border-box; }
@@ -45,7 +49,7 @@ main { max-width: 1400px; margin: 0 auto; padding: 24px; }
 
 button, .btn { white-space: nowrap; font: inherit; border: 1px solid var(--border); background: var(--surface); color: var(--text); padding: 7px 12px; border-radius: 8px; cursor: pointer; font-weight: 500; display: inline-flex; gap: 6px; align-items: center; }
 button:hover, .btn:hover { background: var(--surface-2); text-decoration: none; }
-button.primary, .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.primary, .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
 button.primary:hover { filter: brightness(1.08); }
 button.danger { color: var(--red); }
 button.ghost { border-color: transparent; background: transparent; }
@@ -180,7 +184,7 @@ button.chip.suggest { border-style: dashed; color: var(--accent); background: tr
 .chat-thread { flex: 1; overflow: auto; padding: 20px; display: flex; flex-direction: column; gap: 10px; }
 .chat-input { display: flex; gap: 8px; padding: 12px; border-top: 1px solid var(--border); align-items: flex-end; }
 .msg { max-width: 80%; padding: 10px 14px; border-radius: 12px; white-space: pre-wrap; }
-.msg.user { align-self: flex-end; background: var(--accent); color: #fff; border-bottom-right-radius: 4px; }
+.msg.user { align-self: flex-end; background: var(--accent); color: var(--on-accent); border-bottom-right-radius: 4px; }
 .msg.assistant { align-self: flex-start; background: var(--surface-2); border-bottom-left-radius: 4px; white-space: normal; }
 .msg.assistant p { margin: 0 0 6px; } .msg.assistant p:last-child { margin: 0; }
 .msg.assistant ul { margin: 4px 0 6px; padding-left: 20px; }
@@ -474,3 +478,13 @@ a.today-row:hover { text-decoration: none; background: var(--surface-2); }
   border-bottom: 1px solid var(--border); }
 body.is-offline main { padding-top: 8px; }
 @media (max-width: 760px) { .offline-banner { top: calc(52px + env(safe-area-inset-top)); } }
+
+/* ------------------------------------------------------------------ Ezri brand */
+.brand { display: inline-flex; align-items: center; gap: 8px; letter-spacing: -.01em; }
+.brand img { width: 28px; height: 28px; border-radius: 7px; }
+.msg.user a { color: inherit; text-decoration: underline; }
+/* the active tab carries a small lime mark, like the spark next to Ezri */
+.tabbar .active { position: relative; }
+.tabbar .active::before { content: ""; position: absolute; top: 0; left: 50%; width: 28px; height: 3px; margin-left: -14px;
+  border-radius: 0 0 3px 3px; background: var(--lime); }
+.topbar nav a.active { box-shadow: inset 0 -2px 0 var(--lime); }

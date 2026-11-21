@@ -50,7 +50,7 @@ class _McpEndpoint:
         await _mcp["app"](scope, receive, send)
 
 
-app = FastAPI(title="Job Search Tracker", version=__version__, lifespan=lifespan)
+app = FastAPI(title="Ezri (job search tracker)", version=__version__, lifespan=lifespan)
 app.middleware("http")(auth.middleware)   # registered first = runs innermost, after logging
 app.middleware("http")(logs.access_log)
 
@@ -136,7 +136,7 @@ def calendar_feed(request: Request):
 
 @app.get("/share")
 def share_target(title: str = "", text: str = "", url: str = ""):
-    """Android share sheet -> "Job Search": the shared job link (or text) goes to the assistant to add the job."""
+    """Android share sheet -> "Ezri": the shared job link (or text) goes to the assistant to add the job."""
     import re
 
     found = url or next(iter(re.findall(r"https?://\S+", f"{text} {title}")), "")

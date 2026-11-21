@@ -16,7 +16,7 @@ from ..models import Company
 from ..process import Node
 from . import companies
 
-PRODID = "-//Job Search Tracker//Interviews//EN"
+PRODID = "-//Ezri//Interviews//EN"
 
 
 def event(company: Company, node: Node, app_url: str = "") -> dict:

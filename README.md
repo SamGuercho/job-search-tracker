@@ -1,4 +1,8 @@
-# Job Search Tracker
+# Ezri
+
+<img src="web/logo.png" alt="Ezri" width="120">
+
+Ezri is your job search coach: a job search tracker with tailored CVs, interview prep and practice.
 
 [![CI](https://github.com/SamGuercho/job-search-tracker/actions/workflows/ci.yml/badge.svg)](https://github.com/SamGuercho/job-search-tracker/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
@@ -167,7 +171,7 @@ only* banner; changes wait until the server is back. 🔔 → *Save now* refresh
   📅 *Add to calendar*: Google Calendar, or an `.ics` file for Apple Calendar / Outlook (reminders the day
   before and 1 hour before). 🔔 → *Subscribe to my interviews* gives a calendar of every scheduled interview that
   stays up to date (Apple Calendar, Outlook; Google Calendar can't reach a private Tailscale address).
-- **Share a job (Android):** in LinkedIn or Chrome, *Share* → *Job Search*: the assistant adds the job and makes
+- **Share a job (Android):** in LinkedIn or Chrome, *Share* → *Ezri*: the assistant adds the job and makes
   your CV. On iPhone, paste the link in the assistant.
 - **Record an interview** in the app (🎙 on the application page): keep the screen on until you stop.
 - **Notifications** (🔔 → *Turn on*): interview reminders, prep ready, debrief ready, follow-ups due. On iPhone
