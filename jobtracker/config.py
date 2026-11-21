@@ -51,3 +51,11 @@ OPENAI_CHAT_MODEL = os.environ.get("OPENAI_CHAT_MODEL", OPENAI_MODEL)
 # Fallback when OpenAI fails on quota, billing or access (needs ANTHROPIC_API_KEY).
 ANTHROPIC_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-5-5")
 ANTHROPIC_EFFORT = os.environ.get("ANTHROPIC_EFFORT", "medium")   # low | medium | high | xhigh | max
+
+# Interview prep written by Codex (signed in with a ChatGPT plan: no API billing), for premium users only.
+CODEX_BIN = os.environ.get("JOBTRACKER_CODEX", "codex")          # the codex command (in the Docker image: codex)
+PREP_MODEL = os.environ.get("JOBTRACKER_PREP_MODEL", "gpt-6.2-astra")
+PREP_EFFORT = os.environ.get("JOBTRACKER_PREP_EFFORT", "high")    # low | medium | high | xhigh | max | ultra
+PREP_TIMEOUT_MIN = int(os.environ.get("JOBTRACKER_PREP_TIMEOUT_MIN", "40"))
+# Tailscale logins allowed to run it (comma-separated). Single-user mode (no Tailscale users): always allowed.
+PREMIUM = {u.strip().lower() for u in os.environ.get("JOBTRACKER_PREMIUM", "").split(",") if u.strip()}

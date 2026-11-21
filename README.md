@@ -138,6 +138,12 @@ saved in a `Master CV` folder. Also: education, skills, languages, synonyms, ext
 Applications sent, response rate, interviews (incl. technical), offers, days searching, time to a response,
 funnel, where applications stop, applications per week, results by source and work model.
 
+### Interview prep
+On an application's page, **✨ Prepare interview** (premium accounts) has Codex research the company and write a
+prep pack: likely interview process, topics, your angle, exercises with solutions and 10-point rubrics, questions
+to ask (also saved as `Interview_Prep.md`). **Practice with the assistant** then quizzes you and grades your
+answers with the rubrics. Codex runs with your ChatGPT plan, not API billing: setup in the home-server guide.
+
 ### Assistant (needs an OpenAI key)
 A chat that uses the app's features for you: add a job from a link or pasted text (company, details, saved
 description, tailored CV, gaps), update process steps ("I got an HR call for Monday 10am"), list follow-ups,
@@ -213,6 +219,9 @@ All settings live in `.env` (created from `.env.example` on first run). Restart 
 | `ANTHROPIC_API_KEY` | empty | Fallback: when OpenAI fails on quota, billing, access or rate limits, the app switches to Claude and says so (a toast, or a note in the chat; a chat then stays on Claude). Used directly if there is no OpenAI key. Billed per token by Anthropic. |
 | `ANTHROPIC_MODEL` | `claude-sonnet-5-5` | Claude model for the fallback. |
 | `ANTHROPIC_EFFORT` | `medium` | Claude reasoning effort for the assistant: `low` … `max`. |
+| `JOBTRACKER_PREMIUM` | empty | Tailscale logins allowed to use **✨ Prepare interview** (interview prep written by Codex with your ChatGPT plan, see the home-server guide). Single-user mode: always allowed. |
+| `JOBTRACKER_PREP_MODEL` / `JOBTRACKER_PREP_EFFORT` | `gpt-6.2-astra` / `high` | Codex model and reasoning for interview preps. |
+| `JOBTRACKER_CODEX` | `codex` | The Codex command (installed in the Docker image; on a Mac, the one inside the ChatGPT app works too). |
 | `JOBTRACKER_OUTPUT_DIR` | `./output` | Where company folders with CVs and job descriptions go. `~` allowed. |
 | `JOBTRACKER_DATA_DIR` | `./data` | Where your data files live. |
 | `JOBTRACKER_CV_FILENAME` | `{name}_CV` | CV file name; `{name}` = your name, `{company}` = the company. |

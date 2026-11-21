@@ -25,6 +25,7 @@ from .services import llm, pdf
 from .services.companies import NotFound
 from .services.cv_import import SUPPORTED
 from .services.llm import LLMUnavailable
+from .services.prep import PrepUnavailable
 
 logs.setup()
 _mcp = {"app": None}  # the /mcp handler; a session manager runs only once, so each app start gets a new one
@@ -101,8 +102,10 @@ def run_action(name: str, payload: dict = Body(default={})):
         return {"ok": True, "result": result, **({"notice": notice} if notice else {})}
     except NotFound as e:
         raise HTTPException(404, str(e)) from e
-    except LLMUnavailable as e:
+    except (LLMUnavailable, PrepUnavailable) as e:
         raise HTTPException(503, str(e)) from e
+    except PermissionError as e:
+        raise HTTPException(403, str(e)) from e
     except ValidationError as e:
         raise HTTPException(422, e.errors(include_url=False, include_context=False)) from e
     except ValueError as e:

@@ -1,6 +1,6 @@
 // Assistant: conversations with the LLM agent that drives the app's actions.
 import { call, fileUrl } from "../api.js";
-import { attempt, h, mount } from "../ui.js";
+import { attempt, h, markdown, mount } from "../ui.js";
 
 const LABELS = {
   "company.list": "Looked at your companies", "company.get": "Opened company", "company.create": "Added company",
@@ -147,34 +147,4 @@ export async function renderChat(root, chatId, params) {
   const q = params.get("q");
   if (q && !chat) send(q);
   else input.focus();
-}
-
-// Minimal, safe markdown: headings, paragraphs, "- " lists, **bold**, `code`, [text](#/route, /files/… or https://url).
-function markdown(text) {
-  const inline = (s) => {
-    const out = [];
-    const re = /\*\*(.+?)\*\*|`(.+?)`|\[([^\]]+)\]\(((?:#\/|\/files\/|https?:\/\/)[^)\s]+)\)/g;
-    let last = 0;
-    for (const m of s.matchAll(re)) {
-      out.push(s.slice(last, m.index));
-      if (m[1]) out.push(h("b", {}, m[1]));
-      else if (m[2]) out.push(h("code", {}, m[2]));
-      else out.push(h("a", { href: m[4], target: m[4].startsWith("#") ? null : "_blank" }, m[3]));  // files open in a new tab
-      last = m.index + m[0].length;
-    }
-    out.push(s.slice(last));
-    return out;
-  };
-  const blocks = [];
-  let items = null;
-  for (const line of text.split("\n")) {
-    const li = line.match(/^\s*(?:[-*•]|\d+\.)\s+(.*)/);
-    if (li) { (items ??= []).push(h("li", {}, inline(li[1]))); continue; }
-    if (items) { blocks.push(h("ul", {}, items)); items = null; }
-    const heading = line.match(/^\s*#{1,6}\s+(.*)/);
-    if (heading) blocks.push(h("p", { class: "md-h" }, inline(heading[1])));
-    else if (line.trim()) blocks.push(h("p", {}, inline(line)));
-  }
-  if (items) blocks.push(h("ul", {}, items));
-  return blocks;
 }

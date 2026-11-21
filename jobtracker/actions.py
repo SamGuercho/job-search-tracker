@@ -11,7 +11,7 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, create_model
 
-from . import users
+from . import config, users
 from .cv_templates import TEMPLATES
 from .models import (
     SOURCE_TYPES,
@@ -32,7 +32,19 @@ from .models import (
 )
 from .process import CATEGORIES, Node, NodeState
 from .registry import action
-from .services import analytics, assistant, companies, cv_builder, cv_import, jd_match, llm, master_cv, web, wording
+from .services import (
+    analytics,
+    assistant,
+    companies,
+    cv_builder,
+    cv_import,
+    jd_match,
+    llm,
+    master_cv,
+    prep,
+    web,
+    wording,
+)
 from .services import summary as summary_service  # `summary` is also a parameter name below
 from .services.cv_import import ImportMode
 
@@ -65,7 +77,8 @@ def app_info():
     return {"statuses": STATUSES, "step_states": ["todo", "planned", "done"], "step_types": CATEGORIES,
             "work_models": WORK_MODELS, "source_types": SOURCE_TYPES,
             "templates": [{"name": t.name, "label": t.label} for t in TEMPLATES.values()],
-            "llm_available": llm.available(), "user": users.current() or users.owner()}
+            "llm_available": llm.available(), "user": users.current() or users.owner(),
+            "premium": users.is_premium()}
 
 
 @action("company.list")
@@ -119,6 +132,53 @@ def company_log_update(id: str, by: UpdateSide = "me", date: Optional[str] = Non
     """Record news from you ('me') or from the company ('them'); resets the 'days since update' counter.
     `date` is YYYY-MM-DD (default today). An optional note is appended to the company notes."""
     return companies.log_update(id, by, date, note)
+
+
+# ============================================================ interview prep
+
+def _prep_view(p) -> dict | None:
+    return p.model_dump(mode="json") if p else None
+
+
+@action("prep.get")
+def prep_get(company: str):
+    """The interview prep pack of an application (company research, likely interview process, focus topics,
+    exercises with reference solution and a 10-point grading rubric, questions to ask), or null if none.
+    `status` is running (being written, takes minutes), done or error. To practice with the user: give one
+    exercise's prompt at a time, wait for their answer, grade it against the rubric (score /10, points hit and
+    missed), then show the solution if they want it."""
+    return _prep_view(prep.get(company))
+
+
+@action("prep.status")
+def prep_status():
+    """Whether the 'Prepare interview' button can run here: premium account, Codex installed and signed in."""
+    if not users.is_premium():
+        return {"premium": False, "available": False, "reason": "Interview prep is for premium accounts."}
+    return {"premium": True, **prep.codex_status(), "model": config.PREP_MODEL, "effort": config.PREP_EFFORT}
+
+
+@action("prep.start")
+def prep_start(company: str, exercises: int = 5):
+    """Start writing the interview prep for an application on the server (Codex with a strong model and web
+    search; premium accounts only). Runs in the background for several minutes: check prep.get for the result.
+    Replaces the previous prep (its file is archived)."""
+    return _prep_view(prep.start(company, max(1, min(exercises, 10))))
+
+
+@action("prep.brief")
+def prep_brief(company: str, exercises: int = 5):
+    """For an AI client writing the prep itself (e.g. Codex or Claude through MCP): the coaching instructions,
+    the application and CV context, and the JSON schema to fill. Follow the instructions (research with web
+    search), then call prep.save with the JSON object."""
+    return prep.brief(company, max(1, min(exercises, 10)))
+
+
+@action("prep.save")
+def prep_save(company: str, result: dict, by: str = "assistant via MCP"):
+    """Save an interview prep written from prep.brief: `result` must match the brief's output_schema. Replaces
+    the previous prep (its file is archived) and writes Interview_Prep.md in the company folder."""
+    return _prep_view(prep.save(company, result, by))
 
 
 # ============================================================== applications

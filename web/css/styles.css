@@ -292,3 +292,12 @@ td .chip { display: inline-block; max-width: 170px; white-space: nowrap; overflo
   .table-wrap table:not(.data) td:first-child::before { content: none; }
   td .chip { max-width: 100%; }
 }
+
+/* Interview prep card */
+.prep details { border-top: 1px solid var(--border); padding: 8px 0; }
+.prep details > summary { cursor: pointer; font-weight: 600; }
+.prep details details { border: 0; padding: 4px 0 0; }
+.prep details details > summary { font-weight: 400; }
+.prep h3 { margin: 12px 0 4px; }
+.md p { margin: 6px 0; } .md ul { margin: 4px 0 6px; padding-left: 20px; } .md p.md-h { font-weight: 700; margin-top: 10px; }
+.md pre, .msg.assistant pre { background: var(--surface-2); padding: 10px; border-radius: 8px; overflow-x: auto; font-size: 12.5px; }

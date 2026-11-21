@@ -19,6 +19,15 @@ RUN apt-get update \
  && fc-cache -f \
  && rm -rf /var/lib/apt/lists/*
 
+# Codex CLI (pinned release): writes interview preps with the owner's ChatGPT plan (see services/prep.py).
+# Sign in once on the server: docker compose exec app codex login --device-auth  (kept in the /codex volume)
+ARG CODEX_VERSION=0.167.0
+RUN arch="$(uname -m)" \
+ && curl -fsSL "https://github.com/openai/codex/releases/download/rust-v${CODEX_VERSION}/codex-${arch}-unknown-linux-musl.tar.gz" \
+    | tar -xz -C /usr/local/bin \
+ && mv "/usr/local/bin/codex-${arch}-unknown-linux-musl" /usr/local/bin/codex \
+ && codex --version
+
 WORKDIR /app
 COPY requirements.txt .
 RUN pip install -r requirements.txt
@@ -30,8 +39,8 @@ COPY mcp_server.py ./
 
 # Unprivileged user; data and generated files live in volumes
 RUN useradd --create-home --uid 10001 app \
- && mkdir -p /data /output \
- && chown -R app:app /data /output
+ && mkdir -p /data /output /codex \
+ && chown -R app:app /data /output /codex
 USER app
 
 ENV JOBTRACKER_HOST=0.0.0.0 \
@@ -39,8 +48,9 @@ ENV JOBTRACKER_HOST=0.0.0.0 \
     JOBTRACKER_DATA_DIR=/data \
     JOBTRACKER_OUTPUT_DIR=/output \
     JOBTRACKER_PDF_ENGINE=libreoffice \
+    CODEX_HOME=/codex \
     LOG_FORMAT=json
-VOLUME ["/data", "/output"]
+VOLUME ["/data", "/output", "/codex"]
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD curl -fsS "http://127.0.0.1:${PORT}/health" || exit 1

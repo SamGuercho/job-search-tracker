@@ -201,6 +201,37 @@ Your own devices keep full access; people you shared with reach only the https a
 
 ---
 
+## Interview prep (premium accounts)
+
+On an application's page, **✨ Prepare interview** researches the company and writes a prep pack: what the company
+does, the likely interview process, topics to revise, your strengths and gaps for the role, 5 exercises with
+reference solutions and 10-point grading rubrics, and questions to ask. It takes a few minutes, runs in the
+background, and is also saved as `Interview_Prep.md` in the company folder. **Practice with the assistant** then
+has the (cheap) assistant give you an exercise and grade your answer with its rubric.
+
+It runs **Codex on this PC, signed in with your ChatGPT account**: no API billing, it uses your plan's limits
+(model `JOBTRACKER_PREP_MODEL`, default `gpt-6.2-astra`, reasoning `JOBTRACKER_PREP_EFFORT`, default `high`).
+So only the people you list get the button.
+
+1. In `.env`, list who may use it (Tailscale logins, comma-separated):
+   ```
+   JOBTRACKER_PREMIUM=you@gmail.com,partner@gmail.com
+   ```
+2. Update: `powershell -ExecutionPolicy Bypass -File .\update-now.ps1`
+3. Sign Codex in to your ChatGPT account, once:
+   ```powershell
+   docker compose exec app codex login --device-auth
+   ```
+   It prints a link and a code: open the link on any device, sign in to ChatGPT, enter the code.
+4. ✅ Check: `docker compose exec app codex login status` says it is logged in with ChatGPT.
+
+The sign-in is kept in `C:\JobSearch\app\deploy\home-server\codex` (or `HOST_CODEX_DIR`): it is a login token
+for your ChatGPT account, so treat that folder like a password (it is git-ignored and not in `backup.ps1`).
+Sign out with `docker compose exec app codex logout`. Anyone can still get a prep without the button: an AI
+assistant connected through MCP can write it with the `prep_brief` and `prep_save` tools, on their own plan.
+
+---
+
 ## Everyday use
 
 | You want to… | Do |

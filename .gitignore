@@ -19,3 +19,6 @@ __pycache__/
 deploy/home-server/data/
 deploy/home-server/companies/
 deploy/home-server/update.log
+
+# Codex sign-in on the home server (a ChatGPT login token: never commit it)
+deploy/home-server/codex/

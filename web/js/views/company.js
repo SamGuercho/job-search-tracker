@@ -1,10 +1,11 @@
 // Company page: details, follow-up counter, process graph, generated CVs.
 import { call, fileUrl } from "../api.js";
-import { attempt, chips, daysBadge, field, formatDate, h, joinList, mapsUrl, mount, readForm, toast } from "../ui.js";
+import { attempt, chips, daysBadge, field, formatDate, h, joinList, mapsUrl, markdown, mount, readForm, toast } from "../ui.js";
 import { processCard } from "./process-graph.js";
 
 export async function renderCompany(root, id) {
   const [company, info, master] = await Promise.all([call("company.get", { id }), call("app.info"), call("cv.master.get")]);
+  let prep = await call("prep.get", { company: id });
   let review = null;   // last AI review of the summary, kept across re-renders
 
   const save = async (fields, msg = "Saved") => {
@@ -194,15 +195,79 @@ export async function renderCompany(root, id) {
         d.pdf && h("a", { class: "btn", href: fileUrl(d.pdf), target: "_blank" }, "PDF")))
       : h("p", { class: "muted" }, "No CV generated yet."));
 
+  // --------------------------------------------------------- interview prep
+  // Written by a strong model (Codex on the server for premium accounts, or any AI assistant through MCP).
+  const prepCard = () => {
+    const p = prep;
+    const running = p?.status === "running";
+    const start = info.premium && h("button", {
+      class: p?.status === "done" ? "" : "primary", disabled: running, onclick: async () => {
+        if (p?.status === "done" && !confirm("Prepare again? The current prep is replaced (its file is archived).")) return;
+        const started = await attempt(() => call("prep.start", { company: id }), "Preparation started: it takes a few minutes");
+        if (started) { prep = started; render(); poll(); }
+      },
+    }, running ? "Preparing…" : p?.status === "done" ? "Prepare again" : "✨ Prepare interview");
+    return h("div", { class: "card prep" },
+      h("div", { class: "row" }, h("h2", { style: "margin:0" }, "Interview prep"), h("span", { class: "spacer" }), start),
+      !p && h("p", { class: "muted" }, info.premium
+        ? "Research on the company, the likely interview process, and exercises with solutions and grading rubrics. Takes a few minutes."
+        : "No prep yet. Ask an AI assistant connected to the tracker (MCP) to write one with prep.brief and prep.save."),
+      running && h("p", {}, `⏳ Being prepared by ${p.by} since ${p.requested_at.slice(11, 16)}. This takes a few minutes: you can leave this page.`),
+      p?.status === "error" && h("div", { class: "result warn card" }, "The last preparation failed: ", p.error),
+      p?.status === "done" && prepBody(p));
+  };
+
+  const section = (title, content, open = false) => h("details", { open }, h("summary", {}, title), h("div", { class: "md" }, content));
+
+  const prepBody = (p) => {
+    const r = p.result;
+    const practice = (i, e) => h("a", {
+      class: "btn", href: `#/chat?q=${encodeURIComponent(`Let's practice exercise ${i} ("${e.title}") of my ${company.name} interview prep. Give me the exercise, then grade my answer with the rubric.`)}`,
+    }, "Practice with the assistant");
+    return h("div", { class: "stack-tight" },
+      h("div", { class: "row small muted" }, `By ${p.by} · ${(p.finished_at || "").replace("T", " ").slice(0, 16)}`,
+        p.file && [" · ", h("a", { href: fileUrl(p.file), target: "_blank" }, "📄 Interview_Prep.md")]),
+      section("The company", markdown(r.company_summary), true),
+      section("Likely interview process", markdown(r.interview_process)),
+      section("Focus topics", h("ul", {}, r.focus_topics.map((t) => h("li", {}, t)))),
+      section("Your angle", markdown(r.candidate_angle)),
+      h("h3", {}, `Exercises (${r.exercises.length})`),
+      r.exercises.map((e, n) => h("details", { class: "exercise" },
+        h("summary", {}, h("b", {}, `${n + 1}. ${e.title}`), h("span", { class: "small muted" }, ` · ${e.kind} · ${e.difficulty}`)),
+        h("div", { class: "md" },
+          h("p", { class: "small muted" }, h("i", {}, "Why they'd ask it: "), e.why),
+          markdown(e.prompt),
+          h("div", { class: "row" }, practice(n + 1, e)),
+          h("details", {}, h("summary", { class: "small" }, "Solution, rubric and strong answer"),
+            markdown(e.solution),
+            h("p", { class: "md-h" }, "Rubric (10 points)"),
+            h("ul", {}, e.rubric.map((pt) => h("li", {}, `${pt.point} (${pt.points})`))),
+            h("p", { class: "md-h" }, "Strong answer"), markdown(e.strong_answer),
+            h("p", { class: "md-h" }, "Common mistakes"), h("ul", {}, e.common_mistakes.map((m) => h("li", {}, m))))))),
+      section("Questions to ask them", h("ul", {}, r.questions_to_ask.map((q) => h("li", {}, q)))),
+      section("Sources", h("ul", {}, r.sources.map((s) => h("li", {}, /^https?:\/\//.test(s) ? h("a", { href: s, target: "_blank" }, s) : s)))));
+  };
+
+  // While a prep is being written, check every 15 s (stops when you leave the page).
+  const here = location.hash;
+  const poll = () => setTimeout(async () => {
+    if (location.hash !== here || prep?.status !== "running") return;
+    prep = await call("prep.get", { company: id }).catch(() => prep);
+    render();
+    if (prep?.status === "running") poll();
+  }, 15000);
+
   const reload = async () => Object.assign(company, await call("company.get", { id }));
 
   function render() {
     mount(root, header(),
       h("div", { class: "stack" },
         process(),
+        prepCard(),
         h("div", { class: "grid cols-main" },
           h("div", { class: "stack" }, summaryCard(), details()),
           h("div", { class: "stack" }, followUp(), jobDescription(), documents(), map()))));
   }
   render();
+  if (prep?.status === "running") poll();
 }

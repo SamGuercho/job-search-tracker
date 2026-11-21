@@ -228,3 +228,54 @@ class Chat(BaseModel):
 
 class ChatBook(BaseModel):
     chats: list[Chat] = []
+
+
+# ------------------------------------------------------------ interview prep
+# Written by a strong model (Codex on the server, or any MCP client via prep.save), stored per user in
+# preps.json, one per application. The PrepResult part is exactly what the model must return (strict schema:
+# no defaults, every field required), so it can be validated before it is saved.
+
+class RubricPoint(BaseModel):
+    point: str           # what a good answer must contain
+    points: int          # weight; an exercise's points add up to 10
+
+
+class Exercise(BaseModel):
+    title: str
+    kind: str            # coding, SQL, system design, case study, behavioral…
+    difficulty: Literal["easy", "medium", "hard"]
+    topic: str
+    why: str             # why this company would ask it (from the research)
+    prompt: str          # the exercise as the interviewer would give it
+    solution: str        # reference solution
+    rubric: list[RubricPoint]
+    strong_answer: str   # what a strong answer looks like, in a few lines
+    common_mistakes: list[str]
+
+
+class PrepResult(BaseModel):
+    company_summary: str        # what the company does, products, customers, tech, recent news (markdown)
+    interview_process: str      # likely stages and format, and what each one tests (markdown)
+    focus_topics: list[str]     # what to revise, most likely first
+    candidate_angle: str        # how the user's experience maps to the role: strengths to push, gaps to prepare
+    exercises: list[Exercise]
+    questions_to_ask: list[str]
+    sources: list[str]          # URLs the research used
+
+
+PrepStatus = Literal["running", "done", "error"]
+
+
+class InterviewPrep(BaseModel):
+    company_id: str
+    status: PrepStatus = "running"
+    requested_at: str = Field(default_factory=lambda: datetime.now().isoformat(timespec="seconds"))
+    finished_at: str | None = None
+    by: str = ""                # who wrote it: "codex gpt-6.2-astra (high)", or the MCP client
+    error: str = ""
+    result: PrepResult | None = None
+    file: str | None = None     # Interview_Prep.md in the company folder (relative to the output folder)
+
+
+class PrepBook(BaseModel):
+    preps: list[InterviewPrep] = []

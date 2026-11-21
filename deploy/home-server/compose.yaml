@@ -21,6 +21,8 @@ services:
     volumes:
       - ${HOST_DATA_DIR:-./data}:/data
       - ${HOST_OUTPUT_DIR:-./companies}:/output
+      # Codex's sign-in (your ChatGPT account) for the "Prepare interview" button: keep it out of backups you share
+      - ${HOST_CODEX_DIR:-./codex}:/codex
     restart: unless-stopped
     logging:
       driver: json-file

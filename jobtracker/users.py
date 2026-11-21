@@ -82,6 +82,18 @@ def acting_as(user: str):
         _current.reset(token)
 
 
+def login() -> str:
+    """The current Tailscale login ("" when unknown, e.g. single-user mode)."""
+    return current() or owner()
+
+
+def is_premium() -> bool:
+    """May use premium features (interview prep on the owner's ChatGPT plan): see JOBTRACKER_PREMIUM."""
+    if not enabled():
+        return True
+    return login() in config.PREMIUM
+
+
 def _folder(user: str) -> Path:
     name = re.sub(r"[^a-z0-9@._-]+", "_", user.lower()).strip("._") or "_"
     return config.USERS_DIR / name
