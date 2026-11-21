@@ -39,11 +39,21 @@ CAPABILITIES: dict[str, list[str]] = {
 }
 
 
+def _prep_capabilities() -> list[str]:
+    """Capabilities used by the exercises of the user's saved preps (practised or not)."""
+    return [e.capability for p in prep.store.load().preps if p.result for e in p.result.exercises if e.capability]
+
+
 def known_capabilities() -> list[str]:
-    """The default capabilities plus any the user already has (from answers or targets)."""
+    """The default capabilities plus any the user already has: from answers, targets, and saved preps.
+    Names differing only by case count once (the first spelling seen wins)."""
     book = store.load()
-    seen = [a.capability for a in book.attempts if a.capability] + list(book.targets)
-    return list(dict.fromkeys([*CAPABILITIES, *seen]))
+    names = [*CAPABILITIES, *(a.capability for a in book.attempts if a.capability), *book.targets,
+             *_prep_capabilities()]
+    out: dict[str, str] = {}
+    for name in names:
+        out.setdefault(" ".join(name.split()).lower(), " ".join(name.split()))
+    return list(out.values())
 
 
 def canonical(name: str, known: list[str] | None = None) -> str:
@@ -108,6 +118,36 @@ def classify() -> dict:
             if not a.capability and a.id in guesses:
                 a.capability = guesses[a.id]
     return {"sorted": len(todo), "by_model": len(unknown)}
+
+
+def rename(capability: str, to: str) -> dict:
+    """Rename a capability, or merge it into another one when `to` already exists: its answers, its target
+    (kept only if the other has none) and the exercises of saved preps all move to `to`. A merge can't be undone."""
+    old = " ".join(capability.split()).lower()
+    new = canonical(to)
+    if not old or not new:
+        raise ValueError("Give the capability to rename and its new name")
+    if new.lower() == old and new == capability.strip():
+        return {"renamed": 0, "to": new, "merged": False}
+    known = {k.lower() for k in known_capabilities()}
+    if old not in known:
+        raise ValueError(f"No capability named {capability!r}")
+    merged = new.lower() != old and new.lower() in known
+    moved = 0
+    with store.transaction() as book:
+        for a in book.attempts:
+            if (a.capability or "").lower() == old:
+                a.capability, moved = new, moved + 1
+        old_target = next((v for k, v in book.targets.items() if k.lower() == old), None)
+        book.targets = {k: v for k, v in book.targets.items() if k.lower() != old}
+        if old_target and not any(k.lower() == new.lower() for k in book.targets):
+            book.targets[new] = old_target
+    with prep.store.transaction() as book:
+        for p in book.preps:
+            for e in p.result.exercises if p.result else []:
+                if e.capability.lower() == old:
+                    e.capability = new
+    return {"renamed": moved, "to": new, "merged": merged}
 
 
 def set_target(capability: str, target: int | None) -> dict:

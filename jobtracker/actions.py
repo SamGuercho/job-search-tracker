@@ -184,6 +184,13 @@ def practice_set_target(capability: str, target: Optional[int] = None):
     return practice.set_target(capability, target)
 
 
+@action("practice.rename_capability", confirm=True)
+def practice_rename_capability(capability: str, to: str):
+    """Rename a capability, or merge it into an existing one (e.g. "Stats" into "Statistics"): its answers,
+    target and prep exercises move to `to`. A merge can't be undone."""
+    return practice.rename(capability, to)
+
+
 @action("practice.classify")
 def practice_classify():
     """Sort practice answers that have no capability yet (logged before capabilities existed) into

@@ -161,5 +161,34 @@ class CapabilityTests(unittest.TestCase):
         self.assertIn("SQL: now 4/10, target 8/10", b["context"])
 
 
+    def test_categories_of_unpractised_preps_are_known(self):
+        prep.save("Nimbus", dict(RESULT, exercises=[dict(EXERCISE, capability="Forecasting")]), "new prep")
+        self.assertIn("Forecasting", practice.known_capabilities())
+        self.assertIn("Forecasting", registry.run("prep.brief", {"company": "Nimbus"})["instructions"])
+        self.assertEqual(practice.known_capabilities().count("SQL"), 1)  # "sql" from the prep counts once
+
+    def test_merge_moves_answers_target_and_prep_exercises(self):
+        for name, score in [("Stats", 4), ("Statistics", 6)]:
+            self.record("Explain p-values", score, capability=name)
+        registry.run("practice.set_target", {"capability": "Stats", "target": 8})
+        prep.save("Nimbus", dict(RESULT, exercises=[dict(EXERCISE, capability="Stats")]), "with stats")
+        out = registry.run("practice.rename_capability", {"capability": "stats", "to": "statistics"})
+        self.assertEqual(out, {"renamed": 1, "to": "Statistics", "merged": True})
+        caps = {c["capability"]: c for c in practice.capabilities()}
+        self.assertNotIn("Stats", caps)
+        self.assertEqual((caps["Statistics"]["attempts"], caps["Statistics"]["target"]), (2, 8))
+        self.assertEqual(prep.get("Nimbus").result.exercises[0].capability, "Statistics")
+        with self.assertRaises(ValueError):
+            registry.run("practice.rename_capability", {"capability": "Nope", "to": "SQL"})
+
+    def test_rename_keeps_the_target_of_the_destination(self):
+        self.record("1", 5, capability="SQL")
+        self.record("q", 5, capability="Databases")
+        registry.run("practice.set_target", {"capability": "SQL", "target": 9})
+        registry.run("practice.set_target", {"capability": "Databases", "target": 6})
+        registry.run("practice.rename_capability", {"capability": "Databases", "to": "SQL"})
+        self.assertEqual(practice.store.load().targets, {"SQL": 9})
+
+
 if __name__ == "__main__":
     unittest.main()

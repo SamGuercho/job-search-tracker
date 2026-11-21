@@ -67,8 +67,20 @@ export async function renderPractice(root) {
       },
     }, h("option", { value: "" }, "none"), [5, 6, 7, 8, 9, 10].map((v) => h("option", { value: v, selected: c.target === v }, `${v}/10`))));
 
+  // Rename, or merge into an existing capability (e.g. "Stats" into "Statistics")
+  const renameButton = (c) => h("button", {
+    class: "ghost icon", title: "Rename, or merge into another capability", onclick: async () => {
+      const others = p.capabilities.map((x) => x.capability).filter((x) => x !== c.capability && x !== "Unsorted");
+      const to = prompt(`New name for “${c.capability}”.\nTo merge it into another one, type that name: ${others.join(", ")}`, c.capability)?.trim();
+      if (!to || to === c.capability) return;
+      const into = others.find((x) => x.toLowerCase() === to.toLowerCase());
+      if (into && !confirm(`Merge “${c.capability}” into “${into}”? Its ${c.attempts} answer${c.attempts === 1 ? "" : "s"} move there. This can't be undone.`)) return;
+      if (await attempt(() => call("practice.rename_capability", { capability: c.capability, to }), into ? "Merged" : "Renamed")) rerender();
+    },
+  }, "✎");
+
   const capabilityCard = (c) => h("div", { class: "card cap-card" },
-    h("div", { class: "row" }, h("h3", { style: "margin:0" }, c.capability), h("span", { class: "spacer" }), targetPicker(c)),
+    h("div", { class: "row" }, h("h3", { style: "margin:0" }, c.capability), renameButton(c), h("span", { class: "spacer" }), targetPicker(c)),
     h("div", { class: "row cap-stats" },
       h("span", { class: "cap-now" }, c.now !== null ? `${c.now}/10` : "—"),
       h("span", { class: "small muted" }, c.now !== null ? "now (last 3)" : ""),
