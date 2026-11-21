@@ -7,7 +7,15 @@ function Log($message) { "$(Get-Date -Format s)  $message" | Tee-Object -FilePat
 
 try {
     docker info *> $null
-    if ($LASTEXITCODE -ne 0) { Log "Docker is not running yet; skipping."; exit 0 }
+    if ($LASTEXITCODE -ne 0) {
+        # Watchdog: Docker Desktop was closed or hasn't started (e.g. after a reboot): start it, the app follows
+        $desktop = "$env:ProgramFiles\Docker\Docker\Docker Desktop.exe"
+        if ((Test-Path $desktop) -and -not (Get-Process "Docker Desktop" -ErrorAction SilentlyContinue)) {
+            Start-Process $desktop
+            Log "Docker was not running; started Docker Desktop."
+        } else { Log "Docker is not running yet; skipping." }
+        exit 0
+    }
     $before = docker compose images app --format json 2>$null
     docker compose pull app --quiet
     docker compose up -d --remove-orphans

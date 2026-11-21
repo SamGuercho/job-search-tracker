@@ -22,13 +22,17 @@ If a `winget install` answers "No package found", refresh its catalogue first: `
 ## 1. Prepare the PC (5 min)
 
 - **Windows 10 22H2 or Windows 11.** Check: `winver`.
-- **Never sleep while plugged in** (the screen can still turn off):
+- **Stay on 24/7** — after step 4 (once you have this folder), in an **administrator** PowerShell:
   ```powershell
-  powercfg /change standby-timeout-ac 0
-  powercfg /change hibernate-timeout-ac 0
+  powershell -ExecutionPolicy Bypass -File .\harden-windows.ps1
   ```
+  It turns off sleep and hibernation (the screen can still turn off), stops Windows Update from restarting the PC
+  while you're signed in, and lists the last sleeps/restarts and their cause.
+- **Automatic sign-in** (needed: Docker Desktop only starts once you're signed in, so after any reboot the app
+  stays down until someone signs in). Use Microsoft's tool, which stores the password encrypted:
+  `winget install -e --id Microsoft.Sysinternals.Autologon`, run `Autologon`, enter your Windows password, *Enable*.
 - **Optional, recommended:** in the BIOS, set *Restore on AC power loss* to *Power On*, so the PC restarts after
-  a power cut; and enable automatic sign-in for your Windows user (Docker Desktop starts when you're signed in).
+  a power cut.
 
 ## 2. Install Docker Desktop (10 min)
 
@@ -135,7 +139,7 @@ The address shown (`https://<pc-name>.<tailnet>.ts.net`) works on **all your Tai
 powershell -ExecutionPolicy Bypass -File .\install-update-task.ps1
 ```
 Every 15 minutes (and at sign-in), `update.ps1` pulls the newest image published by CI and restarts the app if it
-changed. Push to `main` → CI tests and publishes → the server updates itself. History: `update.log`.
+changed; if Docker Desktop isn't running, it starts it. Push to `main` → CI tests and publishes → the server updates itself. History: `update.log`.
 Update by hand any time with `powershell -ExecutionPolicy Bypass -File .\update.ps1`. To stay on a version, set `IMAGE_TAG` in `.env` to a commit tag
 (e.g. `sha-ade50a6`, see the repository's *Packages*).
 
@@ -207,6 +211,9 @@ run `./run.sh` on a laptop against a copy of the same data, or the two copies wi
 
 ## Troubleshooting
 
+- **The app went down / the PC slept or restarted** → run `harden-windows.ps1` again (administrator): it re-applies
+  the settings and shows what happened (*SLEEP*, *RESTART* with the program that asked for it, *CRASH / POWER LOST*).
+  Check automatic sign-in is ON. The update task also restarts Docker Desktop within 15 minutes if it was closed.
 - **`docker compose` says the daemon isn't running** → open Docker Desktop and wait for "Engine running".
 - **The phone can't open the address** → Tailscale switched on on the phone? `tailscale status` on the PC shows it
   online? `tailscale serve status` shows the address?
