@@ -5,8 +5,8 @@ from fastapi.testclient import TestClient
 
 from jobtracker import config, registry
 from jobtracker.api import app
-from jobtracker.models import InterviewPrep
-from jobtracker.services import companies, prep
+from jobtracker.models import InterviewPrep, PracticeAttempt
+from jobtracker.services import companies, practice, prep
 from tests.test_core import reset  # sets the temp data/output env vars first
 from tests.test_prep import EXERCISE, RESULT
 from tests.test_users import FRIEND, OWNER, set_cv_email
@@ -102,6 +102,63 @@ class PracticeIsolationTests(unittest.TestCase):
         self.act(FRIEND, "practice.record", {"company": "Nimbus", "exercise": "SQL warm-up", "score": 6, "topic": "SQL"})
         self.assertEqual(self.act(FRIEND, "practice.profile").json()["result"]["totals"]["attempts"], 1)
         self.assertEqual(self.act(OWNER, "practice.profile").json()["result"]["totals"]["attempts"], 0)
+
+
+
+class CapabilityTests(unittest.TestCase):
+    def setUp(self):
+        reset()
+        self.company = companies.create_company(name="Nimbus")
+        prep.save(self.company.id, dict(RESULT, exercises=[dict(EXERCISE, capability="sql"), SECOND]), "test")
+        self._ask = practice._ask_model
+
+    def tearDown(self):
+        practice._ask_model = self._ask
+
+    def record(self, exercise, score, **kw):
+        return registry.run("practice.record", {"company": "Nimbus", "exercise": exercise, "score": score, **kw})
+
+    def test_capability_comes_from_the_exercise_or_its_words(self):
+        self.assertEqual(self.record("1", 5)["capability"], "SQL")             # given by the prep, normalised
+        self.assertEqual(self.record("2", 5)["capability"], "System design")  # kind "system design" beats "pipeline"
+        self.assertEqual(self.record("ETL design", 5, topic="airflow pipelines")["capability"], "Data engineering")
+        practice._ask_model = lambda items, known: ["Negotiation"]
+        self.assertEqual(self.record("Salary talk", 6, topic="offers")["capability"], "Negotiation")  # model
+        practice._ask_model = lambda items, known: [""]
+        self.assertEqual(self.record("Something odd", 6)["capability"], "Other")
+
+    def test_old_answers_are_sorted_once(self):
+        with practice.store.transaction() as book:
+            book.attempts += [PracticeAttempt(exercise="Explain p-values", topic="hypothesis tests", score=4),
+                              PracticeAttempt(exercise="Pitch yourself", topic="intro", score=7)]
+        practice._ask_model = lambda items, known: ["Behavioral"] * len(items)
+        self.assertEqual(registry.run("practice.classify", {}), {"sorted": 2, "by_model": 1})
+        caps = {a.exercise: a.capability for a in practice.store.load().attempts}
+        self.assertEqual(caps, {"Explain p-values": "Statistics", "Pitch yourself": "Behavioral"})
+        self.assertEqual(registry.run("practice.classify", {})["sorted"], 0)
+
+    def test_progress_targets_and_order(self):
+        for score in [3, 4, 5, 7, 8, 9]:
+            self.record("1", score)
+        self.record("2", 5)
+        registry.run("practice.set_target", {"capability": "sql", "target": 9})
+        registry.run("practice.set_target", {"capability": "Statistics", "target": 7})  # not practised yet
+        caps = {c["capability"]: c for c in registry.run("practice.capabilities", {})}
+        sql = caps["SQL"]
+        self.assertEqual((sql["start"], sql["now"], sql["change"], sql["target"], sql["gap"]), (4, 8, 4, 9, 1))
+        self.assertEqual([p["moving"] for p in sql["points"]][:3], [3, 3.5, 4])
+        self.assertEqual(caps["Statistics"]["attempts"], 0)
+        self.assertIsNone(caps["System design"]["change"])  # one answer: no trend yet
+        self.assertEqual(registry.run("practice.profile", {})["most_improved"], "SQL")
+        registry.run("practice.set_target", {"capability": "SQL"})  # removed
+        self.assertIsNone({c["capability"]: c for c in practice.capabilities()}["SQL"]["target"])
+
+    def test_brief_lists_capabilities_and_levels(self):
+        self.record("1", 4)
+        registry.run("practice.set_target", {"capability": "SQL", "target": 8})
+        b = registry.run("prep.brief", {"company": "Nimbus"})
+        self.assertIn("System design", b["instructions"])  # names to reuse
+        self.assertIn("SQL: now 4/10, target 8/10", b["context"])
 
 
 if __name__ == "__main__":

@@ -161,11 +161,34 @@ def prep_get(company: str, version: Optional[str] = None):
 
 @action("practice.record")
 def practice_record(company: str, exercise: str, score: int, missed: list[str] = [], feedback: str = "",
-                    topic: str = "", kind: str = ""):
+                    topic: str = "", kind: str = "", capability: str = ""):
     """Log a graded practice answer: `exercise` is the prep exercise's number or title, `score` out of 10
     (from the rubric), `missed` the rubric points the answer missed, `feedback` one or two lines. For an
-    exercise that isn't in the prep, also give its topic and kind. Call it after every graded answer."""
-    return practice.record(company, exercise, score, missed, feedback, topic, kind).model_dump(mode="json")
+    exercise that isn't in the prep, also give its topic, kind and capability (the broad skill: SQL, Statistics,
+    System design…). Call it after every graded answer."""
+    return practice.record(company, exercise, score, missed, feedback, topic, kind, capability).model_dump(mode="json")
+
+
+@action("practice.capabilities")
+def practice_capabilities():
+    """Progress per capability (SQL, Statistics, System design…): level now and at the start (average of the
+    last / first 3 answers), change, best score, target and gap, and every answer over time. Furthest from
+    target (or weakest) first. For "am I improving in X?" or "what should I work on?"."""
+    return practice.capabilities()
+
+
+@action("practice.set_target")
+def practice_set_target(capability: str, target: Optional[int] = None):
+    """Set the score /10 the user aims for on a capability (e.g. SQL: 8 before onsite interviews); no target
+    removes it. New preps then focus on the capabilities furthest from their target."""
+    return practice.set_target(capability, target)
+
+
+@action("practice.classify")
+def practice_classify():
+    """Sort practice answers that have no capability yet (logged before capabilities existed) into
+    capabilities: by keywords, then the cheap model for the rest. Returns how many were sorted."""
+    return practice.classify()
 
 
 @action("practice.profile")

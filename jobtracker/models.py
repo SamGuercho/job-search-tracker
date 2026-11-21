@@ -244,7 +244,8 @@ class Exercise(BaseModel):
     title: str
     kind: str            # coding, SQL, system design, case study, behavioral…
     difficulty: Literal["easy", "medium", "hard"]
-    topic: str
+    capability: str = ""  # the broad skill it trains ("SQL", "Statistics"…), for progress over time ("" = older preps)
+    topic: str           # the precise subject ("window functions")
     why: str             # why this company would ask it (from the research)
     prompt: str          # the exercise as the interviewer would give it
     solution: str        # reference solution
@@ -290,6 +291,7 @@ class PracticeAttempt(BaseModel):
     company: str = ""
     exercise: str               # exercise title
     kind: str = ""
+    capability: str = ""        # broad skill, see services/practice.py CAPABILITIES
     topic: str = ""
     difficulty: str = ""
     score: int                  # out of 10
@@ -299,3 +301,4 @@ class PracticeAttempt(BaseModel):
 
 class PracticeBook(BaseModel):
     attempts: list[PracticeAttempt] = []
+    targets: dict[str, int] = {}   # capability -> target score /10 the user aims for

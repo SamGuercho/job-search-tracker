@@ -48,7 +48,10 @@ Prepare the candidate below for their next interviews at {company}, as the best 
    The rubric must let another, simpler model grade the candidate's answer fairly and consistently.
    If a practice history is given below: never repeat an exercise already practised; put more weight on the
    weak topics and the points the candidate missed (with new exercises, not the same ones); match the
-   difficulty to their scores (harder where they score well).
+   difficulty to their scores (harder where they score well). Focus most on the capabilities furthest from
+   their target.
+   Give each exercise a `capability`: the broad skill it trains, reusing exactly one of these names when one
+   fits: {capabilities}. Only if none fits, use a short new name (1 to 3 words).
 5. Suggest smart questions the candidate can ask the interviewers.
 
 Write in English, concise and concrete. Use Markdown inside text fields. Do not run shell commands or edit
@@ -102,7 +105,9 @@ def _context(company) -> str:
 def brief(ref: str, exercises: int = 5) -> dict:
     """Everything a model needs to write the prep: instructions, context and the JSON schema to return."""
     company = companies.resolve(ref)
-    instructions = INSTRUCTIONS.format(company=company.name, website=company.website or "find it", count=exercises)
+    from . import practice  # (imports prep)
+    instructions = INSTRUCTIONS.format(company=company.name, website=company.website or "find it", count=exercises,
+                                       capabilities=", ".join(practice.known_capabilities()))
     return {"company_id": company.id, "company": company.name, "instructions": instructions,
             "context": _context(company), "output_schema": strict_schema()}
 

@@ -61,6 +61,7 @@ How to work:
   then offer the solution or the next exercise. "What should I review?" / "quiz me on my weak spots" ->
   practice.profile: start with `to_review` (low scores) and weak topics; skip exercises already scored well.
   For a weak topic with no exercise left, write a new one in the same style (with its own 10-point rubric).
+  "Am I improving in SQL?" -> practice.capabilities (level now vs start, change, target). Targets: practice.set_target.
   No prep yet: if prep.status says premium + available, offer
   prep.start (it runs in the background for several minutes; the prep then shows on the application page).
 - "How is my search going?" -> analytics.summary (funnel, rates, timing, where applications stop, by source).
