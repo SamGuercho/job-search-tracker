@@ -1,4 +1,4 @@
-// Follow-up: one row per application, sortable, searchable (incl. keywords), with selectable columns.
+// Follow-up: applications as a compact grouped list (default) or a full table (desktop); searchable, filterable.
 import { call } from "../api.js";
 import { attempt, chips, daysBadge, field, h, mapsUrl, modal, mount, readForm, statusPill, toast } from "../ui.js";
 
@@ -36,12 +36,60 @@ const saveHidden = (set) => { try { localStorage.setItem(HIDDEN_KEY, JSON.string
 
 let keywordChips = () => null; // set in renderTracker (needs the search box)
 
+// ---------------------------------------------------------------- view options
+// List (default): one compact row per application, grouped. Table: every column, for desktop.
+const GROUPS = {
+  status: { label: "Status", key: (c) => c.status },
+  stage: { label: "Stage", key: (c) => c.stage || c.status },
+  position: { label: "Position", key: (c) => c.position || "—" },
+  source: { label: "Source", key: (c) => c.source_detail || c.source_type || "—" },
+  work_model: { label: "Work model", key: (c) => c.work_model || "—" },
+  location: { label: "Location", key: (c) => c.location || "—" },
+  none: { label: "No grouping", key: () => "" },
+};
+const SORTS = {
+  attention: "What needs attention",
+  updated: "Last update (oldest first)",
+  name: "Company A–Z",
+  added: "Recently added",
+};
+const VIEW_KEY = "followup.view";
+const loadView = () => { try { return JSON.parse(localStorage.getItem(VIEW_KEY) || "{}"); } catch { return {}; } };
+const saveView = () => { try { localStorage.setItem(VIEW_KEY, JSON.stringify({ group: state.group, listSort: state.listSort, mode: state.mode, collapsed: [...state.collapsed] })); } catch { /* ignore */ } };
+Object.assign(state, { group: "status", listSort: "attention", mode: "list", collapsed: new Set() }, (() => {
+  const v = loadView();  // only the known keys: a stale or edited value can't break the page
+  return {
+    ...(GROUPS[v.group] ? { group: v.group } : {}), ...(SORTS[v.listSort] ? { listSort: v.listSort } : {}),
+    ...(["list", "table"].includes(v.mode) ? { mode: v.mode } : {}), collapsed: new Set(Array.isArray(v.collapsed) ? v.collapsed : []),
+  };
+})());
+
+const needsFollowUp = (c) => ["Applied", "In process"].includes(c.status) && (c.days_since_update ?? 0) >= 14;
+
+// The next scheduled step with a date (today or later): what the row shows first.
+function nextInterview(c) {
+  const today = new Date().toISOString().slice(0, 10);
+  return (c.process?.nodes || [])
+    .filter((n) => n.state === "planned" && n.date && n.date.slice(0, 10) >= today && n.kind !== "closed")
+    .sort((a, b) => `${a.date}${a.time || ""}`.localeCompare(`${b.date}${b.time || ""}`))[0] || null;
+}
+
+function whenLabel(n) {
+  const d = new Date(`${n.date.slice(0, 10)}T00:00:00`);
+  const days = Math.round((d - new Date(new Date().toDateString())) / 86400000);
+  const day = days === 0 ? "Today" : days === 1 ? "Tomorrow" : d.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" });
+  return `${day}${n.time ? ` ${n.time}` : ""}`;
+}
+
+const STATUS_ORDER = ["Offer", "In process", "Applied", "Not applied", "Rejected"];
+
 export async function renderTracker(root) {
   const [companies, info] = await Promise.all([call("company.list"), call("app.info")]);
   const hidden = loadHidden();
   const tbody = h("tbody");
   const head = h("thead");
-  const search = h("input", { placeholder: "Search company, position, keyword, source…", style: "max-width:320px", value: state.query,
+  const results = h("div");
+  const search = h("input", { type: "search", placeholder: "Search company, position, keyword, source…", value: state.query,
     oninput: (e) => { state.query = e.target.value; draw(); } });
 
   keywordChips = (keywords) => keywords.length
@@ -54,18 +102,86 @@ export async function renderTracker(root) {
   const searchable = (c) => [c.name, c.position, c.location, c.address, c.work_model, c.contact.name, c.referee, c.stage,
     c.source_type, c.source_detail, c.salary_expectation, c.salary_posted, ...c.keywords, ...c.qualities].join(" ").toLowerCase();
 
-  const draw = () => {
-    const cols = COLUMNS.filter((c) => c.fixed || !hidden.has(c.key));
-    const col = COLUMNS.find((c) => c.key === state.sort) || COLUMNS[0];
-    const value = col.sortValue ?? ((c) => (c[col.key] ?? "").toString().toLowerCase());
+  const filtered = () => {
     const q = state.query.toLowerCase().trim();
-    const rows = companies
+    return companies
       .filter((c) => !state.status || c.status === state.status)
       .filter((c) => !state.workModel || c.work_model === state.workModel)
       .filter((c) => !state.hideClosed || c.status !== "Rejected")
-      .filter((c) => !q || searchable(c).includes(q))
-      .sort((a, b) => (value(a) > value(b) ? 1 : value(a) < value(b) ? -1 : 0) * state.dir);
+      .filter((c) => !q || searchable(c).includes(q));
+  };
 
+  const followedUp = async (e, c) => {
+    e.stopPropagation();
+    const updated = await attempt(() => call("company.log_update", { id: c.id, by: "me" }), `Follow-up logged for ${c.name}`);
+    if (updated) { Object.assign(c, updated); draw(); }
+  };
+
+  // ---------------------------------------------------------------- list view
+  const rank = (c) => {  // attention: interviews soon, then follow-ups due, then the rest by time without news
+    const next = nextInterview(c);
+    if (next) return `0${next.date}${next.time || ""}`;
+    if (needsFollowUp(c)) return `1${String(9999 - (c.days_since_update ?? 0)).padStart(4, "0")}`;
+    if (c.status === "Rejected") return "9";
+    return `2${String(9999 - (c.days_since_update ?? 0)).padStart(4, "0")}`;
+  };
+  const sorters = {
+    attention: (a, b) => rank(a).localeCompare(rank(b)),
+    updated: (a, b) => (b.days_since_update ?? -1) - (a.days_since_update ?? -1),
+    name: (a, b) => a.name.localeCompare(b.name),
+    added: (a, b) => (b.created_at || "").localeCompare(a.created_at || ""),
+  };
+
+  const row = (c) => {
+    const next = nextInterview(c);
+    const due = needsFollowUp(c);
+    return h("a", { class: `app-row ${c.status === "Rejected" ? "closed" : ""}`, href: `#/company/${c.id}` },
+      h("div", { class: "app-main" },
+        h("div", { class: "app-name", dir: "auto" }, c.name),
+        h("div", { class: "app-sub small muted", dir: "auto" }, c.position || "Position not set"),
+        next && h("div", { class: "app-next small" }, `📅 ${whenLabel(next)} · ${next.name}`)),
+      h("div", { class: "app-side" },
+        h("span", { class: `pill ${c.status.toLowerCase().replace(/[^a-z]+/g, "-")}`, title: c.stage }, state.group === "status" ? (c.stage || c.status) : c.status),
+        h("span", { class: `app-days ${due ? "due" : ""}`, title: `Last news ${c.days_since_update ?? "?"} days ago, from ${c.last_update_by === "me" ? "you" : "them"}` },
+          c.days_since_update === null || c.days_since_update === undefined ? "" : `${c.days_since_update}d`),
+        due && h("button", { class: "small app-followed", title: "I followed up today (resets the counter)", onclick: (e) => followedUp(e, c) }, "✓ Followed up")));
+  };
+
+  const groupsOf = (rows) => {
+    const g = GROUPS[state.group] || GROUPS.status;
+    const map = new Map();
+    for (const c of rows) {
+      const k = g.key(c);
+      map.set(k, [...(map.get(k) || []), c]);
+    }
+    const keys = [...map.keys()].sort((a, b) => state.group === "status"
+      ? STATUS_ORDER.indexOf(a) - STATUS_ORDER.indexOf(b)
+      : a === "—" ? 1 : b === "—" ? -1 : a.localeCompare(b));
+    return keys.map((k) => [k, map.get(k).sort(sorters[state.listSort] || sorters.attention)]);
+  };
+
+  const drawList = (rows) => {
+    if (!rows.length) return mount(results, emptyState());
+    mount(results, groupsOf(rows).map(([name, items]) => {
+      if (!name) return h("div", { class: "card app-list" }, items.map(row));
+      const id = `${state.group}:${name}`;
+      const open = !state.collapsed.has(id);
+      return h("section", { class: "app-group" },
+        h("button", {
+          class: "group-head", "aria-expanded": String(open),
+          onclick: () => { open ? state.collapsed.add(id) : state.collapsed.delete(id); saveView(); draw(); },
+        }, h("span", { class: "chev" }, open ? "▾" : "▸"), h("b", { dir: "auto" }, name), h("span", { class: "count" }, items.length),
+          items.some(needsFollowUp) && h("span", { class: "small due-note" }, `${items.filter(needsFollowUp).length} to follow up`)),
+        open && h("div", { class: "card app-list" }, items.map(row)));
+    }));
+  };
+
+  // --------------------------------------------------------------- table view
+  const drawTable = (rows) => {
+    const cols = COLUMNS.filter((c) => c.fixed || !hidden.has(c.key));
+    const col = COLUMNS.find((c) => c.key === state.sort) || COLUMNS[0];
+    const value = col.sortValue ?? ((c) => (c[col.key] ?? "").toString().toLowerCase());
+    rows = [...rows].sort((a, b) => (value(a) > value(b) ? 1 : value(a) < value(b) ? -1 : 0) * state.dir);
     mount(head, h("tr", {}, cols.map((c) => h("th", {
       onclick: c.sortable === false ? undefined : () => {
         state.dir = state.sort === c.key ? -state.dir : 1;
@@ -73,21 +189,44 @@ export async function renderTracker(root) {
         draw();
       },
     }, c.label, state.sort === c.key ? (state.dir > 0 ? " ▲" : " ▼") : "")), h("th", {}, "")));
-
     mount(tbody, rows.length ? rows.map((c) => h("tr", { onclick: () => (location.hash = `#/company/${c.id}`) },
       cols.map((col) => h("td", { "data-label": col.label }, col.render(c))),
-      h("td", {}, h("button", {
-        class: "icon", title: "I followed up today (resets the counter)",
-        onclick: async (e) => {
-          e.stopPropagation();
-          const updated = await attempt(() => call("company.log_update", { id: c.id, by: "me" }), `Follow-up logged for ${c.name}`);
-          if (updated) { Object.assign(c, updated); draw(); }
-        },
-      }, "✓ Followed up"))))
-      : h("tr", {}, h("td", { colspan: cols.length + 1, class: "empty" },
-        companies.length ? "No application matches these filters." : "No application yet. Add the first one!")));
+      h("td", {}, h("button", { class: "icon", title: "I followed up today (resets the counter)", onclick: (e) => followedUp(e, c) }, "✓ Followed up"))))
+      : h("tr", {}, h("td", { colspan: cols.length + 1, class: "empty" }, emptyState())));
+    mount(results, h("div", { class: "card table-wrap", style: "padding:0" }, h("table", {}, head, tbody)));
   };
 
+  const emptyState = () => (companies.length ? "No application matches these filters." : "No application yet. Add the first one!");
+
+  // ------------------------------------------------------------------ toolbar
+  const activeFilters = () => [state.status, state.workModel, state.hideClosed].filter(Boolean).length;
+  const filtersBtn = h("button", { onclick: () => openFilters() });
+  const openFilters = () => {
+    const status = h("select", {}, h("option", { value: "" }, "All statuses"), info.statuses.map((s) => h("option", { value: s, selected: s === state.status }, s)));
+    const work = h("select", {}, h("option", { value: "" }, "Any work model"), info.work_models.map((w) => h("option", { value: w, selected: w === state.workModel }, w)));
+    const sort = h("select", {}, Object.entries(SORTS).map(([k, label]) => h("option", { value: k, selected: k === state.listSort }, label)));
+    const closed = h("input", { type: "checkbox", checked: state.hideClosed });
+    const apply = () => {
+      Object.assign(state, { status: status.value, workModel: work.value, listSort: sort.value, hideClosed: closed.checked });
+      saveView();
+      close();
+      drawStats();
+      draw();
+    };
+    const close = modal("Filter and sort", h("div", { class: "form-grid" },
+      field("Status", status), field("Work model", work), field("Sort", sort),
+      h("label", { class: "check wide" }, closed, "Hide closed applications"),
+      h("div", { class: "sheet-actions wide" },
+        h("button", { onclick: () => { status.value = work.value = ""; closed.checked = false; sort.value = "attention"; } }, "Reset"),
+        h("button", { class: "primary", onclick: apply }, "Show"))));
+  };
+  const groupSelect = h("select", {
+    title: "Group by", onchange: (e) => { state.group = e.target.value; saveView(); draw(); },
+  }, Object.entries(GROUPS).map(([k, g]) => h("option", { value: k, selected: k === state.group }, k === "none" ? g.label : `By ${g.label.toLowerCase()}`)));
+  const modeSwitch = h("div", { class: "seg-switch desktop-only", role: "group", "aria-label": "View" },
+    [["list", "List"], ["table", "Table"]].map(([m, label]) => h("button", {
+      class: state.mode === m ? "on" : "", onclick: () => { state.mode = m; saveView(); draw(); },
+    }, label)));
   const columnsMenu = h("details", { class: "columns-menu" },
     h("summary", { class: "btn" }, "Columns"),
     h("div", { class: "menu" }, COLUMNS.filter((c) => !c.fixed).map((c) => h("label", { class: "check" },
@@ -95,29 +234,41 @@ export async function renderTracker(root) {
         type: "checkbox", checked: !hidden.has(c.key),
         onchange: (e) => { e.target.checked ? hidden.delete(c.key) : hidden.add(c.key); saveHidden(hidden); draw(); },
       }), c.label))));
+  const toolbar = h("div", { class: "toolbar followup-toolbar" });
+
+  const draw = () => {
+    const table = state.mode === "table" && matchMedia("(min-width: 761px)").matches;
+    const n = activeFilters();
+    filtersBtn.textContent = n ? `Filters · ${n}` : "Filters";
+    filtersBtn.classList.toggle("on", Boolean(n));
+    [...modeSwitch.children].forEach((b, i) => b.classList.toggle("on", (i === 1) === table));
+    mount(toolbar, search, !table && groupSelect, filtersBtn, h("span", { class: "spacer" }), modeSwitch, table && columnsMenu);
+    const rows = filtered();
+    table ? drawTable(rows) : drawList(rows);
+  };
 
   const counts = info.statuses.map((s) => [s, companies.filter((c) => c.status === s).length]).filter(([, n]) => n);
-  const stale = companies.filter((c) => (c.days_since_update ?? 0) >= 14 && ["Applied", "In process"].includes(c.status)).length;
+  const stale = companies.filter(needsFollowUp).length;
+
+  // Status counters double as quick filters (tap again to show all)
+  const stats = h("div", { class: "stats" });
+  const drawStats = () => mount(stats,
+    counts.map(([s, n]) => h("button", {
+      class: `stat ${state.status === s ? "on" : ""}`, title: `Show only ${s}`,
+      onclick: () => { state.status = state.status === s ? "" : s; drawStats(); draw(); },
+    }, h("b", {}, n), s)),
+    stale ? h("span", { class: "stat due" }, h("b", {}, stale), "to follow up (14d+)") : null);
 
   mount(root,
     h("div", { class: "page-head" },
       h("div", {}, h("h1", {}, "Follow-up"), h("div", { class: "sub muted" }, `${companies.length} applications tracked`)),
-      h("div", { class: "stats" },
-        counts.map(([s, n]) => h("span", { class: "stat" }, h("b", {}, n), s)),
-        stale ? h("span", { class: "stat", style: "color:var(--red)" }, h("b", {}, stale), "need a follow-up (14d+)") : null),
+      stats,
       h("button", { class: "primary", onclick: () => openCreate(info) }, "+ Add company")),
     chatBar(),
-    h("div", { class: "toolbar" },
-      search,
-      h("select", { style: "max-width:170px", onchange: (e) => { state.status = e.target.value; draw(); } },
-        h("option", { value: "" }, "All statuses"), info.statuses.map((s) => h("option", { value: s, selected: s === state.status }, s))),
-      h("select", { style: "max-width:170px", onchange: (e) => { state.workModel = e.target.value; draw(); } },
-        h("option", { value: "" }, "Any work model"), info.work_models.map((w) => h("option", { value: w, selected: w === state.workModel }, w))),
-      h("label", { class: "check" }, h("input", { type: "checkbox", checked: state.hideClosed, onchange: (e) => { state.hideClosed = e.target.checked; draw(); } }), "Hide closed"),
-      h("span", { class: "spacer" }),
-      columnsMenu),
-    h("div", { class: "card table-wrap", style: "padding:0" }, h("table", {}, head, tbody)),
+    toolbar,
+    results,
   );
+  drawStats();
   draw();
 }
 
