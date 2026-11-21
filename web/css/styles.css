@@ -502,3 +502,9 @@ body.is-offline main { padding-top: 8px; }
 
 .bookmarklet { cursor: grab; align-self: flex-start; }
 .clip pre.transcript { max-height: 260px; }
+
+/* Assistant: conversation actions, archived list, key hint */
+.chat-archived { margin-top: 10px; }
+.chat-archived summary { cursor: pointer; padding: 4px 10px; }
+.chat-archived .chat-item { opacity: .75; }
+.keys-hint { padding: 0 12px 8px; text-align: right; }

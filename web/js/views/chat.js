@@ -1,6 +1,6 @@
 // Assistant: conversations with the LLM agent that drives the app's actions.
 import { call, fileUrl } from "../api.js";
-import { attempt, chatRequest, h, markdown, mount, promptSheet, usd } from "../ui.js";
+import { attempt, chatRequest, confirmSheet, h, markdown, mount, promptSheet, usd } from "../ui.js";
 
 const LABELS = {
   "company.list": "Looked at your companies", "company.get": "Opened company", "company.create": "Added company",
@@ -25,37 +25,75 @@ export async function renderChat(root, chatId, params) {
 
   const list = h("div", { class: "chat-list" });
   const head = h("div", { class: "chat-head" });
+  const refreshList = async () => { chats = await call("chat.list"); drawList(); drawMobileBar(); };
   const drawHead = () => mount(head, chat && [
-    h("h2", { style: "margin:0" }, chat.title),
+    h("h2", { style: "margin:0", dir: "auto" }, chat.title),
+    chat.archived && h("span", { class: "pill" }, "Archived"),
+    h("span", { class: "spacer" }),
     h("button", {
-      class: "ghost icon", title: "Rename this conversation", onclick: async () => {
+      class: "ghost icon", title: "Rename this conversation", "aria-label": "Rename", onclick: async () => {
         const title = await promptSheet("", chat.title, { title: "Rename this conversation", ok: "Rename" });
         if (!title?.trim()) return;
         const renamed = await attempt(() => call("chat.rename", { id: chat.id, title }), "Renamed");
-        if (renamed) { chat = renamed; chats = await call("chat.list"); drawList(); drawHead(); }
+        if (renamed) { chat = renamed; await refreshList(); drawHead(); }
       },
-    }, "✎")]);
+    }, "✎"),
+    h("button", {
+      class: "ghost icon", title: chat.archived ? "Bring back to the list" : "Archive (keep it, out of the list)",
+      "aria-label": chat.archived ? "Unarchive" : "Archive", onclick: async () => {
+        const updated = await attempt(() => call("chat.archive", { id: chat.id, archived: !chat.archived }),
+          chat.archived ? "Back in your conversations" : "Archived");
+        if (updated) { chat = updated; await refreshList(); drawHead(); }
+      },
+    }, chat.archived ? "↩" : "🗄"),
+    h("button", {
+      class: "ghost icon", title: "Delete this conversation", "aria-label": "Delete", onclick: async () => {
+        if (!(await confirmSheet("Its messages are deleted for good. What the assistant did (applications, CVs…) stays.",
+          { title: "Delete this conversation?", ok: "Delete", danger: true }))) return;
+        if (await attempt(() => call("chat.delete", { id: chat.id }), "Conversation deleted")) location.hash = "#/chat";
+      },
+    }, "🗑")]);
   const thread = h("div", { class: "chat-thread" });
   const input = h("textarea", {
     rows: 2, placeholder: "Ask anything: “Add this job: <link>”, “Who needs a follow-up?”, “Make a CV for Nimbus”…",
-    onkeydown: (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } },
+    onkeydown: (e) => {
+      if (e.key !== "Enter" || e.isComposing) return;          // typing with an input method (e.g. Hebrew, emoji)
+      if (e.shiftKey || touchKeyboard) return;                 // new line (phones: tap Send to send)
+      e.preventDefault();
+      if (e.altKey) {                                          // Alt/Option + Enter: new line too
+        input.setRangeText("\n", input.selectionStart, input.selectionEnd, "end");
+        return;
+      }
+      send();
+    },
   });
+  const touchKeyboard = matchMedia("(pointer: coarse)").matches && !matchMedia("(pointer: fine)").matches;
+  const keysHint = h("div", { class: "keys-hint small muted" }, touchKeyboard
+    ? "Return adds a new line · tap Send to send"
+    : "Enter to send · Shift+Enter for a new line");
   const sendBtn = h("button", { class: "primary", onclick: () => send() }, "Send");
 
   // Phones: the list replaces the conversation (no room for both); a "Chats" button switches between them.
   const layout = h("div", { class: "chat-layout" });
   const toggleList = () => layout.classList.toggle("show-list");
-  const mobileBar = h("div", { class: "chat-mobile-bar" },
-    h("button", { class: "ghost", onclick: toggleList }, `☰ Chats${chats.length ? ` (${chats.length})` : ""}`),
+  const active = () => chats.filter((c) => !c.archived);
+  const mobileBar = h("div", { class: "chat-mobile-bar" });
+  const drawMobileBar = () => mount(mobileBar,
+    h("button", { class: "ghost", onclick: toggleList }, `☰ Chats${active().length ? ` (${active().length})` : ""}`),
     h("a", { class: "btn ghost", href: "#/chat" }, "+ New"));
+  drawMobileBar();
 
   const drawList = () => mount(list,
     h("button", { class: "ghost chat-list-close", onclick: toggleList }, "← Back to the conversation"),
     h("a", { class: "btn", href: "#/chat", style: "justify-content:center" }, "+ New chat"),
-    chats.map((c) => h("a", {
-      class: `chat-item ${chat?.id === c.id ? "active" : ""}`, href: `#/chat/${c.id}`,
-      onclick: () => layout.classList.remove("show-list"),  // same chat: no navigation, just close the list
-    }, c.title)));
+    active().map(item),
+    chats.some((c) => c.archived) && h("details", { class: "chat-archived", open: Boolean(chat?.archived) },
+      h("summary", { class: "small muted" }, `Archived (${chats.filter((c) => c.archived).length})`),
+      chats.filter((c) => c.archived).map(item)));
+  const item = (c) => h("a", {
+    class: `chat-item ${chat?.id === c.id ? "active" : ""}`, href: `#/chat/${c.id}`, dir: "auto",
+    onclick: () => layout.classList.remove("show-list"),  // same chat: no navigation, just close the list
+  }, c.title);
 
   const drawThread = (pendingText) => {
     const msgs = chat?.messages || [];
@@ -142,7 +180,8 @@ export async function renderChat(root, chatId, params) {
       !info.llm_available && h("div", { class: "result warn card" }, "Add OPENAI_API_KEY (or ANTHROPIC_API_KEY) to .env and restart the server to use the assistant."),
       head,
       thread,
-      h("div", { class: "chat-input" }, input, sendBtn)));
+      h("div", { class: "chat-input" }, input, sendBtn),
+      keysHint));
   mount(root, layout);
   drawList();
   drawHead();

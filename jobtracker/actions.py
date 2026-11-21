@@ -844,8 +844,14 @@ def chat_rename(id: str, title: str):
     return assistant.rename_chat(id, title)
 
 
+@action("chat.archive")
+def chat_archive(id: str, archived: bool = True):
+    """Archive a conversation (out of the main list, kept and reopenable), or bring it back with archived=false."""
+    return assistant.archive_chat(id, archived)
+
+
 @action("chat.delete")
 def chat_delete(id: str):
-    """Delete a conversation."""
+    """Delete a conversation for good."""
     assistant.delete_chat(id)
     return {"deleted": id}

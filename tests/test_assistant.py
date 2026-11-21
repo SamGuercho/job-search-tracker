@@ -121,5 +121,30 @@ class AssistantTests(unittest.TestCase):
         self.assertIn("error", json.loads(FakeOpenAI.sent[1]["input"][0]["output"]))
 
 
+    def test_archive_and_delete_conversations(self):
+        FakeOpenAI.script = [([], "Hi."), ([], "Hello again.")]
+        first = registry.run("chat.send", {"message": "First"})
+        second = registry.run("chat.send", {"message": "Second"})
+        archived = registry.run("chat.archive", {"id": first["id"]})
+        self.assertTrue(archived["archived"])
+        listed = {c["id"]: c["archived"] for c in registry.run("chat.list", {})}
+        self.assertEqual(listed, {first["id"]: True, second["id"]: False})
+        FakeOpenAI.script = [([], "Back.")]
+        again = registry.run("chat.send", {"message": "Still there?", "chat_id": first["id"]})
+        self.assertFalse(again["archived"])  # writing in it brings it back
+        registry.run("chat.delete", {"id": second["id"]})
+        self.assertEqual([c["id"] for c in registry.run("chat.list", {})], [first["id"]])
+
+    def test_conversations_are_separate(self):
+        FakeOpenAI.script = [([], "A."), ([], "B."), ([], "A again.")]
+        a = registry.run("chat.send", {"message": "In A"})
+        b = registry.run("chat.send", {"message": "In B"})
+        registry.run("chat.send", {"message": "A, second message", "chat_id": a["id"]})
+        self.assertIsNone(FakeOpenAI.sent[1]["previous_response_id"])          # B starts with no history
+        self.assertEqual(FakeOpenAI.sent[2]["previous_response_id"], "resp1")  # A continues A only
+        self.assertNotIn("In B", [m["text"] for m in registry.run("chat.get", {"id": a["id"]})["messages"]])
+        self.assertNotEqual(a["id"], b["id"])
+
+
 if __name__ == "__main__":
     unittest.main()

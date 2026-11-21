@@ -227,6 +227,7 @@ class Chat(BaseModel):
     previous_response_id: str | None = None   # OpenAI keeps the conversation state server-side
     provider: Literal["openai", "claude"] = "openai"   # "claude" once OpenAI failed (quota, billing…): stays on Claude
     title_locked: bool = False                 # renamed by the user: no automatic titles
+    archived: bool = False                     # hidden from the main list (still searchable, can be reopened)
     messages: list[ChatMessage] = []
 
 

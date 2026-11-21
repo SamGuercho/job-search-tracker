@@ -106,8 +106,14 @@ How to work:
 # ------------------------------------------------------------------ storage
 
 def list_chats() -> list[dict]:
-    return [{"id": c.id, "title": c.title, "created_at": c.created_at, "messages": len(c.messages)}
-            for c in reversed(store.load().chats)]
+    return [{"id": c.id, "title": c.title, "created_at": c.created_at, "messages": len(c.messages),
+             "archived": c.archived} for c in reversed(store.load().chats)]
+
+
+def archive_chat(chat_id: str, archived: bool = True) -> Chat:
+    chat = get_chat(chat_id)
+    chat.archived = archived
+    return _save(chat)
 
 
 def get_chat(chat_id: str) -> Chat:
@@ -432,6 +438,7 @@ def _converse_claude(chat: Chat, note: str | None = None) -> None:
 
 def send(message: str, chat_id: str | None = None) -> Chat:
     chat = get_chat(chat_id) if chat_id else Chat(title=message.strip().splitlines()[0][:70] or "New chat")
+    chat.archived = False  # writing in an archived conversation brings it back
     chat.messages.append(ChatMessage(role="user", text=message))
     _save(chat)
     return _converse(chat, [{"role": "user", "content": message}])
