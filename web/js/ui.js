@@ -3,12 +3,15 @@
 /** h("div", {class: "x", onclick: fn}, child, "text", [more children]) */
 export function h(tag, attrs = {}, ...children) {
   const el = document.createElement(tag);
+  // Hebrew/Arabic typed or shown: each field and text block picks its own direction from its content
+  if ((tag === "textarea" || tag === "input") && !(attrs && "dir" in attrs)) el.dir = "auto";
   for (const [k, v] of Object.entries(attrs || {})) {
     if (v === undefined || v === null || v === false) continue;
     if (k.startsWith("on")) el.addEventListener(k.slice(2), v);
     else if (k === "class") el.className = v;
     else if (k === "value") el.value = v;
     else if (k === "checked") el.checked = v;
+    else if (k === "dir") el.dir = v;
     else el.setAttribute(k, v === true ? "" : v);
   }
   append(el, children);
@@ -143,13 +146,20 @@ export function markdown(text) {
     }
     if (code) { code.push(line); continue; }
     const li = line.match(/^\s*(?:[-*•]|\d+\.)\s+(.*)/);
-    if (li) { (items ??= []).push(h("li", {}, inline(li[1]))); continue; }
+    if (li) { (items ??= []).push(h("li", { dir: "auto" }, inline(li[1]))); continue; }
     if (items) { blocks.push(h("ul", {}, items)); items = null; }
     const heading = line.match(/^\s*#{1,6}\s+(.*)/);
-    if (heading) blocks.push(h("p", { class: "md-h" }, inline(heading[1])));
-    else if (line.trim()) blocks.push(h("p", {}, inline(line)));
+    if (heading) blocks.push(h("p", { class: "md-h", dir: "auto" }, inline(heading[1])));
+    else if (line.trim()) blocks.push(h("p", { dir: "auto" }, inline(line)));
   }
   if (code) blocks.push(h("pre", {}, h("code", {}, code.join("\n"))));
   if (items) blocks.push(h("ul", {}, items));
   return blocks;
+}
+
+/** Money in US dollars: small amounts keep 3 decimals ($0.004), unknown is "—". */
+export function usd(v) {
+  if (v === null || v === undefined) return "—";
+  if (v === 0) return "$0";
+  return `$${v < 0.1 ? v.toFixed(3) : v.toFixed(2)}`;
 }

@@ -2,11 +2,14 @@
 import { call, fileUrl } from "../api.js";
 import { attempt, chips, daysBadge, field, formatDate, h, joinList, mapsUrl, markdown, mount, readForm, toast } from "../ui.js";
 import { processCard } from "./process-graph.js";
+import { recordingsCard } from "./recordings.js";
 
 export async function renderCompany(root, id) {
   const [company, info, master] = await Promise.all([call("company.get", { id }), call("app.info"), call("cv.master.get")]);
   let prep = await call("prep.get", { company: id });
   let practiceLog = await call("practice.history", { company: id });  // newest first
+  let prepLanguage = "English";
+  const recordings = recordingsCard(company, info);
   let review = null;   // last AI review of the summary, kept across re-renders
 
   const save = async (fields, msg = "Saved") => {
@@ -151,7 +154,7 @@ export async function renderCompany(root, id) {
       h("span", { class: "spacer" }), h("button", { class: "ghost small", onclick: () => { review = null; render(); } }, "Close")),
     r.strengths.length > 0 && h("div", {}, h("div", { class: "small muted" }, "Already fits"), chips(r.strengths, "ok")),
     r.missing_but_in_cv.length > 0 && h("div", {}, h("div", { class: "small muted" }, "The job wants it, your CV has it, the summary doesn't say it"),
-      h("ul", { class: "small" }, r.missing_but_in_cv.map((m) => h("li", {}, h("b", {}, m.requirement), m.evidence ? ` — ${m.evidence}` : "")))),
+      h("ul", { class: "small" }, r.missing_but_in_cv.map((m) => h("li", { dir: "auto" }, h("b", {}, m.requirement), m.evidence ? ` — ${m.evidence}` : "")))),
     r.gaps.length > 0 && h("div", {}, h("div", { class: "small muted" }, "Not in your CV (don't claim it)"), chips(r.gaps, "bad")),
     r.warnings.map((w) => h("p", { class: "small", style: "color:var(--amber)" }, `⚠ ${w}`)),
     r.suggestion && h("div", {},
@@ -205,12 +208,16 @@ export async function renderCompany(root, id) {
     const start = info.premium && h("button", {
       class: p?.status === "done" ? "" : "primary", disabled: running, onclick: async () => {
         if (p?.status === "done" && !confirm("Prepare again? The current prep is replaced (its file is archived).")) return;
-        const started = await attempt(() => call("prep.start", { company: id }), "Preparation started: it takes a few minutes");
+        const started = await attempt(() => call("prep.start", { company: id, language: prepLanguage }), "Preparation started: it takes a few minutes");
         if (started) { prep = await call("prep.get", { company: id }); render(); poll(); }  // keeps the current prep visible
       },
     }, running ? "Preparing…" : p?.status === "done" ? "Prepare again" : "✨ Prepare interview");
+    const language = info.premium && !running && h("select", {
+      title: "Language of the prep (e.g. Hebrew for an HR round in Hebrew)", onchange: (e) => { prepLanguage = e.target.value; },
+    }, [["English", "English"], ["Hebrew", "Hebrew · עברית"], ["French", "French"]].map(([v, label]) => h("option", { value: v, selected: v === prepLanguage }, label)));
     return h("div", { class: "card prep" },
-      h("div", { class: "row" }, h("h2", { style: "margin:0" }, "Interview prep"), h("span", { class: "spacer" }), start),
+      h("div", { class: "row" }, h("h2", { style: "margin:0" }, "Interview prep"), h("span", { class: "spacer" }), language, start),
+      info.premium && !running && h("p", { class: "small muted", style: "margin:4px 0 0; text-align:right" }, "Covered by your ChatGPT plan: no API cost."),
       !p && h("p", { class: "muted" }, info.premium
         ? "Research on the company, the likely interview process, and exercises with solutions and grading rubrics. Takes a few minutes."
         : "No prep yet. Ask an AI assistant connected to the tracker (MCP) to write one with prep.brief and prep.save."),
@@ -249,7 +256,7 @@ export async function renderCompany(root, id) {
         h("span", { class: "spacer" }), versionPicker(p)),
       section("The company", markdown(r.company_summary), true),
       section("Likely interview process", markdown(r.interview_process)),
-      section("Focus topics", h("ul", {}, r.focus_topics.map((t) => h("li", {}, t)))),
+      section("Focus topics", h("ul", {}, r.focus_topics.map((t) => h("li", { dir: "auto" }, t)))),
       section("Your angle", markdown(r.candidate_angle)),
       h("h3", {}, `Exercises (${r.exercises.length})`),
       r.exercises.map((e, n) => h("details", { class: "exercise" },
@@ -262,14 +269,14 @@ export async function renderCompany(root, id) {
           h("details", {}, h("summary", { class: "small" }, "Solution, rubric and strong answer"),
             markdown(e.solution),
             h("p", { class: "md-h" }, "Rubric (10 points)"),
-            h("ul", {}, e.rubric.map((pt) => h("li", {}, `${pt.point} (${pt.points})`))),
+            h("ul", {}, e.rubric.map((pt) => h("li", { dir: "auto" }, `${pt.point} (${pt.points})`))),
             h("p", { class: "md-h" }, "Strong answer"), markdown(e.strong_answer),
-            h("p", { class: "md-h" }, "Common mistakes"), h("ul", {}, e.common_mistakes.map((m) => h("li", {}, m))))))),
+            h("p", { class: "md-h" }, "Common mistakes"), h("ul", {}, e.common_mistakes.map((m) => h("li", { dir: "auto" }, m))))))),
       practiceLog.length > 0 && section(`Your practice (${practiceLog.length})`, h("ul", {}, practiceLog.slice(0, 15).map((a) => h("li", {},
         h("b", {}, `${a.score}/10`), ` · ${a.exercise} · ${a.at.slice(0, 10)}`,
         a.missed.length > 0 && h("span", { class: "small muted" }, ` · missed: ${a.missed.join("; ")}`))))),
-      section("Questions to ask them", h("ul", {}, r.questions_to_ask.map((q) => h("li", {}, q)))),
-      section("Sources", h("ul", {}, r.sources.map((s) => h("li", {}, /^https?:\/\//.test(s) ? h("a", { href: s, target: "_blank" }, s) : s)))));
+      section("Questions to ask them", h("ul", {}, r.questions_to_ask.map((q) => h("li", { dir: "auto" }, q)))),
+      section("Sources", h("ul", {}, r.sources.map((s) => h("li", { dir: "auto" }, /^https?:\/\//.test(s) ? h("a", { href: s, target: "_blank" }, s) : s)))));
   };
 
   // While a prep is being written, check every 15 s (stops when you leave the page).
@@ -289,6 +296,7 @@ export async function renderCompany(root, id) {
       h("div", { class: "stack" },
         process(),
         prepCard(),
+        recordings,
         h("div", { class: "grid cols-main" },
           h("div", { class: "stack" }, summaryCard(), details()),
           h("div", { class: "stack" }, followUp(), jobDescription(), documents(), map()))));

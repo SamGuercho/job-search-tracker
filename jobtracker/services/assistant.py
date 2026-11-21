@@ -15,7 +15,7 @@ from urllib.parse import quote, unquote
 from .. import config, registry, users
 from ..models import Chat, ChatBook, ChatMessage, ToolEvent
 from ..storage import UserDocument
-from . import claude, companies, llm, master_cv
+from . import claude, companies, llm, master_cv, usage
 from .companies import NotFound
 
 store = UserDocument("chats.json", ChatBook)
@@ -64,6 +64,10 @@ How to work:
   "Am I improving in SQL?" -> practice.capabilities (level now vs start, change, target). Targets: practice.set_target.
   No prep yet: if prep.status says premium + available, offer
   prep.start (it runs in the background for several minutes; the prep then shows on the application page).
+- Interview recordings (uploaded on the application page): recording.list gives each debrief (questions with
+  graded answers, to improve, next steps, thank-you email); recording.transcript the full text. Their graded
+  answers are already in the practice log (source "interview").
+- Costs: usage.report (this month, by feature/provider/person), usage.averages (typical cost per feature).
 - "How is my search going?" -> analytics.summary (funnel, rates, timing, where applications stop, by source).
 - Follow-ups: company.list gives days_since_update; 14+ days on Applied/In process = needs a follow-up.
 - The master CV is a set of achievements; each can have several wordings (variants) emphasising different
@@ -294,6 +298,17 @@ def _converse(chat: Chat, input_items: list, note: str | None = None) -> Chat:
     """
     if not llm.available():
         raise llm.LLMUnavailable(llm.NO_KEY)
+    first_new = len(chat.messages)
+    with usage.tally() as spent:
+        _converse_with_fallback(chat, input_items, note)
+    replies = [m for m in chat.messages[first_new:] if m.role == "assistant"]
+    if replies and spent:
+        replies[-1].cost_usd = usage.sum_cost(spent)  # what this answer cost (all the AI calls behind it)
+    _auto_title(chat)
+    return _save(chat)
+
+
+def _converse_with_fallback(chat: Chat, input_items: list, note: str | None) -> None:
     use_claude = claude.available() and (chat.provider == "claude" or not llm.openai_available())
     if use_claude:
         chat.provider = "claude"
@@ -313,8 +328,6 @@ def _converse(chat: Chat, input_items: list, note: str | None = None) -> Chat:
                 _converse_claude(chat, note)
             else:
                 chat.messages.append(ChatMessage(role="assistant", text=f"⚠ OpenAI error: {e}"))
-    _auto_title(chat)
-    return _save(chat)
 
 
 def _converse_openai(chat: Chat, input_items: list) -> None:
@@ -324,6 +337,7 @@ def _converse_openai(chat: Chat, input_items: list) -> None:
         response = client.responses.create(
             model=config.OPENAI_CHAT_MODEL, instructions=_instructions(chat), input=input_items,
             tools=tools(), previous_response_id=chat.previous_response_id)
+        usage.record_openai(response, config.OPENAI_CHAT_MODEL)
         chat.previous_response_id = response.id
         calls = [o for o in response.output if o.type == "function_call"]
         if response.output_text:

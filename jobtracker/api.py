@@ -21,7 +21,7 @@ from . import (
     registry,
     users,
 )
-from .services import llm, pdf
+from .services import llm, pdf, recordings
 from .services.companies import NotFound
 from .services.cv_import import SUPPORTED
 from .services.llm import LLMUnavailable
@@ -102,7 +102,7 @@ def run_action(name: str, payload: dict = Body(default={})):
         return {"ok": True, "result": result, **({"notice": notice} if notice else {})}
     except NotFound as e:
         raise HTTPException(404, str(e)) from e
-    except (LLMUnavailable, PrepUnavailable) as e:
+    except (LLMUnavailable, PrepUnavailable, recordings.RecordingUnavailable) as e:
         raise HTTPException(503, str(e)) from e
     except PermissionError as e:
         raise HTTPException(403, str(e)) from e
@@ -110,6 +110,22 @@ def run_action(name: str, payload: dict = Body(default={})):
         raise HTTPException(422, e.errors(include_url=False, include_context=False)) from e
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
+
+
+@app.post("/api/recordings/upload")
+async def upload_recording(company: str, step: str = "", file: UploadFile = File(...)):
+    """Upload an interview recording for an application: saved in its folder, measured, with cost estimates.
+    Nothing is spent until recording.transcribe."""
+    content = await file.read()
+    try:
+        rec = recordings.upload(company, Path(file.filename or "recording").name, content, step)
+    except NotFound as e:
+        raise HTTPException(404, str(e)) from e
+    except recordings.RecordingUnavailable as e:
+        raise HTTPException(503, str(e)) from e
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    return {"ok": True, "result": recordings.view(rec)}
 
 
 @app.post("/api/cv/import")

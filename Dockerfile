@@ -7,10 +7,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
-# LibreOffice (Word -> PDF) and STIX Two Text, the font of the CV template (pinned release)
+# LibreOffice (Word -> PDF), ffmpeg (interview recordings) and STIX Two Text, the font of the CV template (pinned release)
 ARG STIX_VERSION=v2.13b171
 RUN apt-get update \
- && apt-get install -y --no-install-recommends libreoffice-writer-nogui fontconfig curl ca-certificates \
+ && apt-get install -y --no-install-recommends libreoffice-writer-nogui fontconfig curl ca-certificates ffmpeg \
  && mkdir -p /usr/share/fonts/stix \
  && for style in Regular Bold Italic BoldItalic; do \
       curl -fsSL -o /usr/share/fonts/stix/STIXTwoText-$style.otf \

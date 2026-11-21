@@ -1,6 +1,6 @@
 // Assistant: conversations with the LLM agent that drives the app's actions.
 import { call, fileUrl } from "../api.js";
-import { attempt, h, markdown, mount } from "../ui.js";
+import { attempt, h, markdown, mount, usd } from "../ui.js";
 
 const LABELS = {
   "company.list": "Looked at your companies", "company.get": "Opened company", "company.create": "Added company",
@@ -70,9 +70,11 @@ export async function renderChat(root, chatId, params) {
     thread.scrollTop = thread.scrollHeight;
   };
 
-  const bubble = (role, text) => h("div", { class: `msg ${role}` }, role === "assistant" ? markdown(text) : text);
+  const bubble = (role, text) => h("div", { class: `msg ${role}`, dir: "auto" }, role === "assistant" ? markdown(text) : text);
 
-  const message = (m) => (m.role === "tool" ? toolEvent(m.tool) : bubble(m.role, m.text));
+  const message = (m) => (m.role === "tool" ? toolEvent(m.tool)
+    : [bubble(m.role, m.text), m.cost_usd !== null && m.cost_usd !== undefined
+      && h("div", { class: "msg-cost", title: "What the AI calls behind this answer cost (estimate)" }, usd(m.cost_usd))]);
 
   const toolEvent = (t) => {
     const icon = { done: "✓", approved: "✓", error: "⚠", rejected: "✕", pending: "?" }[t.status];

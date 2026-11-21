@@ -213,6 +213,7 @@ class ChatMessage(BaseModel):
     role: Literal["user", "assistant", "tool", "notice"]   # notice: shown to the user, never sent to a model
     text: str = ""
     tool: ToolEvent | None = None
+    cost_usd: float | None = None   # assistant replies: what the AI calls behind it cost
     at: str = Field(default_factory=lambda: datetime.now().isoformat(timespec="seconds"))
 
 
@@ -297,8 +298,91 @@ class PracticeAttempt(BaseModel):
     score: int                  # out of 10
     missed: list[str] = []      # rubric points the answer missed
     feedback: str = ""
+    source: Literal["practice", "interview"] = "practice"  # interview: graded from a real interview's recording
+    recording_id: str = ""
 
 
 class PracticeBook(BaseModel):
     attempts: list[PracticeAttempt] = []
     targets: dict[str, int] = {}   # capability -> target score /10 the user aims for
+
+
+# ------------------------------------------------------------------- usage
+# One AI call (or Codex run, or audio transcription) and what it cost, from the usage the provider reported.
+
+class UsageEntry(BaseModel):
+    at: str = Field(default_factory=lambda: datetime.now().isoformat(timespec="seconds"))
+    provider: str                # openai | anthropic | codex
+    model: str
+    feature: str = ""            # the user-facing action (chat.send, recording.analyze, prep.start…)
+    input_tokens: int = 0        # not counting cached / cache-write tokens
+    cached_tokens: int = 0
+    cache_write_tokens: int = 0
+    output_tokens: int = 0       # includes reasoning tokens
+    seconds: float = 0           # audio length (transcription) or run time (Codex)
+    cost_usd: float | None = None  # None: no price known for this model (see prices.py)
+    covered_by_plan: bool = False  # Codex on the ChatGPT plan: no per-use cost
+
+
+class UsageBook(BaseModel):
+    entries: list[UsageEntry] = []
+
+
+# ---------------------------------------------------------------- recordings
+# A recorded interview: transcribed (with speaker labels when available), then a debrief graded by the cheap model.
+
+class TranscriptSegment(BaseModel):
+    speaker: str = ""        # "A", "B"… from the transcription; "" when it gives no speaker labels
+    start: float = 0
+    end: float = 0
+    text: str
+
+
+class DebriefQuestion(BaseModel):
+    question: str            # what the interviewer asked (rephrased if needed)
+    answer_summary: str      # what the candidate answered, in short
+    kind: str                # technical, behavioral, HR, case…
+    capability: str          # broad skill (SQL, Behavioral…)
+    topic: str
+    score: int               # /10 for the candidate's answer
+    missed: list[str]        # what a strong answer would have added
+    feedback: str
+
+
+class Debrief(BaseModel):
+    summary: str             # how the interview went (markdown)
+    about_the_role: str      # what they said about the company, team, role, process (markdown)
+    next_steps: str
+    questions: list[DebriefQuestion]
+    strengths: list[str]
+    to_improve: list[str]
+    thank_you_email: str     # a short thank-you email to send
+
+
+RecordingStatus = Literal["uploaded", "transcribing", "choose_speaker", "analyzing", "done", "error"]
+
+
+class Recording(BaseModel):
+    id: str = Field(default_factory=new_id)
+    company_id: str
+    step: str = ""           # process step id it belongs to
+    step_name: str = ""
+    file: str                # the audio, relative to the output folder
+    original_name: str = ""
+    uploaded_at: str = Field(default_factory=lambda: datetime.now().isoformat(timespec="seconds"))
+    duration_s: float = 0
+    status: RecordingStatus = "uploaded"
+    error: str = ""
+    model: str = ""          # transcription model used
+    diarized: bool = False   # segments carry speaker labels
+    segments: list[TranscriptSegment] = []
+    me: str = ""             # which speaker label is the user
+    language: str = ""       # language of the debrief ("" = the interview's)
+    debrief: Debrief | None = None
+    debrief_file: str | None = None
+    estimate_usd: dict[str, float | None] = {}  # before: {"transcription": …, "analysis": …}
+    cost_usd: dict[str, float] = {}             # after, from the usage the providers reported
+
+
+class RecordingBook(BaseModel):
+    recordings: list[Recording] = []

@@ -18,7 +18,7 @@ from pydantic import BaseModel
 
 from .. import config
 from ..logs import log
-from . import claude
+from . import claude, usage
 
 S = TypeVar("S", bound=BaseModel)
 
@@ -108,6 +108,7 @@ def structured(instructions: str, text: str, schema: type[S]) -> S:
 def _openai_structured(instructions: str, text: str, schema: type[S]) -> S:
     response = client().responses.parse(
         model=config.OPENAI_MODEL, instructions=instructions, input=text, text_format=schema)
+    usage.record_openai(response, config.OPENAI_MODEL)
     if response.output_parsed is None:
         raise LLMUnavailable("The model returned no structured result (refusal or truncated output).")
     return response.output_parsed

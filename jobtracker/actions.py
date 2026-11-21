@@ -43,6 +43,8 @@ from .services import (
     master_cv,
     practice,
     prep,
+    recordings,
+    usage,
     web,
     wording,
 )
@@ -79,7 +81,8 @@ def app_info():
             "work_models": WORK_MODELS, "source_types": SOURCE_TYPES,
             "templates": [{"name": t.name, "label": t.label} for t in TEMPLATES.values()],
             "llm_available": llm.available(), "user": users.current() or users.owner(),
-            "premium": users.is_premium()}
+            "premium": users.is_premium(),
+            "recordings": llm.openai_available() and bool(recordings.shutil.which(config.FFMPEG_BIN))}
 
 
 @action("company.list")
@@ -222,19 +225,20 @@ def prep_status():
 
 
 @action("prep.start")
-def prep_start(company: str, exercises: int = 5):
+def prep_start(company: str, exercises: int = 5, language: str = "English"):
     """Start writing the interview prep for an application on the server (Codex with a strong model and web
     search; premium accounts only). Runs in the background for several minutes: check prep.get for the result.
-    Replaces the previous prep (its file is archived)."""
-    return _prep_view(prep.start(company, max(1, min(exercises, 10))))
+    Replaces the previous prep (its file is archived). `language`: the language of the prep's text (e.g. Hebrew
+    for an HR round in Hebrew)."""
+    return _prep_view(prep.start(company, max(1, min(exercises, 10)), language))
 
 
 @action("prep.brief")
-def prep_brief(company: str, exercises: int = 5):
+def prep_brief(company: str, exercises: int = 5, language: str = "English"):
     """For an AI client writing the prep itself (e.g. Codex or Claude through MCP): the coaching instructions,
     the application and CV context, and the JSON schema to fill. Follow the instructions (research with web
     search), then call prep.save with the JSON object."""
-    return prep.brief(company, max(1, min(exercises, 10)))
+    return prep.brief(company, max(1, min(exercises, 10)), language)
 
 
 @action("prep.save")
@@ -242,6 +246,73 @@ def prep_save(company: str, result: dict, by: str = "assistant via MCP"):
     """Save an interview prep written from prep.brief: `result` must match the brief's output_schema. Replaces
     the previous prep (its file is archived) and writes Interview_Prep.md in the company folder."""
     return _prep_view(prep.save(company, result, by))
+
+
+# ================================================================ recordings
+
+@action("recording.list")
+def recording_list(company: str):
+    """An application's interview recordings (upload them in the app): status, length, estimated and actual
+    costs, speakers, and the debrief once analyzed (summary, questions with graded answers, to improve,
+    thank-you email)."""
+    return [recordings.view(r) for r in recordings.list_for(company)]
+
+
+@action("recording.get")
+def recording_get(id: str):
+    """One recording (see recording.list)."""
+    return recordings.view(recordings.get(id))
+
+
+@action("recording.transcript")
+def recording_transcript(id: str):
+    """The full transcript of a recording, with [CANDIDATE] / [INTERVIEWER] labels when known."""
+    return recordings.transcript(id)
+
+
+@action("recording.transcribe")
+def recording_transcribe(id: str, language: str = ""):
+    """Transcribe an uploaded recording (OpenAI, billed per minute: see its estimate_usd first), in the
+    background. Then the user picks their voice (recording.choose_speaker) and the debrief is written.
+    `language`: the debrief's language ("" = the interview's)."""
+    return recordings.view(recordings.transcribe(id, language))
+
+
+@action("recording.choose_speaker")
+def recording_choose_speaker(id: str, me: str):
+    """Say which speaker label (A, B…) is the user, then write the debrief and grade the answers (background)."""
+    return recordings.view(recordings.choose_speaker(id, me))
+
+
+@action("recording.reanalyze")
+def recording_reanalyze(id: str, language: Optional[str] = None):
+    """Write the debrief again (e.g. in another language); replaces its graded answers in the practice log."""
+    return recordings.view(recordings.reanalyze(id, language))
+
+
+@action("recording.delete", confirm=True)
+def recording_delete(id: str):
+    """Delete a recording, its audio file and the practice answers graded from it."""
+    recordings.delete(id)
+    return {"deleted": id}
+
+
+# ===================================================================== costs
+
+@action("usage.report")
+def usage_report(days: int = 30):
+    """AI costs from the usage the providers reported, at list prices: this month and last month, by provider,
+    feature and model, per day, the latest calls, and (owner, several users) per person. Codex preps are $0
+    (ChatGPT plan). Estimates: the providers' bills are the reference."""
+    return usage.report(max(1, min(days, 365)))
+
+
+@action("usage.averages")
+def usage_averages():
+    """Average cost per use of the main AI features, from this person's history (for estimates)."""
+    names = ["chat.send", "chat.resolve", "cv.import.parse", "cv.keywords.match_job", "cv.summary.review",
+             "cv.variant.draft", "workflow.new_application", "recording.transcribe", "recording.analyze"]
+    return {n: a for n in names if (a := usage.average_cost(n))}
 
 
 # ============================================================== applications

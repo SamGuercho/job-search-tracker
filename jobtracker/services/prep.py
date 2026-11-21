@@ -17,6 +17,7 @@ import json
 import subprocess
 import tempfile
 import threading
+import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -24,7 +25,7 @@ from .. import config, users
 from ..logs import log
 from ..models import InterviewPrep, PrepBook, PrepResult
 from ..storage import UserDocument
-from . import companies, files, master_cv
+from . import companies, files, master_cv, usage
 
 store = UserDocument("preps.json", PrepBook)
 PREP_FILENAME = "Interview_Prep.md"
@@ -54,7 +55,8 @@ Prepare the candidate below for their next interviews at {company}, as the best 
    fits: {capabilities}. Only if none fits, use a short new name (1 to 3 words).
 5. Suggest smart questions the candidate can ask the interviewers.
 
-Write in English, concise and concrete. Use Markdown inside text fields. Do not run shell commands or edit
+Write all the text in {language}, concise and concrete (keep the JSON field names and the `difficulty` and
+`capability` values in English). Use Markdown inside text fields. Do not run shell commands or edit
 files: research and answer only. Your final message must be the JSON object matching the given schema.
 """
 
@@ -95,19 +97,24 @@ def _context(company) -> str:
         lines.append(f"\nJob description:\n{c.job_description.strip()[:15_000]}")
     cv = master_cv.get_master().model_dump(mode="json", exclude_none=True)
     lines.append(f"\nCandidate's CV (JSON):\n{json.dumps(cv, ensure_ascii=False)[:20_000]}")
-    from . import practice  # (imports prep)
+    from . import practice, recordings  # (they import prep)
+    interviews = recordings.summary_for_prep(c.id)
+    if interviews:
+        lines.append(f"\nWhat happened in the candidate's interviews at {c.name} so far (from recordings; prepare the "
+                     f"NEXT stage, build on what was asked and on what to improve):\n{interviews}")
     history = practice.summary_for_prep()
     if history:
         lines.append(f"\nCandidate's practice history (all applications):\n{history}")
     return "\n".join(lines)
 
 
-def brief(ref: str, exercises: int = 5) -> dict:
+def brief(ref: str, exercises: int = 5, language: str = "English") -> dict:
     """Everything a model needs to write the prep: instructions, context and the JSON schema to return."""
     company = companies.resolve(ref)
     from . import practice  # (imports prep)
     instructions = INSTRUCTIONS.format(company=company.name, website=company.website or "find it", count=exercises,
-                                       capabilities=", ".join(practice.known_capabilities()))
+                                       capabilities=", ".join(practice.known_capabilities()),
+                                       language=language.strip() or "English")
     return {"company_id": company.id, "company": company.name, "instructions": instructions,
             "context": _context(company), "output_schema": strict_schema()}
 
@@ -208,7 +215,7 @@ def codex_status() -> dict:
     return {"available": True, "reason": text.splitlines()[0] if text else "signed in"}
 
 
-def start(ref: str, exercises: int = 5) -> InterviewPrep:
+def start(ref: str, exercises: int = 5, language: str = "English") -> InterviewPrep:
     """Start a prep in the background (premium users only). Poll get() for the result."""
     if not users.is_premium():
         raise PermissionError("Interview prep is for premium accounts (JOBTRACKER_PREMIUM).")
@@ -219,7 +226,7 @@ def start(ref: str, exercises: int = 5) -> InterviewPrep:
     if current and current.status == "running":
         return current
     company = companies.resolve(ref)
-    task = brief(company.id, exercises)
+    task = brief(company.id, exercises, language)
     by = f"codex {config.PREP_MODEL} ({config.PREP_EFFORT})"
     prep = _store(InterviewPrep(company_id=company.id, status="running", by=by))
     user = users.current()
@@ -229,9 +236,11 @@ def start(ref: str, exercises: int = 5) -> InterviewPrep:
 
 
 def _run(user: str, company_id: str, run_id: str, task: dict, by: str) -> None:
-    with users.acting_as(user), _one_at_a_time:
+    with users.acting_as(user), usage.feature("prep.start"), _one_at_a_time:
         try:
+            started = time.monotonic()
             result = run_codex(task)
+            usage.record_plan(config.PREP_MODEL, time.monotonic() - started)
             save(company_id, result, by, run_id)
             log.info("Interview prep done for %s", task["company"])
         except Exception as e:  # recorded on the prep, shown in the app

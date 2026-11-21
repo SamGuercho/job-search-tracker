@@ -58,4 +58,11 @@ PREP_MODEL = os.environ.get("JOBTRACKER_PREP_MODEL", "gpt-6.2-astra")
 PREP_EFFORT = os.environ.get("JOBTRACKER_PREP_EFFORT", "high")    # low | medium | high | xhigh | max | ultra
 PREP_TIMEOUT_MIN = int(os.environ.get("JOBTRACKER_PREP_TIMEOUT_MIN", "40"))
 # Tailscale logins allowed to run it (comma-separated). Single-user mode (no Tailscale users): always allowed.
+# Interview recordings: transcription (OpenAI, billed per minute). The diarize model labels speakers; OpenAI shuts
+# it down on 2027-02-26, after which the app falls back to TRANSCRIBE_FALLBACK_MODEL (text only).
+TRANSCRIBE_MODEL = os.environ.get("JOBTRACKER_TRANSCRIBE_MODEL", "gpt-4o-transcribe-diarize")
+TRANSCRIBE_FALLBACK_MODEL = os.environ.get("JOBTRACKER_TRANSCRIBE_FALLBACK_MODEL", "gpt-transcribe")
+FFMPEG_BIN = os.environ.get("JOBTRACKER_FFMPEG", "ffmpeg")      # reads and shrinks the audio
+FFPROBE_BIN = os.environ.get("JOBTRACKER_FFPROBE", "ffprobe")
+MAX_RECORDING_MB = int(os.environ.get("JOBTRACKER_MAX_RECORDING_MB", "500"))
 PREMIUM = {u.strip().lower() for u in os.environ.get("JOBTRACKER_PREMIUM", "").split(",") if u.strip()}

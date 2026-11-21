@@ -65,7 +65,9 @@ def to_jsonable(value: Any) -> Any:
 def run(name: str, payload: dict | None = None) -> Any:
     if name not in ACTIONS:
         raise KeyError(f"Unknown action {name!r}")
-    return ACTIONS[name].run(payload)
+    from .services import usage  # AI calls made by this action are billed to it (the outermost action wins)
+    with usage.feature(name):
+        return ACTIONS[name].run(payload)
 
 
 def manifest() -> list[dict]:

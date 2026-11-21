@@ -144,6 +144,20 @@ prep pack: likely interview process, topics, your angle, exercises with solution
 to ask (also saved as `Interview_Prep.md`). **Practice with the assistant** then quizzes you and grades your
 answers with the rubrics. Codex runs with your ChatGPT plan, not API billing: setup in the home-server guide.
 
+### Interview recordings
+On an application's page, upload the audio of an interview (from your phone's recorder, Zoom/Meet…). You see the
+estimated cost first (≈ $0.006 per minute to transcribe, a few cents for the debrief), then: transcription with
+speaker labels, you pick which voice is yours, and a debrief: summary, what they said about the role, next
+steps, every question with your answer graded /10 and what was missed, strengths, what to improve, and a
+thank-you email (also saved as `Debrief_….md`). The graded answers go to the Practice page (as "interview"), and
+the next prep builds on them. Needs `OPENAI_API_KEY` and ffmpeg (included in the Docker image).
+
+### Costs
+The **Costs** page shows what the AI features cost: this month and last, per day, by feature, provider and model,
+the typical cost of one use of each feature, and (owner, shared server) per person. Each Assistant answer shows
+its cost too. These are estimates from the usage the providers report × list prices (`jobtracker/prices.py`);
+your OpenAI / Anthropic bills are the reference. Codex preps are $0 (ChatGPT plan).
+
 ### Assistant (needs an OpenAI key)
 A chat that uses the app's features for you: add a job from a link or pasted text (company, details, saved
 description, tailored CV, gaps), update process steps ("I got an HR call for Monday 10am"), list follow-ups,
@@ -221,6 +235,10 @@ All settings live in `.env` (created from `.env.example` on first run). Restart 
 | `ANTHROPIC_EFFORT` | `medium` | Claude reasoning effort for the assistant: `low` … `max`. |
 | `JOBTRACKER_PREMIUM` | empty | Tailscale logins allowed to use **✨ Prepare interview** (interview prep written by Codex with your ChatGPT plan, see the home-server guide). Single-user mode: always allowed. |
 | `JOBTRACKER_PREP_MODEL` / `JOBTRACKER_PREP_EFFORT` | `gpt-6.2-astra` / `high` | Codex model and reasoning for interview preps. |
+| `JOBTRACKER_TRANSCRIBE_MODEL` | `gpt-4o-transcribe-diarize` | Transcription with speaker labels. OpenAI shuts it down on 2027-02-26; then the fallback below is used and the debrief tells speakers apart from the content. |
+| `JOBTRACKER_TRANSCRIBE_FALLBACK_MODEL` | `gpt-transcribe` | Text-only transcription when the model above fails. |
+| `JOBTRACKER_MAX_RECORDING_MB` | `500` | Largest recording you can upload. |
+| `JOBTRACKER_PRICES` | empty | A JSON file to override or add model prices for the Costs page (same shape as `jobtracker/prices.py`). |
 | `JOBTRACKER_CODEX` | `codex` | The Codex command (installed in the Docker image; on a Mac, the one inside the ChatGPT app works too). |
 | `JOBTRACKER_OUTPUT_DIR` | `./output` | Where company folders with CVs and job descriptions go. `~` allowed. |
 | `JOBTRACKER_DATA_DIR` | `./data` | Where your data files live. |

@@ -11,6 +11,7 @@ from typing import TypeVar
 from pydantic import BaseModel
 
 from .. import config
+from . import usage
 
 S = TypeVar("S", bound=BaseModel)
 
@@ -47,6 +48,7 @@ def structured(instructions: str, text: str, schema: type[S]) -> S:
         model=model(), max_tokens=MAX_TOKENS, system=instructions,
         messages=[{"role": "user", "content": text}], output_format=schema,
         betas=[FALLBACK_BETA], fallbacks="default")
+    usage.record_anthropic(response)
     if response.stop_reason == "refusal":
         raise ClaudeRefused("Claude declined this request.")
     if response.parsed_output is None:
@@ -56,8 +58,10 @@ def structured(instructions: str, text: str, schema: type[S]) -> S:
 
 def chat(system: str, tools: list[dict], messages: list):
     """One round-trip of the assistant loop (the caller runs the tools and loops)."""
-    return client().beta.messages.create(
+    response = client().beta.messages.create(
         model=model(), max_tokens=MAX_TOKENS, system=system, tools=tools, messages=messages,
         output_config={"effort": config.ANTHROPIC_EFFORT},
         cache_control={"type": "ephemeral"},  # the tool list and history repeat on every step
         betas=[FALLBACK_BETA], fallbacks="default")
+    usage.record_anthropic(response)
+    return response
