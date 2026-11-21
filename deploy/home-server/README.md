@@ -187,6 +187,10 @@ Your own devices keep full access; people you shared with reach only the https a
 - **Open the app through its `https://….ts.net` address, also on this PC.** `http://127.0.0.1:8000` answers
   "No access" and the password is not used: with a password, anyone who knew it would be you.
 - Friends' data: `C:\JobSearch\data\users\<their login>\` (included in `backup.ps1`).
+- **AI assistants on your other devices** (Codex, Claude Code, Cursor…) can use the tracker on this PC through
+  its MCP endpoint, `https://<this PC>.<tailnet>.ts.net/mcp`. On the Mac, for Codex:
+  `codex mcp add job-search-tracker --url https://<this PC>.<tailnet>.ts.net/mcp`. They act as your
+  Tailscale login (friends' assistants as theirs), so each sees only their own data.
 - AI features use **your** OpenAI key for everyone (cents per action).
 - You hold their CVs: same trust as handing you a copy.
 - How it's safe: `tailscale serve` adds the visitor's identity (`Tailscale-User-Login`) to each request and removes

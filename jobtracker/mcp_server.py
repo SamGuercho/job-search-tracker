@@ -1,7 +1,10 @@
 """MCP server: every action becomes a tool for MCP clients (Cursor, Claude Code, Claude Desktop…).
 
 Tools are generated from the action registry, like the in-app assistant's, so a new action is
-available as soon as it is registered. Run over stdio: `python mcp_server.py` (see the README).
+available as soon as it is registered. Two transports:
+- stdio: `python mcp_server.py` (see the README), acting as the owner, like the CLI;
+- HTTP: the web app serves it at /mcp (see api.py). Each call runs as the Tailscale user of that HTTP request,
+  checked by the same middleware as the web app, so a remote client (Codex, Claude…) sees only its own data.
 
 - name: the action name with "_" instead of "." (process.set_state -> process_set_state)
 - input schema and description: from the action's signature and docstring
@@ -20,6 +23,7 @@ from mcp.server.stdio import stdio_server
 from . import (
     actions,  # noqa: F401  (registers the actions)
     registry,
+    users,
 )
 
 HIDDEN = ("chat.",)  # the in-app assistant's own conversations
@@ -71,13 +75,37 @@ def _text(value, error: bool = False) -> types.CallToolResult:
     return types.CallToolResult(content=[types.TextContent(type="text", text=text)], is_error=error)
 
 
+def _http_user(ctx) -> str:
+    """Whose data this call uses. Over HTTP the MCP session runs outside the request's own context, so the
+    user is read again from the request (the auth middleware already refused requests without it)."""
+    request = getattr(ctx, "request", None)
+    headers = getattr(request, "headers", None)
+    if headers is None:  # stdio
+        return users.current()
+    if users.enabled():
+        login = headers.get(users.HEADER, "").strip()
+        if not login:
+            raise PermissionError("No Tailscale identity on this request")
+        return users.resolve(login)
+    return ""  # single-user mode: the owner
+
+
 async def _call_tool(ctx, params: types.CallToolRequestParams) -> types.CallToolResult:
     action = _visible().get(params.name)
     if action is None:
         return _text(f"Unknown tool {params.name!r}", error=True)
     try:
+        user = _http_user(ctx)
+    except PermissionError as e:
+        return _text(str(e), error=True)
+
+    def run():
+        with users.acting_as(user):
+            return registry.run(action.name, params.arguments or {})
+
+    try:
         # actions are synchronous (files, PDF conversion, OpenAI): keep the event loop free
-        result = await anyio.to_thread.run_sync(registry.run, action.name, params.arguments or {})
+        result = await anyio.to_thread.run_sync(run)
     except Exception as e:  # report to the client instead of crashing the server
         return _text(f"{type(e).__name__}: {e}", error=True)
     return _text(result)
@@ -86,6 +114,14 @@ async def _call_tool(ctx, params: types.CallToolRequestParams) -> types.CallTool
 def build_server() -> Server:
     return Server("job-search-tracker", version="1.0", instructions=INSTRUCTIONS,
                   on_list_tools=_list_tools, on_call_tool=_call_tool)
+
+
+def http_manager():
+    """The /mcp endpoint's session manager (stateless: no state kept between requests). Run it with
+    `async with manager.run():` for the app's lifetime and serve `StreamableHTTPASGIApp(manager)`."""
+    from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
+
+    return StreamableHTTPSessionManager(app=build_server(), stateless=True, json_response=True)
 
 
 def main() -> None:

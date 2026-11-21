@@ -10,7 +10,8 @@ client; the app listens on localhost only, so the header can't be forged. There 
   to the email in that master CV, recorded in DATA_DIR/owner.txt on first visit so that changing the CV
   email later changes nothing. JOBTRACKER_OWNER overrides it (Tailscale login different from the CV email).
 - HTTP requests without the header are refused (the password is not used: anyone knowing it would be the
-  owner). The CLI and the MCP server don't go through HTTP and act as the owner.
+  owner). The CLI and the stdio MCP server don't go through HTTP and act as the owner; the HTTP MCP endpoint (/mcp)
+  uses the request's login like the rest of the app.
 
 Every data and file path in the app goes through data_dir() / output_dir(), which read the current user
 from a context variable set once per request: isolation is structural, not a check in each action.

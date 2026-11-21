@@ -1,12 +1,15 @@
 """HTTP layer: a thin wrapper over the action registry + static files."""
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import Body, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from mcp.server.streamable_http_manager import StreamableHTTPASGIApp
 from pydantic import ValidationError
+from starlette.routing import Route
 
 from . import (
     __version__,
@@ -14,6 +17,7 @@ from . import (
     auth,
     config,
     logs,
+    mcp_server,
     registry,
     users,
 )
@@ -23,7 +27,28 @@ from .services.cv_import import SUPPORTED
 from .services.llm import LLMUnavailable
 
 logs.setup()
-app = FastAPI(title="Job Search Tracker", version=__version__)
+_mcp = {"app": None}  # the /mcp handler; a session manager runs only once, so each app start gets a new one
+
+
+@asynccontextmanager
+async def lifespan(_app):
+    manager = mcp_server.http_manager()
+    async with manager.run():
+        _mcp["app"] = StreamableHTTPASGIApp(manager)
+        yield
+        _mcp["app"] = None
+
+
+class _McpEndpoint:
+    """Raw ASGI app (a class, so Starlette doesn't wrap it as a request/response handler)."""
+
+    async def __call__(self, scope, receive, send):
+        if _mcp["app"] is None:
+            raise RuntimeError("MCP endpoint used before the app started")
+        await _mcp["app"](scope, receive, send)
+
+
+app = FastAPI(title="Job Search Tracker", version=__version__, lifespan=lifespan)
 app.middleware("http")(auth.middleware)   # registered first = runs innermost, after logging
 app.middleware("http")(logs.access_log)
 
@@ -108,6 +133,11 @@ def get_file(path: str):
         return FileResponse(target, media_type="text/plain; charset=utf-8", filename=target.name,
                             content_disposition_type="inline")
     return FileResponse(target, filename=target.name)
+
+
+# MCP over HTTP for remote AI clients (Codex, Claude…): same tools as mcp_server.py, behind the same
+# auth middleware; each call runs as the request's Tailscale user (see mcp_server._http_user).
+app.router.routes.append(Route("/mcp", _McpEndpoint()))
 
 
 @app.get("/")

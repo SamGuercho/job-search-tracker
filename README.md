@@ -149,7 +149,7 @@ overwrites data, or adds text to your CV, waits for your Approve / Reject**. Con
 
 ## Use it from Cursor / Claude (MCP)
 
-The app is also an **MCP server**: AI tools like Cursor, Claude Code or Claude Desktop get every feature as a
+The app is also an **MCP server**: AI tools like Cursor, Claude Code, Claude Desktop or Codex get every feature as a
 tool (52 of them: add an application, update its process, generate a CV, analytics…), with the same data as
 the web app. Example prompts once connected: *"Add this job to my tracker and make my CV: <text>"*,
 *"I had the HR interview with Nimbus today"*, *"Which applications need a follow-up?"*.
@@ -162,8 +162,19 @@ the web app. Example prompts once connected: *"Add this job to my tracker and ma
    - **Cursor**: Settings → MCP → *Add new MCP server*, or paste the printed JSON into `~/.cursor/mcp.json`
      (merge it into `mcpServers` if the file already exists).
    - **Claude Code**: run the printed `claude mcp add …` command.
+   - **Codex** (in the ChatGPT app or the CLI): run the printed `codex mcp add …` command. Codex uses your
+     ChatGPT plan, not API billing: heavy work (interview prep with a top model and high reasoning) costs
+     nothing extra there. Inside the ChatGPT app the CLI is at
+     `/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex`.
    - **Claude Desktop**: Settings → Developer → *Edit Config*, paste the JSON, restart Claude Desktop.
 3. The client starts the server itself when needed; the web app doesn't have to be running.
+
+**Remote (the app on another machine, e.g. the home server):** the web app also serves the same tools over
+HTTP at `/mcp`. Connect a client by URL instead of a command, through Tailscale:
+```bash
+codex mcp add job-search-tracker --url https://<server>.<tailnet>.ts.net/mcp
+```
+Each call runs as your Tailscale login, like the web app: friends sharing the server only see their own data.
 
 Tools that delete or overwrite data, or add text to your CV, are flagged *destructive* and tell the AI to ask
 you first; most clients also ask for your confirmation before any tool call. The AI-powered tools (matching,

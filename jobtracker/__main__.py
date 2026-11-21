@@ -73,6 +73,8 @@ def mcp_config() -> str:
         + json.dumps(entry, indent=2)
         + "\n\nClaude Code (all projects):\n"
         + f'  claude mcp add --scope user job-search-tracker -- "{python}" "{script}"\n'
+        + "\nCodex (ChatGPT app or CLI, uses your ChatGPT plan):\n"
+        + f'  codex mcp add job-search-tracker -- "{python}" "{script}"\n'
     )
 
 

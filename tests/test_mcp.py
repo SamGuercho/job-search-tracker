@@ -3,11 +3,14 @@ import json
 import unittest
 
 import anyio
+from fastapi.testclient import TestClient
 from mcp import Client
 
-from jobtracker import registry
+from jobtracker import config, registry
+from jobtracker.api import app
 from jobtracker.mcp_server import build_server
 from tests.test_core import reset  # sets the temp data/output env vars first
+from tests.test_users import FRIEND, OWNER, set_cv_email
 
 
 def with_client(fn):
@@ -52,6 +55,50 @@ class McpTests(unittest.TestCase):
         self.assertIn("No application matches", bad.content[0].text)
         invalid = with_client(lambda c: c.call_tool("company_create", {"oops": 1}))
         self.assertTrue(invalid.is_error)
+
+
+
+HTTP = {"Accept": "application/json, text/event-stream", "Content-Type": "application/json"}
+
+
+class McpHttpTests(unittest.TestCase):
+    """The same tools served by the web app at /mcp, for remote clients (Codex on another machine)."""
+
+    def setUp(self):
+        reset()
+
+    def tearDown(self):
+        config.TAILSCALE_USERS, config.OWNER = False, ""
+
+    def rpc(self, client, method, params, login=None):
+        headers = {**HTTP, "mcp-protocol-version": "2025-06-18"}
+        if login:
+            headers["Tailscale-User-Login"] = login
+        return client.post("/mcp", headers=headers, json={"jsonrpc": "2.0", "id": 1, "method": method, "params": params})
+
+    def call(self, client, tool, args=None, login=None):
+        response = self.rpc(client, "tools/call", {"name": tool, "arguments": args or {}}, login)
+        self.assertEqual(response.status_code, 200, response.text)
+        return response.json()["result"]
+
+    def test_tools_over_http(self):
+        with TestClient(app) as client:
+            init = self.rpc(client, "initialize", {"protocolVersion": "2025-06-18", "capabilities": {},
+                                                   "clientInfo": {"name": "test", "version": "1"}})
+            self.assertIn("Job Search Tracker", init.json()["result"]["instructions"])
+            names = {t["name"] for t in self.rpc(client, "tools/list", {}).json()["result"]["tools"]}
+            self.assertIn("company_create", names)
+            self.call(client, "company_create", {"name": "Nimbus"})
+            self.assertIn("Nimbus", self.call(client, "company_list")["content"][0]["text"])
+
+    def test_each_tailscale_user_gets_their_own_data(self):
+        set_cv_email(OWNER)
+        config.TAILSCALE_USERS = True
+        with TestClient(app) as client:
+            self.call(client, "company_create", {"name": "Friend Corp"}, login=FRIEND)
+            self.assertIn("Friend Corp", self.call(client, "company_list", login=FRIEND)["content"][0]["text"])
+            self.assertNotIn("Friend Corp", self.call(client, "company_list", login=OWNER)["content"][0]["text"])
+            self.assertEqual(self.rpc(client, "tools/list", {}).status_code, 403)  # no Tailscale identity
 
 
 if __name__ == "__main__":
