@@ -41,6 +41,7 @@ from .services import (
     jd_match,
     llm,
     master_cv,
+    practice,
     prep,
     web,
     wording,
@@ -141,13 +142,45 @@ def _prep_view(p) -> dict | None:
 
 
 @action("prep.get")
-def prep_get(company: str):
+def prep_get(company: str, version: Optional[str] = None):
     """The interview prep pack of an application (company research, likely interview process, focus topics,
-    exercises with reference solution and a 10-point grading rubric, questions to ask), or null if none.
-    `status` is running (being written, takes minutes), done or error. To practice with the user: give one
+    exercises with reference solution and a 10-point grading rubric, questions to ask), or null if none: the
+    latest finished one, or `version` (an id from `versions`). `status` is running (being written, takes
+    minutes), done or error; `run` is a newer run still running or failed. To practice with the user: give one
     exercise's prompt at a time, wait for their answer, grade it against the rubric (score /10, points hit and
-    missed), then show the solution if they want it."""
-    return _prep_view(prep.get(company))
+    missed), record it with practice.record, then show the solution if they want it."""
+    p = prep.get(company, version)
+    if p is None:
+        return None
+    run = prep.latest_run(company)
+    return {**_prep_view(p),
+            "versions": [{"id": v.id, "finished_at": v.finished_at, "by": v.by}
+                         for v in prep.versions(company) if v.status == "done"],
+            "run": _prep_view(run) if run and run.id != p.id else None}
+
+
+@action("practice.record")
+def practice_record(company: str, exercise: str, score: int, missed: list[str] = [], feedback: str = "",
+                    topic: str = "", kind: str = ""):
+    """Log a graded practice answer: `exercise` is the prep exercise's number or title, `score` out of 10
+    (from the rubric), `missed` the rubric points the answer missed, `feedback` one or two lines. For an
+    exercise that isn't in the prep, also give its topic and kind. Call it after every graded answer."""
+    return practice.record(company, exercise, score, missed, feedback, topic, kind).model_dump(mode="json")
+
+
+@action("practice.profile")
+def practice_profile():
+    """The user's training profile from their practice log: totals, scores by topic (weakest first), exercises
+    done, and `to_review` (exercises whose last score is below 7, weakest first, with the points missed). Use it
+    for "what should I review?", and to avoid repeating exercises already done well."""
+    return practice.profile()
+
+
+@action("practice.history")
+def practice_history(company: Optional[str] = None):
+    """Practice attempts, newest first (one application's if `company` is given): exercise, score /10, missed
+    points, feedback, date."""
+    return [a.model_dump(mode="json") for a in practice.history(company)]
 
 
 @action("prep.status")

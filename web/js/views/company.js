@@ -6,6 +6,7 @@ import { processCard } from "./process-graph.js";
 export async function renderCompany(root, id) {
   const [company, info, master] = await Promise.all([call("company.get", { id }), call("app.info"), call("cv.master.get")]);
   let prep = await call("prep.get", { company: id });
+  let practiceLog = await call("practice.history", { company: id });  // newest first
   let review = null;   // last AI review of the summary, kept across re-renders
 
   const save = async (fields, msg = "Saved") => {
@@ -199,12 +200,13 @@ export async function renderCompany(root, id) {
   // Written by a strong model (Codex on the server for premium accounts, or any AI assistant through MCP).
   const prepCard = () => {
     const p = prep;
-    const running = p?.status === "running";
+    const run = p?.run || (p && p.status !== "done" ? p : null);  // a newer run still running, or failed
+    const running = run?.status === "running";
     const start = info.premium && h("button", {
       class: p?.status === "done" ? "" : "primary", disabled: running, onclick: async () => {
         if (p?.status === "done" && !confirm("Prepare again? The current prep is replaced (its file is archived).")) return;
         const started = await attempt(() => call("prep.start", { company: id }), "Preparation started: it takes a few minutes");
-        if (started) { prep = started; render(); poll(); }
+        if (started) { prep = await call("prep.get", { company: id }); render(); poll(); }  // keeps the current prep visible
       },
     }, running ? "Preparing…" : p?.status === "done" ? "Prepare again" : "✨ Prepare interview");
     return h("div", { class: "card prep" },
@@ -212,28 +214,47 @@ export async function renderCompany(root, id) {
       !p && h("p", { class: "muted" }, info.premium
         ? "Research on the company, the likely interview process, and exercises with solutions and grading rubrics. Takes a few minutes."
         : "No prep yet. Ask an AI assistant connected to the tracker (MCP) to write one with prep.brief and prep.save."),
-      running && h("p", {}, `⏳ Being prepared by ${p.by} since ${p.requested_at.slice(11, 16)}. This takes a few minutes: you can leave this page.`),
-      p?.status === "error" && h("div", { class: "result warn card" }, "The last preparation failed: ", p.error),
+      running && h("p", {}, `⏳ Being prepared by ${run.by} since ${run.requested_at.slice(11, 16)}. This takes a few minutes: you can leave this page.`),
+      run?.status === "error" && h("div", { class: "result warn card" }, "The last preparation failed: ", run.error),
       p?.status === "done" && prepBody(p));
   };
+
+  // Practice scores per exercise title (from the log, newest first)
+  const scores = () => {
+    const out = {};
+    for (const a of practiceLog) (out[a.exercise] ??= []).push(a.score);
+    return out;
+  };
+  const scoreBadge = (list) => list && h("span", { class: `score ${list[0] >= 7 ? "good" : "low"}`, title: `Scores, newest first: ${list.join(", ")}` },
+    `${list[0]}/10${list.length > 1 ? ` · ${list.length} tries` : ""}`);
+
+  const versionPicker = (p) => p.versions.length > 1 && h("label", { class: "small muted row" }, "Version ",
+    h("select", {
+      onchange: async (e) => { prep = await call("prep.get", { company: id, version: e.target.value }); render(); },
+    }, [...p.versions].reverse().map((v, i) => h("option", { value: v.id, selected: v.id === p.id },
+      `${(v.finished_at || "").replace("T", " ").slice(0, 16)}${i === 0 ? " (latest)" : ""}`))));
 
   const section = (title, content, open = false) => h("details", { open }, h("summary", {}, title), h("div", { class: "md" }, content));
 
   const prepBody = (p) => {
     const r = p.result;
+    const byTitle = scores();
+    const latest = !p.versions.length || p.id === p.versions[p.versions.length - 1].id;
     const practice = (i, e) => h("a", {
       class: "btn", href: `#/chat?q=${encodeURIComponent(`Let's practice exercise ${i} ("${e.title}") of my ${company.name} interview prep. Give me the exercise, then grade my answer with the rubric.`)}`,
     }, "Practice with the assistant");
     return h("div", { class: "stack-tight" },
       h("div", { class: "row small muted" }, `By ${p.by} · ${(p.finished_at || "").replace("T", " ").slice(0, 16)}`,
-        p.file && [" · ", h("a", { href: fileUrl(p.file), target: "_blank" }, "📄 Interview_Prep.md")]),
+        latest && p.file && [" · ", h("a", { href: fileUrl(p.file), target: "_blank" }, "📄 Interview_Prep.md")],
+        h("span", { class: "spacer" }), versionPicker(p)),
       section("The company", markdown(r.company_summary), true),
       section("Likely interview process", markdown(r.interview_process)),
       section("Focus topics", h("ul", {}, r.focus_topics.map((t) => h("li", {}, t)))),
       section("Your angle", markdown(r.candidate_angle)),
       h("h3", {}, `Exercises (${r.exercises.length})`),
       r.exercises.map((e, n) => h("details", { class: "exercise" },
-        h("summary", {}, h("b", {}, `${n + 1}. ${e.title}`), h("span", { class: "small muted" }, ` · ${e.kind} · ${e.difficulty}`)),
+        h("summary", {}, h("b", {}, `${n + 1}. ${e.title}`), h("span", { class: "small muted" }, ` · ${e.kind} · ${e.difficulty} `),
+          scoreBadge(byTitle[e.title])),
         h("div", { class: "md" },
           h("p", { class: "small muted" }, h("i", {}, "Why they'd ask it: "), e.why),
           markdown(e.prompt),
@@ -244,6 +265,9 @@ export async function renderCompany(root, id) {
             h("ul", {}, e.rubric.map((pt) => h("li", {}, `${pt.point} (${pt.points})`))),
             h("p", { class: "md-h" }, "Strong answer"), markdown(e.strong_answer),
             h("p", { class: "md-h" }, "Common mistakes"), h("ul", {}, e.common_mistakes.map((m) => h("li", {}, m))))))),
+      practiceLog.length > 0 && section(`Your practice (${practiceLog.length})`, h("ul", {}, practiceLog.slice(0, 15).map((a) => h("li", {},
+        h("b", {}, `${a.score}/10`), ` · ${a.exercise} · ${a.at.slice(0, 10)}`,
+        a.missed.length > 0 && h("span", { class: "small muted" }, ` · missed: ${a.missed.join("; ")}`))))),
       section("Questions to ask them", h("ul", {}, r.questions_to_ask.map((q) => h("li", {}, q)))),
       section("Sources", h("ul", {}, r.sources.map((s) => h("li", {}, /^https?:\/\//.test(s) ? h("a", { href: s, target: "_blank" }, s) : s)))));
   };
@@ -251,10 +275,11 @@ export async function renderCompany(root, id) {
   // While a prep is being written, check every 15 s (stops when you leave the page).
   const here = location.hash;
   const poll = () => setTimeout(async () => {
-    if (location.hash !== here || prep?.status !== "running") return;
+    const isRunning = () => (prep?.run || prep)?.status === "running";
+    if (location.hash !== here || !isRunning()) return;
     prep = await call("prep.get", { company: id }).catch(() => prep);
     render();
-    if (prep?.status === "running") poll();
+    if (isRunning()) poll();
   }, 15000);
 
   const reload = async () => Object.assign(company, await call("company.get", { id }));
@@ -269,5 +294,5 @@ export async function renderCompany(root, id) {
           h("div", { class: "stack" }, followUp(), jobDescription(), documents(), map()))));
   }
   render();
-  if (prep?.status === "running") poll();
+  if ((prep?.run || prep)?.status === "running") poll();
 }

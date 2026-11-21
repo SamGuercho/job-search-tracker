@@ -301,3 +301,10 @@ td .chip { display: inline-block; max-width: 170px; white-space: nowrap; overflo
 .prep h3 { margin: 12px 0 4px; }
 .md p { margin: 6px 0; } .md ul { margin: 4px 0 6px; padding-left: 20px; } .md p.md-h { font-weight: 700; margin-top: 10px; }
 .md pre, .msg.assistant pre { background: var(--surface-2); padding: 10px; border-radius: 8px; overflow-x: auto; font-size: 12.5px; }
+
+/* Practice scores */
+.score { display: inline-block; font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 999px; margin-left: 4px; }
+.score.good { background: var(--green-soft, #e3f5ea); color: var(--green, #1f7a44); }
+.score.low { background: var(--amber-soft); color: var(--amber); }
+.review-row { padding: 8px 0; border-top: 1px solid var(--border); }
+.review-row:first-of-type { border-top: 0; }

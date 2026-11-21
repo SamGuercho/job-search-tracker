@@ -46,6 +46,9 @@ Prepare the candidate below for their next interviews at {company}, as the best 
    For each: why this company would ask it, the prompt as an interviewer would say it, a complete reference
    solution, a grading rubric whose points add up to 10, what a strong answer looks like, and common mistakes.
    The rubric must let another, simpler model grade the candidate's answer fairly and consistently.
+   If a practice history is given below: never repeat an exercise already practised; put more weight on the
+   weak topics and the points the candidate missed (with new exercises, not the same ones); match the
+   difficulty to their scores (harder where they score well).
 5. Suggest smart questions the candidate can ask the interviewers.
 
 Write in English, concise and concrete. Use Markdown inside text fields. Do not run shell commands or edit
@@ -89,6 +92,10 @@ def _context(company) -> str:
         lines.append(f"\nJob description:\n{c.job_description.strip()[:15_000]}")
     cv = master_cv.get_master().model_dump(mode="json", exclude_none=True)
     lines.append(f"\nCandidate's CV (JSON):\n{json.dumps(cv, ensure_ascii=False)[:20_000]}")
+    from . import practice  # (imports prep)
+    history = practice.summary_for_prep()
+    if history:
+        lines.append(f"\nCandidate's practice history (all applications):\n{history}")
     return "\n".join(lines)
 
 
@@ -102,13 +109,33 @@ def brief(ref: str, exercises: int = 5) -> dict:
 
 # ------------------------------------------------------------------ storage
 
-def get(ref: str) -> InterviewPrep | None:
+MAX_VERSIONS = 10  # finished preps kept per application (older ones remain as archived .md files)
+
+
+def versions(ref: str) -> list[InterviewPrep]:
+    """Every version of an application's prep, oldest first (including a running or failed latest run)."""
     company = companies.resolve(ref)
-    prep = next((p for p in store.load().preps if p.company_id == company.id), None)
-    if prep and prep.status == "running" and _stale(prep):
-        interrupted = {"status": "error", "error": "Interrupted (the server restarted?). Try again."}
-        prep = _store(prep.model_copy(update=interrupted))
-    return prep
+    out = []
+    for p in (p for p in store.load().preps if p.company_id == company.id):
+        if p.status == "running" and _stale(p):
+            p = _store(p.model_copy(update={"status": "error", "error": "Interrupted (the server restarted?). Try again."}))
+        out.append(p)
+    return sorted(out, key=lambda p: p.requested_at)
+
+
+def get(ref: str, version: str | None = None) -> InterviewPrep | None:
+    """The latest finished prep (or the given version id); if none finished yet, the latest run."""
+    all_ = versions(ref)
+    if version:
+        return next((p for p in all_ if p.id == version), None)
+    done = [p for p in all_ if p.status == "done"]
+    return done[-1] if done else (all_[-1] if all_ else None)
+
+
+def latest_run(ref: str) -> InterviewPrep | None:
+    """The newest run if it is newer than the shown prep and not finished (running, or failed)."""
+    all_ = versions(ref)
+    return all_[-1] if all_ and all_[-1].status != "done" else None
 
 
 def _stale(prep: InterviewPrep) -> bool:
@@ -117,13 +144,22 @@ def _stale(prep: InterviewPrep) -> bool:
 
 
 def _store(prep: InterviewPrep) -> InterviewPrep:
+    """Add a version, or replace the one with the same id (a run that finished). A finished run replaces the
+    failed runs before it, and only the last MAX_VERSIONS finished preps are kept."""
     with store.transaction() as book:
-        book.preps = [p for p in book.preps if p.company_id != prep.company_id] + [prep]
+        mine = [p for p in book.preps if p.company_id == prep.company_id and p.id != prep.id] + [prep]
+        if prep.status == "done":
+            mine = [p for p in mine if p.status != "error"]
+        done = [p for p in mine if p.status == "done"]
+        dropped = {p.id for p in done[:-MAX_VERSIONS]} if len(done) > MAX_VERSIONS else set()
+        book.preps = [p for p in book.preps if p.company_id != prep.company_id] + \
+            [p for p in mine if p.id not in dropped]
     return prep
 
 
-def save(ref: str, result: dict | PrepResult, by: str) -> InterviewPrep:
-    """Validate a prep pack against the schema and store it (replaces the previous one; its file is archived)."""
+def save(ref: str, result: dict | PrepResult, by: str, run_id: str | None = None) -> InterviewPrep:
+    """Validate a prep pack against the schema and store it as the newest version. Interview_Prep.md always holds
+    the newest one (the previous file goes to archive/); earlier versions stay readable in the app."""
     company = companies.resolve(ref)
     parsed = result if isinstance(result, PrepResult) else PrepResult.model_validate(result)
     if not parsed.exercises:
@@ -132,7 +168,8 @@ def save(ref: str, result: dict | PrepResult, by: str) -> InterviewPrep:
     files.archive_previous(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(markdown(company.name, company.position, parsed), encoding="utf-8")
-    return _store(InterviewPrep(company_id=company.id, status="done", by=by, result=parsed,
+    return _store(InterviewPrep(**({"id": run_id} if run_id else {}), company_id=company.id, status="done", by=by,
+                                result=parsed,
                                 finished_at=datetime.now().isoformat(timespec="seconds"), file=files.relative(path)))
 
 
@@ -173,7 +210,7 @@ def start(ref: str, exercises: int = 5) -> InterviewPrep:
     status = codex_status()
     if not status["available"]:
         raise PrepUnavailable(status["reason"])
-    current = get(ref)
+    current = latest_run(ref)
     if current and current.status == "running":
         return current
     company = companies.resolve(ref)
@@ -181,19 +218,20 @@ def start(ref: str, exercises: int = 5) -> InterviewPrep:
     by = f"codex {config.PREP_MODEL} ({config.PREP_EFFORT})"
     prep = _store(InterviewPrep(company_id=company.id, status="running", by=by))
     user = users.current()
-    threading.Thread(target=_run, args=(user, company.id, task, by), daemon=True, name=f"prep-{company.id}").start()
+    threading.Thread(target=_run, args=(user, company.id, prep.id, task, by), daemon=True,
+                     name=f"prep-{company.id}").start()
     return prep
 
 
-def _run(user: str, company_id: str, task: dict, by: str) -> None:
+def _run(user: str, company_id: str, run_id: str, task: dict, by: str) -> None:
     with users.acting_as(user), _one_at_a_time:
         try:
             result = run_codex(task)
-            save(company_id, result, by)
+            save(company_id, result, by, run_id)
             log.info("Interview prep done for %s", task["company"])
         except Exception as e:  # recorded on the prep, shown in the app
             log.warning("Interview prep failed for %s: %s", task["company"], e)
-            _store(InterviewPrep(company_id=company_id, status="error", by=by, error=str(e)[:2_000],
+            _store(InterviewPrep(id=run_id, company_id=company_id, status="error", by=by, error=str(e)[:2_000],
                                  finished_at=datetime.now().isoformat(timespec="seconds")))
 
 

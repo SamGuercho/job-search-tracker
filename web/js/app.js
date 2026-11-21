@@ -1,10 +1,11 @@
-// Hash router: #/  ·  #/company/<id>  ·  #/cv[?company=<id>]  ·  #/cv/master  ·  #/chat[/<id>][?q=…]  ·  #/analytics
+// Hash router: #/  ·  #/company/<id>  ·  #/cv[?company=<id>]  ·  #/cv/master  ·  #/chat[/<id>][?q=…]  ·  #/analytics  ·  #/practice
 import { renderTracker } from "./views/tracker.js";
 import { renderCompany } from "./views/company.js";
 import { renderCvBuilder } from "./views/cv.js";
 import { renderMasterCv } from "./views/master.js";
 import { renderChat } from "./views/chat.js";
 import { renderAnalytics } from "./views/analytics.js";
+import { renderPractice } from "./views/practice.js";
 import { h, mount } from "./ui.js";
 
 const routes = [
@@ -14,6 +15,7 @@ const routes = [
   { pattern: /^\/cv\/master$/, nav: "master", view: () => renderMasterCv },
   { pattern: /^\/chat(?:\/([\w-]+))?$/, nav: "chat", view: () => renderChat },
   { pattern: /^\/analytics$/, nav: "analytics", view: () => renderAnalytics },
+  { pattern: /^\/practice$/, nav: "practice", view: () => renderPractice },
 ];
 
 async function route() {

@@ -267,6 +267,7 @@ PrepStatus = Literal["running", "done", "error"]
 
 
 class InterviewPrep(BaseModel):
+    id: str = Field(default_factory=new_id)
     company_id: str
     status: PrepStatus = "running"
     requested_at: str = Field(default_factory=lambda: datetime.now().isoformat(timespec="seconds"))
@@ -278,4 +279,23 @@ class InterviewPrep(BaseModel):
 
 
 class PrepBook(BaseModel):
-    preps: list[InterviewPrep] = []
+    preps: list[InterviewPrep] = []   # every version, oldest first; the latest done one is shown
+
+
+# What the user practised: one attempt = one answer to one exercise, graded with its rubric (by the assistant).
+class PracticeAttempt(BaseModel):
+    id: str = Field(default_factory=new_id)
+    at: str = Field(default_factory=lambda: datetime.now().isoformat(timespec="seconds"))
+    company_id: str = ""
+    company: str = ""
+    exercise: str               # exercise title
+    kind: str = ""
+    topic: str = ""
+    difficulty: str = ""
+    score: int                  # out of 10
+    missed: list[str] = []      # rubric points the answer missed
+    feedback: str = ""
+
+
+class PracticeBook(BaseModel):
+    attempts: list[PracticeAttempt] = []
