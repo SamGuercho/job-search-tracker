@@ -40,6 +40,7 @@ from .services import (
     cv_builder,
     cv_import,
     jd_match,
+    jobs,
     llm,
     logos,
     master_cv,
@@ -49,7 +50,6 @@ from .services import (
     recordings,
     today,
     usage,
-    web,
     wording,
 )
 from .services import summary as summary_service  # `summary` is also a parameter name below
@@ -755,11 +755,22 @@ def cv_generate(keywords: list[str], company_id: Optional[str] = None, company_n
 
 # ===================================================================== web
 
+@action("job.remember_board")
+def job_remember_board(url: str, platform: Literal["greenhouse", "lever", "ashby", "smartrecruiters"], account: str):
+    """Remember that a company's site publishes its jobs through a job board account (e.g. sentinelone.com uses
+    Greenhouse "sentinellabs"): its job links are then read through the board's public API."""
+    jobs.remember(url, platform, account)
+    return {"site": jobs.site_of(url), "platform": platform, "account": account}
+
+
 @action("job.fetch_url")
 def job_fetch_url(url: str):
-    """Read a job posting from a link and return its text (to then match it or create the company).
-    Some sites (e.g. LinkedIn) block this: ask the user to paste the text instead."""
-    return web.fetch_text(url)
+    """Read a job posting from a link and return its text (to then match it or create the company): through the
+    job board's official API when possible (Greenhouse, Lever, Ashby, SmartRecruiters), else the page. Some
+    sites refuse automated reading or need a login (e.g. LinkedIn): then don't retry; ask the user to send the
+    job from their own browser (select the text → Share → Ezri on a phone, the “Send to Ezri” bookmark on a
+    computer) or to paste the text."""
+    return jobs.read(url)
 
 
 # ================================================================ workflows

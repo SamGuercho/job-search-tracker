@@ -1,6 +1,6 @@
 // Practice: the training profile built from graded answers (what to review, scores by topic, history).
 import { call } from "../api.js";
-import { attempt, confirmSheet, h, mount, promptSheet } from "../ui.js";
+import { attempt, chatHref, confirmSheet, h, mount, promptSheet } from "../ui.js";
 
 const SVG = "http://www.w3.org/2000/svg";
 // Minimal SVG element builder (h() makes HTML elements): attributes, on* listeners, nested children.
@@ -19,7 +19,7 @@ export async function renderPractice(root) {
   const [p, log] = await Promise.all([call("practice.profile"), call("practice.history")]);
   const rerender = () => renderPractice(root);
   const t = p.totals;
-  const chat = (text) => `#/chat?q=${encodeURIComponent(text)}`;
+  const chat = (text) => chatHref(text);
   const score = (s) => h("span", { class: `score ${s >= 7 ? "good" : "low"}` }, `${s}/10`);
   const table = (...rows) => h("div", { class: "table-wrap" }, h("table", { class: "data" }, ...rows));
   const tile = (label, value, note) => h("div", { class: "kpi" },

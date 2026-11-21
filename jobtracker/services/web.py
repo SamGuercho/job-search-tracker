@@ -5,6 +5,7 @@ import ipaddress
 import re
 import socket
 import ssl
+import urllib.error
 import urllib.parse
 import urllib.request
 from html.parser import HTMLParser
@@ -15,6 +16,14 @@ MAX_BYTES = 2_000_000
 MAX_CHARS = 20_000
 SKIP = {"script", "style", "noscript", "svg", "head", "nav", "footer", "form"}
 BLOCK = {"p", "div", "li", "br", "h1", "h2", "h3", "h4", "tr", "section", "article", "ul", "ol"}
+
+
+class FetchError(ValueError):
+    """A page or file that couldn't be fetched; `status` is the HTTP status when the site answered."""
+
+    def __init__(self, message: str, status: int | None = None, retry_after: float | None = None):
+        super().__init__(message)
+        self.status, self.retry_after = status, retry_after
 
 
 def check_public(url: str) -> None:
@@ -60,15 +69,12 @@ class _Text(HTMLParser):
 
 
 def fetch_text(url: str) -> dict:
-    check_public(url)
-    req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (job-search-tracker)"})
-    try:
-        context = ssl.create_default_context(cafile=certifi.where())
-        opener = urllib.request.build_opener(urllib.request.HTTPSHandler(context=context), _PublicRedirects())
-        with opener.open(req, timeout=20) as resp:
-            raw = resp.read(MAX_BYTES).decode(resp.headers.get_content_charset() or "utf-8", errors="replace")
-    except OSError as e:
-        raise ValueError(f"Could not open {url}: {e}") from e
+    data, _, _ = fetch_bytes(url, MAX_BYTES, accept="text/html", truncate=True)
+    return text_of(url, data.decode("utf-8", "replace"))
+
+
+def text_of(url: str, raw: str) -> dict:
+    """The readable text and title of an HTML page."""
     parser = _Text()
     parser.feed(raw)
     text = re.sub(r"[ \t\r\f\v]+", " ", "".join(parser.parts))
@@ -90,8 +96,12 @@ def fetch_bytes(url: str, max_bytes: int = MAX_BYTES, accept: str = "*/*", trunc
             data = resp.read(max_bytes + 1)
             if len(data) > max_bytes:
                 if not truncate:
-                    raise ValueError(f"Too large: {url}")
+                    raise FetchError(f"Too large: {url}")
                 data = data[:max_bytes]
             return data, (resp.headers.get_content_type() or ""), resp.geturl()
+    except urllib.error.HTTPError as e:
+        retry = e.headers.get("Retry-After", "") if e.headers else ""
+        raise FetchError(f"Could not open {url}: HTTP Error {e.code}: {e.reason}", e.code,
+                         float(retry) if retry.strip().isdigit() else None) from e
     except OSError as e:
-        raise ValueError(f"Could not open {url}: {e}") from e
+        raise FetchError(f"Could not open {url}: {e}") from e

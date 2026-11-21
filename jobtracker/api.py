@@ -136,13 +136,20 @@ def calendar_feed(request: Request):
 
 @app.get("/share")
 def share_target(title: str = "", text: str = "", url: str = ""):
-    """Android share sheet -> "Ezri": the shared job link (or text) goes to the assistant to add the job."""
+    """Android share sheet -> "Ezri". A job's text (you selected it on the page) opens the "Add this job?"
+    confirmation; a link alone pre-fills the assistant (it never sends anything by itself)."""
+    import base64
+    import json
     import re
+    from urllib.parse import quote
 
     found = url or next(iter(re.findall(r"https?://\S+", f"{text} {title}")), "")
+    words = re.sub(r"https?://\S+", "", text).strip()
+    if len(words) > 200:  # the job itself was shared
+        data = json.dumps({"u": found, "t": title, "x": words[:15_000]}, ensure_ascii=False).encode()
+        return RedirectResponse("/#/clip?d=" + base64.urlsafe_b64encode(data).decode().rstrip("="), status_code=303)
     content = found or text or title
     message = f"Add this job and make my CV: {content}" if content else ""
-    from urllib.parse import quote
     return RedirectResponse(f"/#/chat?q={quote(message)}" if message else "/#/", status_code=303)
 
 

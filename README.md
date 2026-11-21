@@ -161,6 +161,16 @@ The app opens on **Today**: your next interviews (time, place or call link, prep
 score, 📅), what is waiting for you (a recording to finish, a prep being written), follow-ups due (one tap to log
 them), what came back (preps, debriefs), and what to review.
 
+### Adding a job from a link
+Ezri reads job links through the job boards' official public APIs when it can (Greenhouse, Lever, Ashby,
+SmartRecruiters, including Greenhouse jobs shown on a company's own site once Ezri knows its account), else
+the page itself (the job data embedded for search engines, or its text). It never pretends to be a browser:
+sites that refuse robots or need a login (LinkedIn) are sent from your own browser instead:
+- **computer:** 🔔 → drag **➕ Send to Ezri** to your bookmarks bar, then click it on any job page;
+- **Android:** select the job's text → *Share* → *Ezri*; **iPhone:** paste the text in the assistant.
+Ezri then shows *Add this job?* and nothing happens until you confirm. A link to the assistant coming from
+outside the app only pre-fills the message: it is never sent by itself.
+
 ### Company logos
 When an application has a website, Ezri finds the company's logo on it (the icon the site declares for phones,
 else its other icons) and shows it in the lists, on the application page and on Today; without one, colored

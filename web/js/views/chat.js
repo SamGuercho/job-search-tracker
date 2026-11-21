@@ -1,6 +1,6 @@
 // Assistant: conversations with the LLM agent that drives the app's actions.
 import { call, fileUrl } from "../api.js";
-import { attempt, h, markdown, mount, promptSheet, usd } from "../ui.js";
+import { attempt, chatRequest, h, markdown, mount, promptSheet, usd } from "../ui.js";
 
 const LABELS = {
   "company.list": "Looked at your companies", "company.get": "Opened company", "company.create": "Added company",
@@ -121,6 +121,8 @@ export async function renderChat(root, chatId, params) {
       if (isNew) history.replaceState(null, "", `#/chat/${chat.id}`);
       drawList();
       drawHead();
+    } else if (pendingText && !input.value.trim()) {
+      input.value = pendingText;  // not sent (offline, no AI key…): give the message back instead of losing it
     }
     drawThread();
     input.focus();
@@ -146,7 +148,10 @@ export async function renderChat(root, chatId, params) {
   drawHead();
   drawThread();
 
-  const q = params.get("q");
-  if (q && !chat) send(q);
-  else input.focus();
+  const request = chatRequest(params);
+  if (request.text && !chat && request.send) send(request.text);
+  else {
+    if (request.text && !chat) input.value = request.text;  // from outside the app: you review it and press Send
+    input.focus();
+  }
 }

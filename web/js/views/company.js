@@ -1,6 +1,6 @@
 // Company page: details, follow-up counter, process graph, generated CVs.
 import { call, fileUrl, upload } from "../api.js";
-import { attempt, chips, companyLogo, confirmSheet, daysBadge, field, formatDate, h, joinList, mapsUrl, markdown, modal, mount, readForm, toast } from "../ui.js";
+import { attempt, chatHref, chips, companyLogo, confirmSheet, daysBadge, field, formatDate, h, joinList, mapsUrl, markdown, modal, mount, readForm, toast } from "../ui.js";
 import { processCard } from "./process-graph.js";
 import { recordingsCard } from "./recordings.js";
 
@@ -275,7 +275,7 @@ export async function renderCompany(root, id) {
     const byTitle = scores();
     const latest = !p.versions.length || p.id === p.versions[p.versions.length - 1].id;
     const practice = (i, e) => h("a", {
-      class: "btn", href: `#/chat?q=${encodeURIComponent(`Let's practice exercise ${i} ("${e.title}") of my ${company.name} interview prep. Give me the exercise, then grade my answer with the rubric.`)}`,
+      class: "btn", href: chatHref(`Let's practice exercise ${i} ("${e.title}") of my ${company.name} interview prep. Give me the exercise, then grade my answer with the rubric.`),
     }, "Practice with the assistant");
     return h("div", { class: "stack-tight" },
       h("div", { class: "row small muted" }, `By ${p.by} · ${(p.finished_at || "").replace("T", " ").slice(0, 16)}`,

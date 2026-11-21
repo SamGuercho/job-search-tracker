@@ -8,12 +8,14 @@ import { renderAnalytics } from "./views/analytics.js";
 import { renderPractice } from "./views/practice.js";
 import { renderCosts } from "./views/costs.js";
 import { renderToday } from "./views/today.js";
+import { bookmarklet, renderClip } from "./views/clip.js";
 import { call, lastOfflineSave, saveForOffline } from "./api.js";
 import { attempt, h, modal, mount, toast } from "./ui.js";
 
 const routes = [
   { pattern: /^\/$/, nav: "tracker", view: () => renderTracker },
   { pattern: /^\/today$/, nav: "today", view: () => renderToday },
+  { pattern: /^\/clip$/, nav: "tracker", view: () => (root, params) => renderClip(root, params) },
   { pattern: /^\/company\/([\w-]+)$/, nav: "tracker", view: () => renderCompany },
   { pattern: /^\/cv$/, nav: "cv", view: () => renderCvBuilder },
   { pattern: /^\/cv\/master$/, nav: "master", view: () => renderMasterCv },
@@ -142,8 +144,16 @@ document.querySelector(".bell")?.addEventListener("click", async () => {
   const offlineInfo = h("span", { class: "small muted" }, saved
     ? `Your applications, preps, debriefs and practice are saved on this device for reading offline (last saved ${saved.toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}).`
     : "Your applications, preps, debriefs and practice will be saved on this device for reading offline.");
+  const sendTo = h("div", { class: "stack-tight" },
+    h("b", {}, "Add jobs from any page"),
+    h("span", { class: "small muted" }, "Some sites (LinkedIn, or pages that block robots) can't be read by Ezri. Send them from your own browser:"),
+    isIOS || /Android/.test(navigator.userAgent)
+      ? h("span", { class: "small" }, "On your phone: select the job's text → Share → Ezri (Android). On iPhone: copy the text and paste it in the assistant.")
+      : [h("span", { class: "small" }, "Drag this button to your bookmarks bar, then click it on any job page:"),
+        h("a", { class: "btn bookmarklet", href: bookmarklet(), onclick: (e) => { e.preventDefault(); toast("Drag it to your bookmarks bar"); } }, "➕ Send to Ezri")]);
   modal("Notifications, calendar & offline", h("div", { class: "stack" },
     await notificationsPanel(),
+    sendTo,
     h("div", { class: "stack-tight" }, offlineInfo,
       h("button", {
         class: "small", onclick: async (e) => {

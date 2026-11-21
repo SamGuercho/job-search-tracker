@@ -499,3 +499,6 @@ body.is-offline main { padding-top: 8px; }
 .logo-sheet { display: flex; flex-direction: column; align-items: center; gap: 12px; }
 .logo-sheet .logo-avatar { --size: 96px; }
 .logo-sheet .actions { display: flex; flex-direction: column; gap: 8px; width: 100%; }
+
+.bookmarklet { cursor: grab; align-self: flex-start; }
+.clip pre.transcript { max-height: 260px; }

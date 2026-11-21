@@ -1,9 +1,9 @@
 // Today: the page to open each morning. Next interviews (with prep status), what's waiting for you,
 // follow-ups due, what to review, what came back. Everything links to where you act on it.
 import { call } from "../api.js";
-import { addToCalendar, attempt, companyLogo, h, mount } from "../ui.js";
+import { addToCalendar, attempt, chatHref, companyLogo, h, mount } from "../ui.js";
 
-const chat = (q) => `#/chat?q=${encodeURIComponent(q)}`;
+const chat = (q) => chatHref(q);
 
 function dayChip(i) {
   const d = new Date(`${i.date}T00:00:00`);

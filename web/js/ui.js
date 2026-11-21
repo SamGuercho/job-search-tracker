@@ -259,3 +259,32 @@ export function companyLogo(c, size = 36) {
   img.addEventListener("error", () => img.replaceWith(initials()));  // offline, or the file is gone
   return img;
 }
+
+// Asking the assistant from inside the app. A #/chat?q=… link sends its message right away only if it carries this
+// tab's secret ("go"): a link from another site (or a shared link) only pre-fills the message, you press Send.
+const CHAT_KEY = (() => {
+  try {
+    let k = sessionStorage.getItem("chat.key");
+    if (!k) { k = crypto.getRandomValues(new Uint32Array(2)).join("-"); sessionStorage.setItem("chat.key", k); }
+    return k;
+  } catch { return String(Math.random()).slice(2); }
+})();
+
+/** Link that opens the assistant and sends `q` (only works from inside the app). */
+export const chatHref = (q) => `#/chat?q=${encodeURIComponent(q)}&go=${CHAT_KEY}`;
+
+/** Open the assistant and send a (possibly long) message: kept in this tab instead of the address. */
+export function askAssistant(message) {
+  try { sessionStorage.setItem("chat.pending", message); } catch { /* fall back to the address */ }
+  location.hash = sessionStorage.getItem("chat.pending") === message ? `#/chat?pending=1&go=${CHAT_KEY}` : chatHref(message);
+}
+
+/** For the chat page: the message to send now (from inside the app), or to pre-fill (from elsewhere). */
+export function chatRequest(params) {
+  const trusted = params.get("go") === CHAT_KEY;
+  let text = params.get("q") || "";
+  if (params.get("pending")) {
+    try { text = sessionStorage.getItem("chat.pending") || ""; sessionStorage.removeItem("chat.pending"); } catch { text = ""; }
+  }
+  return { text, send: trusted && Boolean(text) };
+}

@@ -1,6 +1,6 @@
 // Follow-up: applications as a compact grouped list (default) or a full table (desktop); searchable, filterable.
 import { call } from "../api.js";
-import { attempt, chips, companyLogo, daysBadge, field, h, mapsUrl, modal, mount, readForm, statusPill, toast } from "../ui.js";
+import { attempt, chatHref, chips, companyLogo, daysBadge, field, h, mapsUrl, modal, mount, readForm, statusPill, toast } from "../ui.js";
 
 const state = { query: "", status: "", workModel: "", hideClosed: false, sort: "days", dir: -1 };
 
@@ -278,7 +278,7 @@ function chatBar() {
   const input = h("input", { placeholder: "Ask the assistant: “Add this job: <link>”, “Who needs a follow-up?”, “Make my CV for Nimbus”…" });
   const go = (e) => {
     e.preventDefault();
-    if (input.value.trim()) location.hash = `#/chat?q=${encodeURIComponent(input.value.trim())}`;
+    if (input.value.trim()) location.hash = chatHref(input.value.trim());
   };
   return h("form", { class: "chat-bar", onsubmit: go }, h("span", { "aria-hidden": "true" }, "✦"), input, h("button", { class: "primary", type: "submit" }, "Ask"));
 }
