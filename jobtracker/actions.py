@@ -46,6 +46,7 @@ from .services import (
     prep,
     push,
     recordings,
+    today,
     usage,
     web,
     wording,
@@ -299,6 +300,15 @@ def recording_delete(id: str):
     """Delete a recording, its audio file and the practice answers graded from it."""
     recordings.delete(id)
     return {"deleted": id}
+
+
+# ===================================================================== today
+
+@action("today.get")
+def today_get():
+    """What to do now: interviews in the next 14 days (with prep and practice status), follow-ups due,
+    recordings waiting for the user, what came back recently (preps, debriefs), what to review, the week in numbers."""
+    return today.summary()
 
 
 # ================================================================== calendar

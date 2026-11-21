@@ -1,4 +1,4 @@
-// Hash router: #/  ·  #/company/<id>  ·  #/cv[?company=<id>]  ·  #/cv/master  ·  #/chat[/<id>][?q=…]  ·  #/analytics  ·  #/practice  ·  #/costs
+// Hash router: #/  ·  #/company/<id>  ·  #/cv[?company=<id>]  ·  #/cv/master  ·  #/today  ·  #/chat[/<id>][?q=…]  ·  #/analytics  ·  #/practice  ·  #/costs
 import { renderTracker } from "./views/tracker.js";
 import { renderCompany } from "./views/company.js";
 import { renderCvBuilder } from "./views/cv.js";
@@ -7,11 +7,13 @@ import { renderChat } from "./views/chat.js";
 import { renderAnalytics } from "./views/analytics.js";
 import { renderPractice } from "./views/practice.js";
 import { renderCosts } from "./views/costs.js";
-import { call } from "./api.js";
+import { renderToday } from "./views/today.js";
+import { call, lastOfflineSave, saveForOffline } from "./api.js";
 import { attempt, h, modal, mount, toast } from "./ui.js";
 
 const routes = [
   { pattern: /^\/$/, nav: "tracker", view: () => renderTracker },
+  { pattern: /^\/today$/, nav: "today", view: () => renderToday },
   { pattern: /^\/company\/([\w-]+)$/, nav: "tracker", view: () => renderCompany },
   { pattern: /^\/cv$/, nav: "cv", view: () => renderCvBuilder },
   { pattern: /^\/cv\/master$/, nav: "master", view: () => renderMasterCv },
@@ -41,7 +43,7 @@ route();
 
 // Phones: "More" in the tab bar lists the pages that have no tab
 document.querySelector(".tab-more")?.addEventListener("click", () => {
-  const pages = [["#/cv/master", "Master CV", "Your achievements and their wordings"],
+  const pages = [["#/cv", "CV builder", "A tailored CV for an application"], ["#/cv/master", "Master CV", "Your achievements and their wordings"],
     ["#/analytics", "Analytics", "How your search is going"], ["#/costs", "Costs", "What the AI features cost"]];
   const close = modal("More", h("div", { class: "more-list" }, pages.map(([href, label, note]) =>
     h("a", { href, onclick: () => close() }, h("b", {}, label), h("span", { class: "small muted" }, note))),
@@ -136,8 +138,21 @@ async function notificationsPanel() {
 }
 
 document.querySelector(".bell")?.addEventListener("click", async () => {
-  modal("Notifications & calendar", h("div", { class: "stack" },
+  const saved = lastOfflineSave();
+  const offlineInfo = h("span", { class: "small muted" }, saved
+    ? `Your applications, preps, debriefs and practice are saved on this device for reading offline (last saved ${saved.toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}).`
+    : "Your applications, preps, debriefs and practice will be saved on this device for reading offline.");
+  modal("Notifications, calendar & offline", h("div", { class: "stack" },
     await notificationsPanel(),
+    h("div", { class: "stack-tight" }, offlineInfo,
+      h("button", {
+        class: "small", onclick: async (e) => {
+          e.target.disabled = true;
+          e.target.textContent = "Saving…";
+          const r = await saveForOffline({ force: true });
+          e.target.textContent = r ? `Saved: ${r.applications} applications` : "Offline: kept the previous copy";
+        },
+      }, "Save now")),
     h("div", { class: "more-list" },
       h("a", { href: `webcal://${location.host}/api/calendar/interviews.ics` },
         h("b", {}, "Subscribe to my interviews"),
@@ -152,3 +167,7 @@ const badge = () => call("app.info").then((i) => {
 }).catch(() => {});
 badge();
 document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") badge(); });
+
+// Keep a copy of your data on this device for offline reading (at most every 15 minutes, in the background)
+setTimeout(() => saveForOffline(), 4000);
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") saveForOffline(); });

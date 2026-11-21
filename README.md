@@ -152,6 +152,16 @@ steps, every question with your answer graded /10 and what was missed, strengths
 thank-you email (also saved as `Debrief_….md`). The graded answers go to the Practice page (as "interview"), and
 the next prep builds on them. Needs `OPENAI_API_KEY` and ffmpeg (included in the Docker image).
 
+### Today
+The app opens on **Today**: your next interviews (time, place or call link, prep ready or not, your practice
+score, 📅), what is waiting for you (a recording to finish, a prep being written), follow-ups due (one tap to log
+them), what came back (preps, debriefs), and what to review.
+
+### Offline reading
+Your applications, preps, debriefs, practice and CV are saved on each device in the background. Without network
+(train, plane) or when the home server is off, the app still opens and shows them, with an *Offline · read
+only* banner; changes wait until the server is back. 🔔 → *Save now* refreshes the saved copy.
+
 ### On your phone
 - **Add to calendar:** give an interview step a date, time, duration and place (address or video link), then
   📅 *Add to calendar*: Google Calendar, or an `.ics` file for Apple Calendar / Outlook (reminders the day

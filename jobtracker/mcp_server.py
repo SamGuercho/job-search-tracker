@@ -34,7 +34,7 @@ READ_ONLY = {
     "cv.import.parse", "analytics.summary", "job.fetch_url", "prep.get", "prep.status", "prep.brief",
     "practice.profile", "practice.history", "practice.capabilities",
     "recording.list", "recording.get", "recording.transcript", "usage.report", "usage.averages",
-    "calendar.event", "calendar.upcoming",
+    "calendar.event", "calendar.upcoming", "today.get",
 }
 OPEN_WORLD = {"job.fetch_url"}  # reaches outside the app
 
