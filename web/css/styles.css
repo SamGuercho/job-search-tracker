@@ -190,7 +190,17 @@ button.chip.suggest { border-style: dashed; color: var(--accent); background: tr
 .tool.error { color: var(--amber); }
 .tool.pending { color: var(--text); background: var(--amber-soft); border: 1px solid var(--amber); border-radius: 10px; padding: 10px 12px; font-size: 13px; max-width: 80%; }
 .tool.pending pre { font-size: 11px; max-height: 140px; overflow: auto; background: var(--surface); padding: 6px; border-radius: 6px; }
-@media (max-width: 800px) { .chat-layout { grid-template-columns: 1fr; height: auto; } .chat-layout aside { display: none; } .msg { max-width: 95%; } }
+.chat-mobile-bar, .chat-list-close { display: none; }
+@media (max-width: 800px) {
+  .chat-layout { grid-template-columns: 1fr; height: auto; }
+  .chat-layout aside { display: none; }
+  .msg { max-width: 95%; }
+  /* Phones: the "Chats" button swaps the conversation for the list of past conversations */
+  .chat-mobile-bar { display: flex; justify-content: space-between; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--border); }
+  .chat-layout.show-list aside { display: block; }
+  .chat-layout.show-list .chat-main { display: none; }
+  .chat-list-close { display: block; width: 100%; margin-bottom: 8px; }
+}
 .tool.pending blockquote { margin: 8px 0; padding: 8px 12px; background: var(--surface); border-left: 3px solid var(--accent); border-radius: 0 6px 6px 0; }
 .achievement { border-top: 1px dashed var(--border); padding: 6px 0; }
 .achievement .bullet-row { border-top: 0; }

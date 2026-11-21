@@ -42,9 +42,20 @@ export async function renderChat(root, chatId, params) {
   });
   const sendBtn = h("button", { class: "primary", onclick: () => send() }, "Send");
 
+  // Phones: the list replaces the conversation (no room for both); a "Chats" button switches between them.
+  const layout = h("div", { class: "chat-layout" });
+  const toggleList = () => layout.classList.toggle("show-list");
+  const mobileBar = h("div", { class: "chat-mobile-bar" },
+    h("button", { class: "ghost", onclick: toggleList }, `☰ Chats${chats.length ? ` (${chats.length})` : ""}`),
+    h("a", { class: "btn ghost", href: "#/chat" }, "+ New"));
+
   const drawList = () => mount(list,
+    h("button", { class: "ghost chat-list-close", onclick: toggleList }, "← Back to the conversation"),
     h("a", { class: "btn", href: "#/chat", style: "justify-content:center" }, "+ New chat"),
-    chats.map((c) => h("a", { class: `chat-item ${chat?.id === c.id ? "active" : ""}`, href: `#/chat/${c.id}` }, c.title)));
+    chats.map((c) => h("a", {
+      class: `chat-item ${chat?.id === c.id ? "active" : ""}`, href: `#/chat/${c.id}`,
+      onclick: () => layout.classList.remove("show-list"),  // same chat: no navigation, just close the list
+    }, c.title)));
 
   const drawThread = (pendingText) => {
     const msgs = chat?.messages || [];
@@ -120,14 +131,15 @@ export async function renderChat(root, chatId, params) {
   };
   const resolve = (eventId, approve) => run(() => call("chat.resolve", { chat_id: chat.id, event_id: eventId, approve }));
 
-  mount(root,
-    h("div", { class: "chat-layout" },
-      h("aside", {}, list),
-      h("section", { class: "card chat-main" },
-        !info.llm_available && h("div", { class: "result warn card" }, "Add OPENAI_API_KEY (or ANTHROPIC_API_KEY) to .env and restart the server to use the assistant."),
-        head,
-        thread,
-        h("div", { class: "chat-input" }, input, sendBtn))));
+  mount(layout,
+    h("aside", {}, list),
+    h("section", { class: "card chat-main" },
+      mobileBar,
+      !info.llm_available && h("div", { class: "result warn card" }, "Add OPENAI_API_KEY (or ANTHROPIC_API_KEY) to .env and restart the server to use the assistant."),
+      head,
+      thread,
+      h("div", { class: "chat-input" }, input, sendBtn)));
+  mount(root, layout);
   drawList();
   drawHead();
   drawThread();
