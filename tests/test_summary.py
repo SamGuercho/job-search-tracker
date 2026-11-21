@@ -53,6 +53,24 @@ class SummaryTests(unittest.TestCase):
         registry.run("company.set_cv_summary", {"company": "Acme", "summary": ""})
         self.assertEqual(companies.get_company(self.c.id).cv_summary, "")
 
+    def test_tailored_title_is_used_only_for_that_application(self):
+        master_title = registry.run("cv.master.get", {})["profile"]["title"]
+        registry.run("company.set_cv_title", {"company": "Acme", "title": "  Staff   Data Scientist "})
+        self.assertEqual(companies.get_company(self.c.id).cv_title, "Staff Data Scientist")
+        r = cv_builder.generate_cv(["SQL"], company_id=self.c.id, export_pdf=False)
+        texts = [p.text.lower() for p in Document(str(config.OUTPUT_DIR / r["docx"])).paragraphs]
+        self.assertIn("staff data scientist", texts)
+        other = cv_builder.generate_cv(["SQL"], company_name="Other", export_pdf=False)
+        texts = [p.text.lower() for p in Document(str(config.OUTPUT_DIR / other["docx"])).paragraphs]
+        self.assertNotIn("staff data scientist", texts)
+        if master_title:
+            self.assertIn(master_title.lower(), texts)
+        self.assertTrue(registry.ACTIONS["company.set_cv_title"].confirm)  # CV text: the assistant asks first
+        with self.assertRaises(ValidationError):
+            registry.run("company.update", {"id": self.c.id, "fields": {"cv_title": "sneaky"}})
+        registry.run("company.set_cv_title", {"company": "Acme", "title": ""})
+        self.assertEqual(companies.get_company(self.c.id).cv_title, "")
+
     def test_summary_changes_need_approval_and_not_via_update(self):
         self.assertTrue(registry.ACTIONS["company.set_cv_summary"].confirm)
         self.assertTrue(registry.ACTIONS["cv.profile.update"].confirm)

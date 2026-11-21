@@ -141,6 +141,16 @@ export async function renderCompany(root, id) {
   const summaryCard = () => {
     const tailored = !!company.cv_summary;
     const text = h("textarea", { rows: 5 }, company.cv_summary || master.profile.summary);
+    const titleInput = h("input", { value: company.cv_title || master.profile.title, placeholder: master.profile.title || "Your title" });
+    const titleRow = h("div", { class: "stack-tight", style: "margin-bottom:12px" },
+      h("div", { class: "row" }, h("b", {}, "Title under your name"), h("span", { class: "spacer" }),
+        h("span", { class: `pill ${company.cv_title ? "applied" : "not-applied"}` }, company.cv_title ? "Tailored" : "Master CV title")),
+      h("div", { class: "row cv-title-row" }, titleInput,
+        company.position && company.position !== titleInput.value && h("button", {
+          class: "ghost small", title: "Use the job's title", onclick: () => { titleInput.value = company.position; titleInput.focus(); },
+        }, `Use “${company.position}”`),
+        company.cv_title && h("button", { class: "ghost small", onclick: () => saveTitle("", "Back to the master title") }, "Master title"),
+        h("button", { class: "small", onclick: () => saveTitle(titleInput.value === master.profile.title ? "" : titleInput.value, "Title saved for this application") }, "Save")));
     const checkBtn = h("button", {
       disabled: !info.llm_available || !company.job_description,
       title: !company.job_description ? "Add the job description first" : !info.llm_available ? "Needs OPENAI_API_KEY" : "",
@@ -154,7 +164,8 @@ export async function renderCompany(root, id) {
     return h("div", { class: "card" },
       h("div", { class: "row" }, h("h2", { style: "margin:0" }, "CV summary"), h("span", { class: "spacer" }),
         h("span", { class: `pill ${tailored ? "applied" : "not-applied"}` }, tailored ? "Tailored for this application" : "Master CV summary")),
-      h("p", { class: "small muted" }, "The paragraph at the top of this application's CV. Saving here changes this application only."),
+      h("p", { class: "small muted" }, "The top of this application's CV. Saving here changes this application only."),
+      titleRow,
       text,
       h("div", { class: "row", style: "margin-top:8px" },
         checkBtn,
@@ -162,6 +173,14 @@ export async function renderCompany(root, id) {
         tailored && h("button", { class: "ghost", onclick: () => saveSummary("", "Back to the master summary") }, "Use master summary"),
         h("button", { class: "primary", onclick: () => saveSummary(text.value, "Summary saved for this application") }, "Save for this application")),
       review && reviewPanel(review, text));
+  };
+
+  const saveTitle = async (value, msg) => {
+    if (await attempt(() => call("company.set_cv_title", { company: id, title: value }), msg)) {
+      await reload();
+      render();
+      toast("Regenerate the CV to apply it");
+    }
   };
 
   const saveSummary = async (value, msg) => {

@@ -160,9 +160,12 @@ def generate_general(template: str | None = None, export_pdf: bool = True) -> di
 
 
 def use_summary(cv: TailoredCV, company) -> TailoredCV:
-    """An application's tailored summary replaces the master one in its CV."""
-    if company is not None and company.cv_summary.strip():
-        cv.profile = cv.profile.model_copy(update={"summary": company.cv_summary.strip()})
+    """An application's tailored summary and title replace the master ones in its CV."""
+    if company is None:
+        return cv
+    update = {k: v for k, v in {"summary": company.cv_summary.strip(), "title": company.cv_title.strip()}.items() if v}
+    if update:
+        cv.profile = cv.profile.model_copy(update=update)
     return cv
 
 

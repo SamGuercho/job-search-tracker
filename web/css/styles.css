@@ -508,3 +508,4 @@ body.is-offline main { padding-top: 8px; }
 .chat-archived summary { cursor: pointer; padding: 4px 10px; }
 .chat-archived .chat-item { opacity: .75; }
 .keys-hint { padding: 0 12px 8px; text-align: right; }
+.cv-title-row { gap: 6px; flex-wrap: wrap; } .cv-title-row input { flex: 1 1 220px; }

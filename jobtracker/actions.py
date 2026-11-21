@@ -63,7 +63,7 @@ def partial(model: type[BaseModel], exclude: set[str] = frozenset()) -> type[Bas
     return create_model(f"{model.__name__}Patch", __config__=ConfigDict(extra="forbid"), **fields)
 
 
-CompanyPatch = partial(Company, exclude={"id", "status", "process", "documents", "created_at", "cv_summary",
+CompanyPatch = partial(Company, exclude={"id", "status", "process", "documents", "created_at", "cv_summary", "cv_title",
                                          "job_description_file", "job_description_saved_at", "logo_file", "logo_source",
                                          "logo_checked_at"})
 StepPatch = partial(Node, exclude={"id"})
@@ -432,6 +432,15 @@ def company_set_cv_summary(company: str, summary: str):
     An empty summary goes back to the master one. Regenerate the CV afterwards to apply it."""
     c = summary_service.set_summary(company, summary)
     return {"company": c.name, "cv_summary": c.cv_summary or "(master CV summary)"}
+
+
+@action("company.set_cv_title", confirm=True)
+def company_set_cv_title(company: str, title: str):
+    """Use this title under the name in this application's CVs only (e.g. the job's title, "Data Scientist"); the
+    master CV title is unchanged. An empty title goes back to the master one. Regenerate the CV afterwards."""
+    c = companies.resolve(company)
+    c = companies.update_company(c.id, cv_title=" ".join(title.split())[:80])
+    return {"company": c.name, "cv_title": c.cv_title or "(master CV title)"}
 
 
 @action("analytics.summary")

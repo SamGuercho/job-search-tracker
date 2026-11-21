@@ -61,6 +61,7 @@ class Company(BaseModel):
     job_description_saved_at: str | None = None
     keywords: list[str] = []
     cv_summary: str = ""          # tailored CV summary for this application ("" = master CV summary)
+    cv_title: str = ""            # the title under your name on this application's CV ("" = master CV title)
     last_update: str = Field(default_factory=today)
     last_update_by: UpdateSide = "me"
     process: Process = Field(default_factory=default_process)
