@@ -240,3 +240,22 @@ export async function addToCalendar(companyId, stepId) {
       h("b", {}, "Apple Calendar, Outlook, other"), h("span", { class: "small muted" }, "Downloads the event (.ics) for your calendar app")),
     h("p", { class: "small muted" }, "Reminders: the day before and 1 hour before. Adding it again updates it.")));
 }
+
+/** A company's logo, or its initials on a colour of its own (same name, same colour) when there is none.
+ *  `c` needs name and logo_file (and logo_checked_at to refresh the browser's copy when it changes). */
+export function companyLogo(c, size = 36) {
+  const initials = () => {
+    const words = (c.name || c.company || "?").replace(/[^\p{L}\p{N} ]/gu, " ").split(/\s+/).filter(Boolean);
+    const text = (words.length > 1 ? words[0][0] + words[1][0] : (words[0] || "?").slice(0, 2)).toUpperCase();
+    let hash = 0;
+    for (const ch of c.name || c.company || "") hash = (hash * 31 + ch.codePointAt(0)) % 360;
+    return h("span", { class: "logo-avatar initials", style: `--size:${size}px; --hue:${hash}`, "aria-hidden": "true" }, text);
+  };
+  if (!c.logo_file) return initials();
+  const img = h("img", {
+    class: "logo-avatar", src: `/files/${c.logo_file.split("/").map(encodeURIComponent).join("/")}?v=${encodeURIComponent(c.logo_checked_at || "")}`,
+    alt: "", width: size, height: size, loading: "lazy", style: `--size:${size}px`,
+  });
+  img.addEventListener("error", () => img.replaceWith(initials()));  // offline, or the file is gone
+  return img;
+}

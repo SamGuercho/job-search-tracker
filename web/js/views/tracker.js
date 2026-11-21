@@ -1,12 +1,12 @@
 // Follow-up: applications as a compact grouped list (default) or a full table (desktop); searchable, filterable.
 import { call } from "../api.js";
-import { attempt, chips, daysBadge, field, h, mapsUrl, modal, mount, readForm, statusPill, toast } from "../ui.js";
+import { attempt, chips, companyLogo, daysBadge, field, h, mapsUrl, modal, mount, readForm, statusPill, toast } from "../ui.js";
 
 const state = { query: "", status: "", workModel: "", hideClosed: false, sort: "days", dir: -1 };
 
 // Each column: how to render it, how to sort it, and whether it shows by default.
 const COLUMNS = [
-  { key: "name", label: "Company", fixed: true, render: (c) => [h("div", { class: "title" }, c.name),
+  { key: "name", label: "Company", fixed: true, render: (c) => [h("div", { class: "title row", style: "gap:8px" }, companyLogo(c, 24), c.name),
     c.website && h("a", { href: c.website, target: "_blank", class: "small", onclick: stop }, shortUrl(c.website))] },
   { key: "position", label: "Position", render: (c) => c.position },
   { key: "status", label: "Status", sortValue: (c) => c.status, render: (c) => statusPill(c.status, c.stage) },
@@ -136,6 +136,7 @@ export async function renderTracker(root) {
     const next = nextInterview(c);
     const due = needsFollowUp(c);
     return h("a", { class: `app-row ${c.status === "Rejected" ? "closed" : ""}`, href: `#/company/${c.id}` },
+      companyLogo(c, 36),
       h("div", { class: "app-main" },
         h("div", { class: "app-name", dir: "auto" }, c.name),
         h("div", { class: "app-sub small muted", dir: "auto" }, c.position || "Position not set"),

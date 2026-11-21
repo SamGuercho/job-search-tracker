@@ -41,6 +41,7 @@ from .services import (
     cv_import,
     jd_match,
     llm,
+    logos,
     master_cv,
     practice,
     prep,
@@ -63,7 +64,8 @@ def partial(model: type[BaseModel], exclude: set[str] = frozenset()) -> type[Bas
 
 
 CompanyPatch = partial(Company, exclude={"id", "status", "process", "documents", "created_at", "cv_summary",
-                                         "job_description_file", "job_description_saved_at"})
+                                         "job_description_file", "job_description_saved_at", "logo_file", "logo_source",
+                                         "logo_checked_at"})
 StepPatch = partial(Node, exclude={"id"})
 ProfilePatch = partial(Profile)
 ExperiencePatch = partial(Experience, exclude={"id", "bullets"})
@@ -134,6 +136,18 @@ def company_delete(id: str):
     """Delete a company and its process (generated files on disk are kept)."""
     companies.delete_company(id)
     return {"deleted": id}
+
+
+@action("company.find_logo")
+def company_find_logo(company: str):
+    """Look for the company's logo on its website now (done automatically when a website is added)."""
+    return logos.refresh(company)
+
+
+@action("company.remove_logo")
+def company_remove_logo(company: str):
+    """Remove the company's logo: its initials are shown instead."""
+    return logos.remove(company)
 
 
 @action("company.log_update")

@@ -1,7 +1,7 @@
 // Today: the page to open each morning. Next interviews (with prep status), what's waiting for you,
 // follow-ups due, what to review, what came back. Everything links to where you act on it.
 import { call } from "../api.js";
-import { addToCalendar, attempt, h, mount } from "../ui.js";
+import { addToCalendar, attempt, companyLogo, h, mount } from "../ui.js";
 
 const chat = (q) => `#/chat?q=${encodeURIComponent(q)}`;
 
@@ -34,7 +34,8 @@ export async function renderToday(root) {
   const interview = (i) => h("div", { class: "today-item" },
     dayChip(i),
     h("div", { class: "today-main" },
-      h("a", { href: `#/company/${i.company_id}`, class: "today-title", dir: "auto" }, `${i.step} · ${i.company}`),
+      h("a", { href: `#/company/${i.company_id}`, class: "today-title row", style: "gap:8px", dir: "auto" },
+        companyLogo({ name: i.company, logo_file: i.logo_file, logo_checked_at: i.logo_checked_at }, 22), `${i.step} · ${i.company}`),
       h("div", { class: "small muted" }, [i.time && `${i.time}${i.duration_min ? ` · ${i.duration_min} min` : ""}`, i.position].filter(Boolean).join(" · ")),
       i.location && (isLink(i.location)
         ? h("a", { class: "small", href: i.location, target: "_blank", rel: "noopener" }, "🎥 Join the call")
@@ -45,6 +46,7 @@ export async function renderToday(root) {
         h("button", { class: "small", onclick: () => addToCalendar(i.company_id, i.step_id) }, "📅"))));
 
   const followUp = (f) => h("div", { class: "today-row" },
+    companyLogo({ name: f.company, logo_file: f.logo_file, logo_checked_at: f.logo_checked_at }, 32),
     h("a", { href: `#/company/${f.company_id}`, class: "today-main" },
       h("b", { dir: "auto" }, f.company), h("div", { class: "small muted", dir: "auto" }, `${f.position || ""}${f.stage ? ` · ${f.stage}` : ""}`)),
     h("span", { class: "app-days due" }, `${f.days}d`),

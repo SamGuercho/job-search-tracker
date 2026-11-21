@@ -1,7 +1,7 @@
 // Service worker: makes the app installable and lets it open when the server can't be reached.
 // Network first (an update is always visible when online). The app's code is all saved at install, so every
 // page opens offline; the data shown offline is saved by the page itself (api.js), in another cache.
-const CACHE = "jobtracker-shell-v4";
+const CACHE = "jobtracker-shell-v5";
 const SHELL = ["/", "/css/styles.css", "/js/app.js", "/js/api.js", "/js/ui.js", "/js/views/analytics.js", "/js/views/chat.js", "/js/views/company.js", "/js/views/costs.js", "/js/views/cv.js", "/js/views/import.js", "/js/views/master.js", "/js/views/practice.js", "/js/views/process-graph.js", "/js/views/recordings.js", "/js/views/today.js", "/js/views/tracker.js", "/manifest.webmanifest", "/favicon.svg", "/icons/icon-192.png", "/icons/logo-64.png"];
 
 self.addEventListener("install", (event) => {
@@ -18,7 +18,8 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
-  const isData = url.pathname.startsWith("/api/") || url.pathname.startsWith("/files/")
+  const isLogo = /^\/files\/.+\/logo\.(png|svg)$/.test(url.pathname);  // company logos: kept for offline reading
+  const isData = url.pathname.startsWith("/api/") || (url.pathname.startsWith("/files/") && !isLogo)
     || url.pathname.startsWith("/login") || url.pathname.startsWith("/logout");
   if (event.request.method !== "GET" || url.origin !== location.origin || isData) return;  // straight to the network
   event.respondWith(

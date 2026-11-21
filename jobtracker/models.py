@@ -45,6 +45,9 @@ class Company(BaseModel):
     address: str = ""             # optional exact address, for the map
     work_model: WorkModel = ""
     website: str = ""
+    logo_file: str | None = None  # the company's logo in its folder (relative to the output folder), see services/logos.py
+    logo_source: str = ""         # where it came from: the image URL, or "uploaded" (then never replaced automatically)
+    logo_checked_at: str | None = None
     job_url: str = ""             # link to the job posting
     source_type: SourceType = ""  # where the application comes from
     source_detail: str = ""       # e.g. "LinkedIn", "Dana from TalentCo", "John (ex-colleague)"

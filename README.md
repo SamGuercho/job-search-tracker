@@ -161,6 +161,12 @@ The app opens on **Today**: your next interviews (time, place or call link, prep
 score, 📅), what is waiting for you (a recording to finish, a prep being written), follow-ups due (one tap to log
 them), what came back (preps, debriefs), and what to review.
 
+### Company logos
+When an application has a website, Ezri finds the company's logo on it (the icon the site declares for phones,
+else its other icons) and shows it in the lists, on the application page and on Today; without one, colored
+initials. Tap the logo on the application page to search again, use your own image, or show the initials. The
+logo is fetched from the company's own site only (no third-party logo service), and SVG logos can never run code.
+
 ### Offline reading
 Your applications, preps, debriefs, practice and CV are saved on each device in the background. Without network
 (train, plane) or when the home server is off, the app still opens and shows them, with an *Offline · read

@@ -38,12 +38,14 @@ def summary(days_ahead: int = 14) -> dict:
         scores = [a.score for a in attempts if a.company_id == c.id]
         interviews.append({
             "company_id": c.id, "company": c.name, "position": c.position, "step_id": n.id, "step": n.name,
+            "logo_file": c.logo_file, "logo_checked_at": c.logo_checked_at,
             "date": n.date[:10], "time": n.time, "duration_min": n.duration_min, "location": n.location,
             "days": (date.fromisoformat(n.date[:10]) - today).days, "prep": _prep_state(c.id),
             "practice_answers": len(scores), "practice_average": round(sum(scores) / len(scores), 1) if scores else None,
         })
 
     follow_ups = sorted(({"company_id": c.id, "company": c.name, "position": c.position, "stage": c.process.stage(),
+                          "logo_file": c.logo_file, "logo_checked_at": c.logo_checked_at,
                           "days": c.days_since_update(), "last_update_by": c.last_update_by}
                          for c in apps if c.status in ("Applied", "In process")
                          and (c.days_since_update() or 0) >= FOLLOW_UP_DAYS),

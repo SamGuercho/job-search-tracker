@@ -21,7 +21,7 @@ from . import (
     registry,
     users,
 )
-from .services import calendar, llm, pdf, recordings, reminders
+from .services import calendar, llm, logos, pdf, recordings, reminders
 from .services.companies import NotFound
 from .services.cv_import import SUPPORTED
 from .services.llm import LLMUnavailable
@@ -146,6 +146,17 @@ def share_target(title: str = "", text: str = "", url: str = ""):
     return RedirectResponse(f"/#/chat?q={quote(message)}" if message else "/#/", status_code=303)
 
 
+@app.post("/api/companies/logo")
+async def upload_logo(company: str, file: UploadFile = File(...)):
+    """Use your own image as a company's logo (PNG, JPEG, WebP, ICO or SVG)."""
+    try:
+        return {"ok": True, "result": logos.upload(company, Path(file.filename or "logo").name, await file.read())}
+    except NotFound as e:
+        raise HTTPException(404, str(e)) from e
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+
+
 @app.post("/api/recordings/upload")
 async def upload_recording(company: str, step: str = "", file: UploadFile = File(...)):
     """Upload an interview recording for an application: saved in its folder, measured, with cost estimates.
@@ -185,6 +196,10 @@ def get_file(path: str):
     if target.suffix.lower() in {".md", ".txt"}:  # readable in the browser instead of downloaded
         return FileResponse(target, media_type="text/plain; charset=utf-8", filename=target.name,
                             content_disposition_type="inline")
+    if target.suffix.lower() == ".svg":  # a logo from the web: shown as an image, never allowed to run anything
+        return FileResponse(target, media_type="image/svg+xml", headers={
+            "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox",
+            "X-Content-Type-Options": "nosniff"})
     return FileResponse(target, filename=target.name)
 
 

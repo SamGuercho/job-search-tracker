@@ -1,6 +1,6 @@
 // Company page: details, follow-up counter, process graph, generated CVs.
-import { call, fileUrl } from "../api.js";
-import { attempt, chips, confirmSheet, daysBadge, field, formatDate, h, joinList, mapsUrl, markdown, mount, readForm, toast } from "../ui.js";
+import { call, fileUrl, upload } from "../api.js";
+import { attempt, chips, companyLogo, confirmSheet, daysBadge, field, formatDate, h, joinList, mapsUrl, markdown, modal, mount, readForm, toast } from "../ui.js";
 import { processCard } from "./process-graph.js";
 import { recordingsCard } from "./recordings.js";
 
@@ -22,7 +22,10 @@ export async function renderCompany(root, id) {
   const header = () => h("div", { class: "page-head" },
     h("div", {},
       h("a", { href: "#/", class: "small" }, "← Follow-up"),
-      h("h1", {}, company.name),
+      h("div", { class: "company-title" },
+        h("button", { class: "logo-button", title: "Company logo", "aria-label": "Change the company logo", onclick: () => logoSheet() },
+          companyLogo(company, 48)),
+        h("h1", {}, company.name)),
       h("div", { class: "sub muted" }, company.position,
         (company.location || company.address) && [" · ", h("a", { href: mapsUrl(company), target: "_blank" }, "📍 ", company.location || company.address)],
         company.work_model && [" · ", company.work_model],
@@ -36,6 +39,29 @@ export async function renderCompany(root, id) {
           if (await attempt(() => call("company.delete", { id }), "Company deleted")) location.hash = "#/";
         },
       }, "Delete")));
+
+  // ------------------------------------------------------------------ logo
+  // Found on the website automatically; here: search again, use your own image, or show the initials.
+  const logoSheet = () => {
+    const fileInput = h("input", { type: "file", accept: "image/png,image/jpeg,image/webp,image/svg+xml,image/x-icon,.ico,.svg", style: "display:none" });
+    const done = async (fn, msg) => {
+      const r = await attempt(fn, msg);
+      if (r) { Object.assign(company, await call("company.get", { id })); close(); render(); }
+    };
+    fileInput.addEventListener("change", () => fileInput.files[0]
+      && done(() => upload(`/api/companies/logo?company=${encodeURIComponent(id)}`, fileInput.files[0]), "Logo updated"));
+    const source = company.logo_source === "uploaded" ? "Your own image."
+      : company.logo_source === "removed" ? "Initials (no logo)."
+        : company.logo_file ? "Found on the company's website." : company.website ? "No logo found on the website yet." : "Add the website in Details to find the logo automatically.";
+    const close = modal("Company logo", h("div", { class: "logo-sheet" },
+      companyLogo(company, 96), h("p", { class: "small muted", style: "margin:0" }, source),
+      h("div", { class: "actions" },
+        company.website && h("button", { class: "primary", onclick: (e) => { e.target.textContent = "Searching…"; done(() => call("company.find_logo", { company: id }), "Logo updated"); } },
+          "Find it on the website"),
+        h("button", { onclick: () => fileInput.click() }, "Use my own image"),
+        company.logo_file && h("button", { onclick: () => done(() => call("company.remove_logo", { company: id }), "Showing initials") }, "Show initials instead")),
+      fileInput));
+  };
 
   // -------------------------------------------------------------- follow-up
   const followUp = () => h("div", { class: "card" },

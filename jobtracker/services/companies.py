@@ -50,6 +50,9 @@ def create_company(**fields) -> Company:
     _save_job_description(company)
     with store.transaction() as book:
         book.companies.append(company)
+    if company.website:
+        from . import logos
+        logos.schedule(company.id)  # find its logo in the background
     return company
 
 
@@ -59,6 +62,9 @@ def update_company(company_id: str, **fields) -> Company:
         updated = company.model_validate({**company.model_dump(), **fields})
         _save_job_description(updated)
         book.companies[book.companies.index(company)] = updated
+    if updated.website and updated.website != company.website:
+        from . import logos
+        logos.schedule(updated.id)  # new website: look for its logo
     return updated
 
 
