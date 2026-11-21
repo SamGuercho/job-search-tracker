@@ -126,5 +126,39 @@ class LogoTests(unittest.TestCase):
         self.assertEqual(companies.get_company(c.id).logo_source, "https://auto.example/touch.png")
 
 
+    def test_missing_website_is_found_verified_and_saved(self):
+        real = b"<html><head><title>Check Point Software | Cyber Security</title></head><body>" + b"x" * 3000 + b"</body></html>"
+        parked = b"<html><head><title>checkpoint.io</title></head><body>" + b"x" * 3000 + b"</body></html>"
+        self.use({"https://www.checkpoint.io": (parked, "text/html"),              # titled with its own domain: parked
+                  "https://www.checkpoint.com": (real, "text/html"),
+                  "https://www.checkpoint.com/favicon.ico": (ico([32, 64]), "image/x-icon")})
+        companies.create_company(name="Checkpoint", job_url="https://www.linkedin.com/jobs/view/42")  # a job board: ignored
+        r = registry.run("company.find_logo", {"company": "Checkpoint"})
+        self.assertEqual(r["website_found"], "https://www.checkpoint.com")
+        self.assertEqual(companies.find_by_name("Checkpoint").website, "https://www.checkpoint.com")
+        self.assertEqual(r["logo_file"], "Checkpoint/logo.png")
+
+    def test_guess_uses_the_posting_or_email_site_and_refuses_parked_pages(self):
+        from types import SimpleNamespace as NS
+        page = b"<html><title>Zafran - Exposure management</title>" + b"y" * 3000 + b"</html>"
+        fake = self.use({"https://careers.zafran.io": (page, "text/html")})
+        c = NS(name="Zafran", job_url="https://careers.zafran.io/jobs/123", contact=NS(email=""))
+        self.assertEqual(logos.guess_website(c), "https://careers.zafran.io")
+        self.assertEqual(fake.calls[0], "https://careers.zafran.io")  # the posting's own site is tried first
+        self.use({"https://www.acme.com": (b"<title>Acme</title><p>This domain is for sale</p>" + b"z" * 3000, "text/html")})
+        self.assertIsNone(logos.guess_website(NS(name="Acme", job_url="", contact=NS(email="me@gmail.com"))))
+        with self.assertRaises(ValueError):  # nothing found: a clear message
+            companies.create_company(name="Acme")
+            registry.run("company.find_logo", {"company": "Acme"})
+
+    def test_links_with_spaces_still_work(self):
+        from jobtracker.services import assistant
+        c = companies.create_company(name="Zafran")
+        (users.output_dir() / "Zafran").mkdir(parents=True, exist_ok=True)
+        (users.output_dir() / "Zafran/logo.png").write_bytes(png(32))
+        fixed = assistant.fix_links(f"Logo: [logo]( /files/Zafran/logo.png ) · [Zafran]( #/company/{c.id} )")
+        self.assertEqual(fixed, f"Logo: [logo](/files/Zafran/logo.png) · [Zafran](#/company/{c.id})")
+
+
 if __name__ == "__main__":
     unittest.main()

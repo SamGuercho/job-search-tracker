@@ -178,7 +178,7 @@ export function mapsUrl(c) {
 export function markdown(text) {
   const inline = (s) => {
     const out = [];
-    const re = /\*\*(.+?)\*\*|`(.+?)`|\[([^\]]+)\]\(((?:#\/|\/files\/|https?:\/\/)[^)\s]+)\)/g;
+    const re = /\*\*(.+?)\*\*|`(.+?)`|\[([^\]]+)\]\(\s*((?:#\/|\/files\/|https?:\/\/)[^)\s]+)\s*\)/g;
     let last = 0;
     for (const m of s.matchAll(re)) {
       out.push(s.slice(last, m.index));

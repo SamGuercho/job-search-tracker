@@ -171,14 +171,72 @@ def _save(company, ext: str, data: bytes, source: str):
                                     logo_checked_at=datetime.now().isoformat(timespec="seconds"))
 
 
+# ------------------------------------------------------------ website guess
+
+JOB_SITES = ("linkedin.", "indeed.", "glassdoor.", "greenhouse.io", "lever.co", "workday", "myworkdayjobs", "comeet.",
+             "smartrecruiters.", "ashbyhq.", "bamboohr.", "jobvite.", "breezy.hr", "recruitee.", "teamtailor.", "welcome",
+             "drushim.", "alljobs.", "jobmaster.", "wellfound.", "angel.co", "otta.", "builtin.", "google.")
+MAIL_SITES = ("gmail.", "outlook.", "hotmail.", "yahoo.", "icloud.", "proton", "live.", "walla.", "aol.")
+TLDS = (".com", ".io", ".ai", ".co", ".co.il", ".tech", ".dev")
+
+
+def _norm(text: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", text.lower())
+
+
+def _root(url: str) -> str:
+    parts = urllib.parse.urlsplit(url if "://" in url else "https://" + url)
+    return f"{parts.scheme or 'https'}://{parts.hostname}" if parts.hostname else ""
+
+
+def _belongs_to(company_name: str, url: str) -> bool:
+    """The page at `url` is the company's own site: a real page whose title (or site name) contains the company's
+    name, and not a parked domain (parked pages are tiny, or titled with the bare domain)."""
+    try:
+        html, _, final = web.fetch_bytes(url, 400_000, accept="text/html", truncate=True)
+    except Exception:
+        return False
+    text = html.decode("utf-8", "replace")
+    if len(text) < 2_000 or re.search(r"(domain|this site) (is )?for sale|parked|lander", text[:5_000], re.I):
+        return False
+    titles = re.findall(r"<title[^>]*>(.*?)</title>", text, re.I | re.S)
+    titles += re.findall(r'<meta[^>]+(?:og:site_name|application-name)[^>]+content=["\']([^"\']+)', text, re.I)
+    name, host = _norm(company_name), _norm(urllib.parse.urlsplit(final).hostname or "")
+    return bool(name) and any(name in _norm(t) and _norm(t) not in (host, "www" + host) for t in titles)
+
+
+def guess_website(company) -> str | None:
+    """The company's own website when none is saved: the job posting's site (if it isn't a job board), the contact's
+    email domain (if it isn't a mailbox provider), then <name>.com/.io/.ai/… Each is kept only if verified."""
+    tried = []
+    if company.job_url and not any(s in company.job_url.lower() for s in JOB_SITES):
+        tried.append(_root(company.job_url))
+    email = (company.contact.email or "").lower()
+    if "@" in email and not any(s in email.split("@")[1] for s in MAIL_SITES):
+        tried.append(_root(email.split("@")[1]))
+    slug = _norm(company.name)
+    if slug:
+        tried += [f"https://www.{slug}{tld}" for tld in TLDS]
+    for url in dict.fromkeys(u for u in tried if u):
+        if _belongs_to(company.name, url):
+            return url
+    return None
+
+
 def refresh(ref: str) -> dict:
-    """Look for the logo on the company's website now (replaces the current one, even an uploaded one)."""
+    """Look for the logo on the company's website now (replaces the current one, even an uploaded one). With no
+    website saved, the website is guessed first (and saved when verified)."""
     c = companies.resolve(ref)
+    guessed = None
     if not c.website:
-        raise ValueError(f"{c.name} has no website: add it first")
+        guessed = guess_website(c)
+        if not guessed:
+            raise ValueError(f"{c.name} has no website and I couldn't find it: add it in the application's details")
+        c = companies.update_company(c.id, fetch_logo=False, website=guessed)
     found = find(c.website)
     c = _save(c, found["ext"], found["data"], found["source"])
-    return {"logo_file": c.logo_file, "source": found["source"], "size": found["size"]}
+    return {"logo_file": c.logo_file, "source": found["source"], "size": found["size"],
+            **({"website_found": guessed} if guessed else {})}
 
 
 def upload(ref: str, filename: str, content: bytes) -> dict:

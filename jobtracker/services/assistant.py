@@ -249,7 +249,7 @@ def _instructions(chat: Chat) -> str:
 # The model sometimes invents links. Before a reply is saved, every link is checked against real data:
 # files must exist in the output folder, company links must match a tracked application.
 
-_LINK = re.compile(r"\[([^\]]+)\]\(([^)\s]+)\)")
+_LINK = re.compile(r"\[([^\]]+)\]\(\s*([^)\s]+)\s*\)")  # tolerates spaces inside the parentheses
 _CODE_PATH = re.compile(r"`([^`\n]+\.(?:pdf|docx|md))`", re.IGNORECASE)
 _LOCAL = re.compile(r"^https?://(?:localhost|127\.0\.0\.1)(?::\d+)?", re.IGNORECASE)
 

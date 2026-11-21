@@ -140,7 +140,9 @@ def company_delete(id: str):
 
 @action("company.find_logo")
 def company_find_logo(company: str):
-    """Look for the company's logo on its website now (done automatically when a website is added)."""
+    """Look for the company's logo on its website now (done automatically when a website is added). Without a
+    website, the website is found first (job posting site, contact's email domain, <name>.com…, verified against
+    the company's name) and saved: say so to the user (`website_found`)."""
     return logos.refresh(company)
 
 

@@ -56,13 +56,13 @@ def create_company(**fields) -> Company:
     return company
 
 
-def update_company(company_id: str, **fields) -> Company:
+def update_company(company_id: str, fetch_logo: bool = True, **fields) -> Company:
     with store.transaction() as book:
         company = _find(book, company_id)
         updated = company.model_validate({**company.model_dump(), **fields})
         _save_job_description(updated)
         book.companies[book.companies.index(company)] = updated
-    if updated.website and updated.website != company.website:
+    if fetch_logo and updated.website and updated.website != company.website:
         from . import logos
         logos.schedule(updated.id)  # new website: look for its logo
     return updated
