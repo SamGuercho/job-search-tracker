@@ -47,15 +47,70 @@ export async function attempt(fn, success) {
   }
 }
 
+/** A dialog (a bottom sheet on phones). Escape or a tap outside closes it. Returns close(). */
 export function modal(title, body, { onClose } = {}) {
-  const close = () => { back.remove(); onClose?.(); };
+  let closed = false;
+  const close = () => {
+    if (closed) return;
+    closed = true;
+    back.remove();
+    document.removeEventListener("keydown", onKey);
+    onClose?.();
+  };
+  const onKey = (e) => { if (e.key === "Escape") close(); };
   const back = h("div", { class: "modal-back", onclick: (e) => e.target === back && close() },
-    h("div", { class: "modal" },
+    h("div", { class: "modal", role: "dialog", "aria-modal": "true", "aria-label": title || "Dialog" },
+      h("div", { class: "sheet-handle", "aria-hidden": "true" }),
       h("div", { class: "row", style: "margin-bottom:14px" }, h("h2", { style: "margin:0" }, title),
         h("span", { class: "spacer" }), h("button", { class: "ghost icon", onclick: close, "aria-label": "Close" }, "✕")),
       body));
+  document.addEventListener("keydown", onKey);
   document.body.append(back);
   return close;
+}
+
+/**
+ * In-app replacement for confirm(): resolves true / false.
+ *   if (!(await confirmSheet("Delete Nimbus?", { ok: "Delete", danger: true }))) return;
+ */
+export function confirmSheet(message, { title = "Are you sure?", ok = "OK", danger = false } = {}) {
+  return sheet(message, { title, ok, danger });
+}
+
+/** In-app replacement for prompt(): resolves the trimmed text, or null if cancelled or empty. */
+export function promptSheet(message, value = "", { title = "", ok = "Save", placeholder = "", suggestions = [] } = {}) {
+  return sheet(message, { title, ok, input: { value, placeholder, suggestions } });
+}
+
+function sheet(message, { title, ok, danger = false, input = null }) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (value) => { if (!settled) { settled = true; close(); resolve(value); } };
+    const listId = `sheet-list-${Date.now()}`;
+    const field = input && h("input", {
+      value: input.value ?? "", placeholder: input.placeholder, list: input.suggestions.length ? listId : null, "aria-label": title || message,
+    });
+    const body = h("form", {
+      class: "sheet-body", onsubmit: (e) => { e.preventDefault(); finish(input ? (field.value.trim() || null) : true); },
+    },
+      message && h("p", { dir: "auto" }, message),
+      field,
+      input?.suggestions.length > 0 && h("datalist", { id: listId }, input.suggestions.map((s) => h("option", { value: s }))),
+      h("div", { class: "sheet-actions" },
+        h("button", { type: "button", onclick: () => finish(input ? null : false) }, "Cancel"),
+        h("button", { type: "submit", class: danger ? "danger solid" : "primary" }, ok)));
+    const close = modal(title, body, { onClose: () => finish(input ? null : false) });
+    setTimeout(() => (field ? field.select() : body.querySelector("[type=submit]").focus()), 50);
+  });
+}
+
+/** Native share sheet (phones, Safari, Edge) when available; otherwise copies the text. */
+export async function share({ title, text }) {
+  if (navigator.share) {
+    try { await navigator.share({ title, text }); return; } catch (e) { if (e.name === "AbortError") return; }
+  }
+  await navigator.clipboard.writeText(text);
+  toast("Copied");
 }
 
 export const field = (label, input, cls = "") => h("label", { class: `field ${cls}` }, label, input);

@@ -1,7 +1,7 @@
 // Process graph of one application: layered layout, click a node to edit it,
 // "+" on a link inserts a step there, and a red Closed rail every step leads to.
 import { call } from "../api.js";
-import { attempt, field, formatDate, h, mount, readForm } from "../ui.js";
+import { attempt, confirmSheet, field, formatDate, h, mount, readForm } from "../ui.js";
 
 const W = 136, H = 70, COL = 184, ROW = 96, PAD = 12, RAIL = 26;
 const SUGGESTIONS = ["Applied", "Response received", "First HR interview", "Hiring manager interview", "Technical interview",
@@ -140,7 +140,8 @@ export function processCard(company, { onChange, stepTypes = {} }) {
         h("button", { type: "button", class: "small", onclick: () => { adding = { mode: "branch", ref: n.id }; draw(); } }, "⑂ Branch from here"),
         h("span", { class: "spacer" }),
         h("button", {
-          type: "button", class: "small danger", onclick: () => confirm(`Delete “${n.name}”? The steps around it are reconnected.`)
+          type: "button", class: "small danger", onclick: async () => (await confirmSheet("The steps around it are reconnected.",
+            { title: `Delete “${n.name}”?`, ok: "Delete", danger: true }))
             && run("process.delete_step", { step: n.id }, "Step deleted").then(() => (selected = null)),
         }, "Delete step")),
       datalist());

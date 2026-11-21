@@ -1,6 +1,6 @@
 // "Import from CV file" modal: upload -> LLM draft preview -> merge or replace.
 import { call, upload } from "../api.js";
-import { attempt, chips, h, modal, mount } from "../ui.js";
+import { attempt, chips, confirmSheet, h, modal, mount } from "../ui.js";
 
 export async function openImport(onDone) {
   const info = await call("app.info");
@@ -45,7 +45,8 @@ export async function openImport(onDone) {
       h("div", { class: "row" }, mode, h("span", { class: "spacer" }),
         h("button", {
           class: "primary", onclick: async () => {
-            if (mode.value === "replace" && !confirm("Replace your current master CV with this import?")) return;
+            if (mode.value === "replace" && !(await confirmSheet("Your current master CV is replaced by this import.",
+              { title: "Replace your master CV?", ok: "Replace", danger: true }))) return;
             if (await attempt(() => call("cv.import.apply", { draft, mode: mode.value }), "CV imported")) { close(); onDone(); }
           },
         }, "Apply import")));

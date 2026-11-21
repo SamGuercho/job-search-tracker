@@ -1,7 +1,7 @@
 // Interview recordings card (application page): upload → estimate → transcribe → pick your voice → debrief.
 // Nothing is spent before "Transcribe"; each step shows its estimated cost, then what it actually cost.
 import { call, fileUrl, upload } from "../api.js";
-import { attempt, h, markdown, mount, toast, usd } from "../ui.js";
+import { attempt, confirmSheet, h, markdown, mount, share, toast, usd } from "../ui.js";
 
 const LANGUAGES = [["", "Same as the interview"], ["English", "English"], ["Hebrew", "Hebrew · עברית"], ["French", "French"]];
 const STATUS = {
@@ -62,7 +62,8 @@ export function recordingsCard(company, info) {
     h("span", { class: "spacer" }), h("span", { class: `pill rec-${r.status}` }, STATUS[r.status] || r.status),
     h("button", {
       class: "ghost icon", title: "Delete this recording (audio, debrief, graded answers)",
-      onclick: () => confirm("Delete this recording, its debrief and the answers graded from it?") && act(() => call("recording.delete", { id: r.id }), "Deleted"),
+      onclick: async () => (await confirmSheet("The audio, its debrief and the answers graded from it are deleted.",
+        { title: "Delete this recording?", ok: "Delete", danger: true })) && act(() => call("recording.delete", { id: r.id }), "Deleted"),
     }, "🗑"));
 
   const languageSelect = (value = "") => h("select", { title: "Language of the debrief" },
@@ -106,7 +107,8 @@ export function recordingsCard(company, info) {
     }, h("summary", {}, "Full transcript"));
     return h("div", { class: "stack-tight" },
       h("div", { class: "small muted" }, `Cost: ${usd(total(r.cost_usd))} (transcription ${usd(r.cost_usd?.transcription)}, debrief ${usd(r.cost_usd?.analysis)}) · estimate was ${usd(total(r.estimate_usd))}`,
-        r.debrief_file && [" · ", h("a", { href: fileUrl(r.debrief_file), target: "_blank" }, "📄 Debrief")]),
+        r.debrief_file && [" · ", h("a", { href: fileUrl(r.debrief_file), target: "_blank" }, "📄 Debrief")], " · ",
+        h("a", { href: "#", onclick: (e) => { e.preventDefault(); share({ title: `Debrief – ${company.name}`, text: debriefText(r) }); } }, "Share")),
       h("div", { class: "md" }, markdown(d.summary)),
       d.next_steps && h("p", { dir: "auto" }, h("b", {}, "Next steps: "), d.next_steps),
       h("details", { open: true }, h("summary", {}, `Questions (${d.questions.length})${avg ? ` · average ${avg}/10` : ""}`),
@@ -122,7 +124,7 @@ export function recordingsCard(company, info) {
       h("details", {}, h("summary", {}, "About the role (what they said)"), h("div", { class: "md" }, markdown(d.about_the_role))),
       h("details", {}, h("summary", {}, "Thank-you email"),
         h("pre", { class: "transcript", dir: "auto" }, d.thank_you_email),
-        h("button", { onclick: () => navigator.clipboard.writeText(d.thank_you_email).then(() => toast("Copied")) }, "Copy")),
+        h("button", { onclick: () => share({ title: `Thank you – ${company.name}`, text: d.thank_you_email }) }, "Share or copy")),
       transcript,
       h("div", { class: "row small" }, "Debrief again in ", lang,
         h("button", { onclick: () => act(() => call("recording.reanalyze", { id: r.id, language: lang.value }), "Writing the debrief") }, `Redo · ≈ ${usd(r.estimate_usd?.analysis)}`)));
@@ -148,4 +150,13 @@ export function recordingsCard(company, info) {
   draw();
   load();
   return root;
+}
+
+// Plain-text debrief for the share sheet (WhatsApp, mail, notes…)
+function debriefText(r) {
+  const d = r.debrief;
+  return [`${r.step_name || "Interview"} · ${r.uploaded_at.slice(0, 10)}`, "", d.summary, "",
+    d.next_steps && `Next steps: ${d.next_steps}`, "", "Questions:",
+    ...d.questions.map((q) => `- ${q.question} (${q.score}/10): ${q.feedback}`), "",
+    "To improve:", ...d.to_improve.map((t) => `- ${t}`)].filter((x) => x !== false && x !== undefined).join("\n");
 }

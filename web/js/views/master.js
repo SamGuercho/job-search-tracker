@@ -1,7 +1,7 @@
 // Master CV editor: profile, experiences + achievements (with alternative wordings), education, skills.
 // Bullets and experiences save automatically when a field loses focus.
 import { call, fileUrl } from "../api.js";
-import { attempt, field, h, joinList, keywordPattern, mount, readForm, splitList } from "../ui.js";
+import { attempt, confirmSheet, field, h, joinList, keywordPattern, mount, readForm, splitList } from "../ui.js";
 import { openImport } from "./import.js";
 
 const PROFILE_FIELDS = [
@@ -46,7 +46,7 @@ export async function renderMasterCv(root) {
         h("button", { class: "icon", disabled: i === cv.experiences.length - 1, title: "Move down", onclick: () => move(exp.id, 1) }, "↓"),
         h("button", {
           class: "danger icon", onclick: async () => {
-            if (confirm(`Delete ${exp.company} and its ${exp.bullets.length} bullets?`) &&
+            if (await confirmSheet(`Its ${exp.bullets.length} achievements are deleted too.`, { title: `Delete ${exp.company}?`, ok: "Delete", danger: true }) &&
               await attempt(() => call("cv.experience.delete", { id: exp.id }), "Experience deleted")) reload();
           },
         }, "Delete")),
@@ -99,7 +99,7 @@ export async function renderMasterCv(root) {
       h("label", { class: "check", title: "Always include" }, h("input", { name: "pinned", type: "checkbox", checked: b.pinned }), "📌"),
       h("button", {
         class: "ghost icon danger", title: "Delete achievement (and its wordings)", onclick: async () => {
-          if (confirm("Delete this achievement and all its wordings?") && await attempt(() => call("cv.bullet.delete", { id: b.id }), "Achievement deleted")) reload();
+          if (await confirmSheet("All its wordings are deleted too.", { title: "Delete this achievement?", ok: "Delete", danger: true }) && await attempt(() => call("cv.bullet.delete", { id: b.id }), "Achievement deleted")) reload();
         },
       }, "✕"));
     row.addEventListener("change", () => { draw(); attempt(() => call("cv.bullet.update", { id: b.id, fields: readForm(row) }), "Saved"); });
@@ -131,7 +131,7 @@ export async function renderMasterCv(root) {
       keywordsField(v.keywords, status),
       h("button", {
         class: "ghost icon danger", title: "Delete this wording", onclick: async () => {
-          if (confirm("Delete this wording?") && await attempt(() => call("cv.variant.delete", { id: v.id }), "Wording deleted")) reload();
+          if (await confirmSheet("", { title: "Delete this wording?", ok: "Delete", danger: true }) && await attempt(() => call("cv.variant.delete", { id: v.id }), "Wording deleted")) reload();
         },
       }, "✕"));
     row.addEventListener("change", () => { draw(); attempt(() => call("cv.variant.update", { id: v.id, fields: readForm(row) }), "Saved"); });

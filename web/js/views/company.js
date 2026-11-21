@@ -1,6 +1,6 @@
 // Company page: details, follow-up counter, process graph, generated CVs.
 import { call, fileUrl } from "../api.js";
-import { attempt, chips, daysBadge, field, formatDate, h, joinList, mapsUrl, markdown, mount, readForm, toast } from "../ui.js";
+import { attempt, chips, confirmSheet, daysBadge, field, formatDate, h, joinList, mapsUrl, markdown, mount, readForm, toast } from "../ui.js";
 import { processCard } from "./process-graph.js";
 import { recordingsCard } from "./recordings.js";
 
@@ -32,7 +32,7 @@ export async function renderCompany(root, id) {
       h("a", { class: "btn primary", href: `#/cv?company=${id}` }, "Create tailored CV"),
       h("button", {
         class: "danger", onclick: async () => {
-          if (!confirm(`Delete ${company.name}? This cannot be undone.`)) return;
+          if (!(await confirmSheet("This cannot be undone.", { title: `Delete ${company.name}?`, ok: "Delete", danger: true }))) return;
           if (await attempt(() => call("company.delete", { id }), "Company deleted")) location.hash = "#/";
         },
       }, "Delete")));
@@ -207,7 +207,8 @@ export async function renderCompany(root, id) {
     const running = run?.status === "running";
     const start = info.premium && h("button", {
       class: p?.status === "done" ? "" : "primary", disabled: running, onclick: async () => {
-        if (p?.status === "done" && !confirm("Prepare again? The current prep is replaced (its file is archived).")) return;
+        if (p?.status === "done" && !(await confirmSheet("A new version is written; the current one stays available in the version list.",
+          { title: "Prepare again?", ok: "Prepare" }))) return;
         const started = await attempt(() => call("prep.start", { company: id, language: prepLanguage }), "Preparation started: it takes a few minutes");
         if (started) { prep = await call("prep.get", { company: id }); render(); poll(); }  // keeps the current prep visible
       },

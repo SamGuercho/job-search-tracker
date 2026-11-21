@@ -1,6 +1,6 @@
 // Practice: the training profile built from graded answers (what to review, scores by topic, history).
 import { call } from "../api.js";
-import { attempt, h, mount } from "../ui.js";
+import { attempt, confirmSheet, h, mount, promptSheet } from "../ui.js";
 
 const SVG = "http://www.w3.org/2000/svg";
 // Minimal SVG element builder (h() makes HTML elements): attributes, on* listeners, nested children.
@@ -71,10 +71,12 @@ export async function renderPractice(root) {
   const renameButton = (c) => h("button", {
     class: "ghost icon", title: "Rename, or merge into another capability", onclick: async () => {
       const others = p.capabilities.map((x) => x.capability).filter((x) => x !== c.capability && x !== "Unsorted");
-      const to = prompt(`New name for “${c.capability}”.\nTo merge it into another one, type that name: ${others.join(", ")}`, c.capability)?.trim();
+      const to = await promptSheet(`To merge it into another capability, type that one's name (suggestions below).`, c.capability,
+        { title: `Rename “${c.capability}”`, ok: "Rename", suggestions: others });
       if (!to || to === c.capability) return;
       const into = others.find((x) => x.toLowerCase() === to.toLowerCase());
-      if (into && !confirm(`Merge “${c.capability}” into “${into}”? Its ${c.attempts} answer${c.attempts === 1 ? "" : "s"} move there. This can't be undone.`)) return;
+      if (into && !(await confirmSheet(`Its ${c.attempts} answer${c.attempts === 1 ? "" : "s"} move to “${into}”. This can't be undone.`,
+        { title: `Merge “${c.capability}” into “${into}”?`, ok: "Merge", danger: true }))) return;
       if (await attempt(() => call("practice.rename_capability", { capability: c.capability, to }), into ? "Merged" : "Renamed")) rerender();
     },
   }, "✎");

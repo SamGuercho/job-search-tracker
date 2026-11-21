@@ -1,6 +1,6 @@
 // Assistant: conversations with the LLM agent that drives the app's actions.
 import { call, fileUrl } from "../api.js";
-import { attempt, h, markdown, mount, usd } from "../ui.js";
+import { attempt, h, markdown, mount, promptSheet, usd } from "../ui.js";
 
 const LABELS = {
   "company.list": "Looked at your companies", "company.get": "Opened company", "company.create": "Added company",
@@ -29,7 +29,7 @@ export async function renderChat(root, chatId, params) {
     h("h2", { style: "margin:0" }, chat.title),
     h("button", {
       class: "ghost icon", title: "Rename this conversation", onclick: async () => {
-        const title = prompt("Conversation title", chat.title);
+        const title = await promptSheet("", chat.title, { title: "Rename this conversation", ok: "Rename" });
         if (!title?.trim()) return;
         const renamed = await attempt(() => call("chat.rename", { id: chat.id, title }), "Renamed");
         if (renamed) { chat = renamed; chats = await call("chat.list"); drawList(); drawHead(); }
