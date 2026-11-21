@@ -2,7 +2,8 @@
 
 1. Job boards' official public APIs, when the link says which board and account (or when this company's site is
    remembered to use one):
-   - Greenhouse  boards(-api).greenhouse.io / job-boards(.eu).greenhouse.io / company site with ?gh_jid=
+   - Greenhouse  boards(-api).greenhouse.io / job-boards(.eu).greenhouse.io / company site with ?gh_jid= (the
+                 account is found through Greenhouse's public embed page, without opening the company's site)
    - Lever       jobs(.eu).lever.co/<company>/<id>
    - Ashby       jobs.ashbyhq.com/<org>/<id>
    - SmartRecruiters  jobs.smartrecruiters.com/<company>/<id>-…
@@ -117,6 +118,26 @@ def board_link(url: str) -> tuple[str, str, str] | None:
     return None
 
 
+def discover_greenhouse(url: str) -> str | None:
+    """The Greenhouse account of a company-site link with ?gh_jid=: Greenhouse's public embed page, given only the
+    job number, redirects to ...?for=<account>&token=<id>. Remembered for the site. None if the job is unknown."""
+    job_id = urllib.parse.parse_qs(urllib.parse.urlsplit(url).query).get("gh_jid", [""])[0]
+    if not job_id.isdigit():
+        return None
+    try:
+        page, _, final = web.fetch_bytes(f"https://boards.greenhouse.io/embed/job_app?token={job_id}", 500_000,
+                                         accept="text/html", truncate=True)
+    except ValueError:
+        return None
+    account = urllib.parse.parse_qs(urllib.parse.urlsplit(final).query).get("for", [""])[0]
+    if not account:
+        m = re.search(rb"[?&]for=([A-Za-z0-9_-]+)", page)
+        account = m.group(1).decode() if m else ""
+    if account:
+        remember(url, "greenhouse", account)
+    return account or None
+
+
 def from_board(platform: str, account: str, job_id: str, url: str) -> dict:
     a, j = urllib.parse.quote(account), urllib.parse.quote(job_id)
     if platform == "greenhouse":
@@ -196,6 +217,8 @@ def read(url: str) -> dict:
     """The job posting at `url`, as text, the best legitimate way available (see the module's docstring)."""
     url = url.strip()
     board = board_link(url)
+    if board is None and "gh_jid=" in url and discover_greenhouse(url):  # a Greenhouse job on the company's site
+        board = board_link(url)
     if board:
         try:
             return from_board(*board, url)

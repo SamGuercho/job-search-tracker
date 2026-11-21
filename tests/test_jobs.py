@@ -78,6 +78,21 @@ class JobLinkTests(unittest.TestCase):
         self.assertEqual(r["via"], "Greenhouse API")
         self.assertEqual(fake.calls[-1], "https://boards-api.greenhouse.io/v1/boards/sentinellabs/jobs/8206876003")
 
+    def test_greenhouse_account_found_without_the_company_site(self):
+        embed = "https://boards.greenhouse.io/embed/job_app?token=8206876003"
+        api = "https://boards-api.greenhouse.io/v1/boards/sentinellabs/jobs/8206876003"
+        fake = self.use({S1: web.FetchError("HTTP Error 429", 429), embed: (b"<html>Staff Data Scientist</html>", "text/html"), api: (GH_JOB, "application/json")})
+        fake_final = fake.__call__
+
+        def with_redirect(url, *a, **k):  # Greenhouse redirects to ...?for=<account>&token=<id>
+            body, ctype, final = fake_final(url, *a, **k)
+            return body, ctype, ("https://job-boards.greenhouse.io/embed/job_app?for=sentinellabs&token=8206876003" if url == embed else final)
+        web.fetch_bytes = with_redirect
+        r = jobs.read(S1)
+        self.assertEqual((r["via"], r["title"]), ("Greenhouse API", "Staff Data Scientist"))
+        self.assertNotIn(S1, fake.calls)  # the company's protected site was never requested
+        self.assertEqual(jobs.known_board("https://www.sentinelone.com/").account, "sentinellabs")
+
     def test_page_teaches_its_board_and_polite_retry(self):
         page = b'<html><script src="https://boards.greenhouse.io/embed/job_board/js?for=acmeco"></script></html>'
         url = "https://acme.example/careers?gh_jid=42"
