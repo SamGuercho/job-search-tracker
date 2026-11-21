@@ -124,7 +124,7 @@ export async function renderChat(root, chatId, params) {
     h("div", { class: "chat-layout" },
       h("aside", {}, list),
       h("section", { class: "card chat-main" },
-        !info.llm_available && h("div", { class: "result warn card" }, "Add OPENAI_API_KEY to .env and restart the server to use the assistant."),
+        !info.llm_available && h("div", { class: "result warn card" }, "Add OPENAI_API_KEY (or ANTHROPIC_API_KEY) to .env and restart the server to use the assistant."),
         head,
         thread,
         h("div", { class: "chat-input" }, input, sendBtn))));

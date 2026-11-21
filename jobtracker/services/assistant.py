@@ -15,7 +15,7 @@ from urllib.parse import quote, unquote
 from .. import config, registry, users
 from ..models import Chat, ChatBook, ChatMessage, ToolEvent
 from ..storage import UserDocument
-from . import companies, llm, master_cv
+from . import claude, companies, llm, master_cv
 from .companies import NotFound
 
 store = UserDocument("chats.json", ChatBook)
@@ -275,33 +275,129 @@ def fix_links(text: str) -> str:
                           if (url := _file_link(m.group(1))) else m.group(0), text)
 
 
-def _converse(chat: Chat, input_items: list) -> Chat:
-    if not llm.available():
-        raise llm.LLMUnavailable("OPENAI_API_KEY is not set: add it to the .env file and restart the server.")
-    from openai import OpenAIError
+def _converse(chat: Chat, input_items: list, note: str | None = None) -> Chat:
+    """Answer the latest user message (or `note`, a system note not stored in the chat).
 
+    OpenAI first. If it fails on quota/billing/access and Claude is configured, the chat switches to
+    Claude for good (OpenAI's server-side history can't include Claude's turns) and says so in the chat.
+    """
+    if not llm.available():
+        raise llm.LLMUnavailable(llm.NO_KEY)
+    use_claude = claude.available() and (chat.provider == "claude" or not llm.openai_available())
+    if use_claude:
+        chat.provider = "claude"
+        _converse_claude(chat, note)
+    else:
+        from openai import OpenAIError
+        try:
+            _converse_openai(chat, input_items)
+        except OpenAIError as e:
+            reason = llm.fallback_reason(e)
+            if reason and claude.available():
+                llm.log.warning("%s: chat %s switches to Claude", reason, chat.id)
+                chat.provider, chat.previous_response_id = "claude", None
+                notice = llm.switch_notice(reason, " for the rest of this chat")
+                chat.messages.append(ChatMessage(role="notice", text=notice))
+                _save(chat)
+                _converse_claude(chat, note)
+            else:
+                chat.messages.append(ChatMessage(role="assistant", text=f"⚠ OpenAI error: {e}"))
+    _auto_title(chat)
+    return _save(chat)
+
+
+def _converse_openai(chat: Chat, input_items: list) -> None:
+    """The OpenAI loop; OpenAI errors propagate so the caller can fall back."""
     client = llm.client()
+    for _ in range(MAX_STEPS):
+        response = client.responses.create(
+            model=config.OPENAI_CHAT_MODEL, instructions=_instructions(chat), input=input_items,
+            tools=tools(), previous_response_id=chat.previous_response_id)
+        chat.previous_response_id = response.id
+        calls = [o for o in response.output if o.type == "function_call"]
+        if response.output_text:
+            chat.messages.append(ChatMessage(role="assistant", text=fix_links(response.output_text)))
+        if not calls:
+            break
+        input_items = [{"type": "function_call_output", "call_id": c.call_id,
+                        "output": json.dumps(_run_tool(chat, c.name, c.arguments), default=str)[:MAX_TOOL_OUTPUT]}
+                       for c in calls]
+        _save(chat)  # keep progress even if a later step fails
+    else:
+        chat.messages.append(ChatMessage(role="assistant", text="(Stopped: too many steps. Ask me to continue.)"))
+
+
+def _claude_tools() -> list[dict]:
+    return [{"name": t["name"], "description": t["description"], "input_schema": t["parameters"]} for t in tools()]
+
+
+def _tool_log(event: ToolEvent) -> str:
+    line = f"[tool log, already run] {event.action} {json.dumps(event.args, default=str)} -> {event.status}"
+    if event.error:
+        line += f": {event.error}"
+    elif event.result is not None:
+        line += f": {json.dumps(event.result, default=str)[:2_000]}"
+    return line
+
+
+def _claude_history(chat: Chat, note: str | None) -> list[dict]:
+    """The conversation rebuilt from what the app stored (Claude can't read OpenAI's server-side state).
+    Past tool calls become plain log lines; consecutive same-role parts are merged."""
+    messages: list[dict] = []
+
+    def add(role: str, text: str) -> None:
+        if messages and messages[-1]["role"] == role:
+            messages[-1]["content"] += "\n\n" + text
+        else:
+            messages.append({"role": role, "content": text})
+
+    for m in chat.messages:
+        if m.role == "user":
+            add("user", m.text)
+        elif m.role == "assistant" and m.text:
+            add("assistant", m.text)
+        elif m.role == "tool" and m.tool:
+            add("user", _tool_log(m.tool))
+    if note:
+        add("user", f"[system note] {note}")
+    if not messages or messages[-1]["role"] != "user":
+        add("user", "[system note] Continue from where the conversation stopped.")
+    if messages[0]["role"] != "user":
+        messages.insert(0, {"role": "user", "content": "(conversation start)"})
+    return messages
+
+
+def _converse_claude(chat: Chat, note: str | None = None) -> None:
+    import anthropic
+
+    messages, tool_defs = _claude_history(chat, note), _claude_tools()
     try:
         for _ in range(MAX_STEPS):
-            response = client.responses.create(
-                model=config.OPENAI_CHAT_MODEL, instructions=_instructions(chat), input=input_items,
-                tools=tools(), previous_response_id=chat.previous_response_id)
-            chat.previous_response_id = response.id
-            calls = [o for o in response.output if o.type == "function_call"]
-            if response.output_text:
-                chat.messages.append(ChatMessage(role="assistant", text=fix_links(response.output_text)))
+            response = claude.chat(_instructions(chat), tool_defs, messages)
+            text = "".join(b.text for b in response.content if b.type == "text").strip()
+            if text:
+                chat.messages.append(ChatMessage(role="assistant", text=fix_links(text)))
+            if response.stop_reason == "refusal":
+                chat.messages.append(ChatMessage(role="assistant", text="(Claude declined this request.)"))
+                break
+            if response.stop_reason == "max_tokens":
+                chat.messages.append(ChatMessage(role="assistant", text="(Reply cut off: too long. Ask me to continue.)"))
+                break
+            messages.append({"role": "assistant", "content": response.content})
+            if response.stop_reason == "pause_turn":
+                continue
+            calls = [b for b in response.content if b.type == "tool_use"]
             if not calls:
                 break
-            input_items = [{"type": "function_call_output", "call_id": c.call_id,
-                            "output": json.dumps(_run_tool(chat, c.name, c.arguments), default=str)[:MAX_TOOL_OUTPUT]}
-                           for c in calls]
+            messages.append({"role": "user", "content": [
+                {"type": "tool_result", "tool_use_id": c.id,
+                 "content": json.dumps(_run_tool(chat, c.name, json.dumps(c.input)), default=str)[:MAX_TOOL_OUTPUT]}
+                for c in calls]})
             _save(chat)  # keep progress even if a later step fails
         else:
             chat.messages.append(ChatMessage(role="assistant", text="(Stopped: too many steps. Ask me to continue.)"))
-    except OpenAIError as e:
-        chat.messages.append(ChatMessage(role="assistant", text=f"⚠ OpenAI error: {e}"))
-    _auto_title(chat)
-    return _save(chat)
+    except anthropic.AnthropicError as e:
+        chat.messages.append(ChatMessage(role="assistant", text=f"⚠ Claude error: {e}"))
 
 
 def send(message: str, chat_id: str | None = None) -> Chat:
@@ -330,4 +426,5 @@ def resolve(chat_id: str, event_id: str, approve: bool) -> Chat:
         event.status = "rejected"
         note = f"The user REJECTED {event.action}. It did not run."
     _save(chat)
-    return _converse(chat, [{"role": "user", "content": f"[system note] {note} Briefly confirm and continue."}])
+    note = f"{note} Briefly confirm and continue."
+    return _converse(chat, [{"role": "user", "content": f"[system note] {note}"}], note=note)

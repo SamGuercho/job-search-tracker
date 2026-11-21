@@ -210,7 +210,7 @@ class ToolEvent(BaseModel):
 
 
 class ChatMessage(BaseModel):
-    role: Literal["user", "assistant", "tool"]
+    role: Literal["user", "assistant", "tool", "notice"]   # notice: shown to the user, never sent to a model
     text: str = ""
     tool: ToolEvent | None = None
     at: str = Field(default_factory=lambda: datetime.now().isoformat(timespec="seconds"))
@@ -221,6 +221,7 @@ class Chat(BaseModel):
     title: str = "New chat"
     created_at: str = Field(default_factory=lambda: datetime.now().isoformat(timespec="seconds"))
     previous_response_id: str | None = None   # OpenAI keeps the conversation state server-side
+    provider: Literal["openai", "claude"] = "openai"   # "claude" once OpenAI failed (quota, billing…): stays on Claude
     title_locked: bool = False                 # renamed by the user: no automatic titles
     messages: list[ChatMessage] = []
 

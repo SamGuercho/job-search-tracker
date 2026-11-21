@@ -167,7 +167,7 @@ the web app. Example prompts once connected: *"Add this job to my tracker and ma
 
 Tools that delete or overwrite data, or add text to your CV, are flagged *destructive* and tell the AI to ask
 you first; most clients also ask for your confirmation before any tool call. The AI-powered tools (matching,
-drafts, reviews, import) use the `OPENAI_API_KEY` from `.env`. Pair it with the instructions in
+drafts, reviews, import) use the `OPENAI_API_KEY` from `.env` (and Claude as fallback, see `ANTHROPIC_API_KEY`). Pair it with the instructions in
 `skills/job-search/SKILL.md` (Claude Code: copy the folder to `~/.claude/skills/`).
 
 ---
@@ -199,6 +199,9 @@ All settings live in `.env` (created from `.env.example` on first run). Restart 
 | `OPENAI_API_KEY` | empty | Enables the assistant and AI features. Keys: platform.openai.com/api-keys. Usage is billed by OpenAI, typically cents per action. |
 | `OPENAI_MODEL` | `gpt-5.4-mini` | Model for import, matching, drafts, reviews. |
 | `OPENAI_CHAT_MODEL` | = `OPENAI_MODEL` | Model for the assistant (a stronger one gives better conversations). |
+| `ANTHROPIC_API_KEY` | empty | Fallback: when OpenAI fails on quota, billing, access or rate limits, the app switches to Claude and says so (a toast, or a note in the chat; a chat then stays on Claude). Used directly if there is no OpenAI key. Billed per token by Anthropic. |
+| `ANTHROPIC_MODEL` | `claude-sonnet-5-5` | Claude model for the fallback. |
+| `ANTHROPIC_EFFORT` | `medium` | Claude reasoning effort for the assistant: `low` … `max`. |
 | `JOBTRACKER_OUTPUT_DIR` | `./output` | Where company folders with CVs and job descriptions go. `~` allowed. |
 | `JOBTRACKER_DATA_DIR` | `./data` | Where your data files live. |
 | `JOBTRACKER_CV_FILENAME` | `{name}_CV` | CV file name; `{name}` = your name, `{company}` = the company. |
@@ -220,7 +223,7 @@ github.com/stipub/stixfonts for the PDF to look identical; otherwise a similar s
 
 - **No PDF, only Word** → install LibreOffice (recommended) or set `JOBTRACKER_PDF_ENGINE`. With Word on macOS,
   a "control Microsoft Word" permission dialog may be waiting: accept it, then restart the app.
-- **"OPENAI_API_KEY is not set"** → add it to `.env` and restart.
+- **"No AI key set"** → add `OPENAI_API_KEY` (or `ANTHROPIC_API_KEY`) to `.env` and restart.
 - **Port 8000 already used** → `PORT=8001 ./run.sh`.
 - **A job link can't be read** → some sites (LinkedIn…) block it: paste the job text instead.
 - **Page looks outdated after an update** → reload the page.

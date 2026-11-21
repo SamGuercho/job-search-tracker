@@ -69,8 +69,11 @@ def list_actions():
 def run_action(name: str, payload: dict = Body(default={})):
     if name not in registry.ACTIONS:
         raise HTTPException(404, f"Unknown action {name!r}")
+    llm.reset_notices()
     try:
-        return {"ok": True, "result": registry.run(name, payload)}
+        result = registry.run(name, payload)
+        notice = llm.pop_notice()  # e.g. "switched to Claude": the browser shows it as a toast
+        return {"ok": True, "result": result, **({"notice": notice} if notice else {})}
     except NotFound as e:
         raise HTTPException(404, str(e)) from e
     except LLMUnavailable as e:

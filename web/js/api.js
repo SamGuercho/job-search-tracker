@@ -1,3 +1,5 @@
+import { toast } from "./ui.js";
+
 // Single entry point to the backend: every call is a named action.
 export async function call(action, payload = {}) {
   const res = await fetch(`/api/actions/${action}`, {
@@ -13,6 +15,7 @@ export async function call(action, payload = {}) {
       : body.detail;
     throw new Error(detail || `${action} failed (${res.status})`);
   }
+  if (body.notice) toast(body.notice);  // e.g. OpenAI quota reached, switched to Claude
   return body.result;
 }
 

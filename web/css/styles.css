@@ -185,6 +185,7 @@ button.chip.suggest { border-style: dashed; color: var(--accent); background: tr
 .msg.assistant p { margin: 0 0 6px; } .msg.assistant p:last-child { margin: 0; }
 .msg.assistant ul { margin: 4px 0 6px; padding-left: 20px; }
 .msg.thinking { color: var(--muted); font-style: italic; }
+.msg.notice { align-self: center; max-width: 90%; font-size: 0.85em; color: var(--muted); background: transparent; border: 1px dashed var(--border); text-align: center; }
 .tool { align-self: flex-start; font-size: 12px; color: var(--muted); padding: 2px 4px; }
 .tool.error { color: var(--amber); }
 .tool.pending { color: var(--text); background: var(--amber-soft); border: 1px solid var(--amber); border-radius: 10px; padding: 10px 12px; font-size: 13px; max-width: 80%; }

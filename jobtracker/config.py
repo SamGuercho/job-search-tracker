@@ -47,3 +47,7 @@ LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
 
 OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-5.4-mini")
 OPENAI_CHAT_MODEL = os.environ.get("OPENAI_CHAT_MODEL", OPENAI_MODEL)
+
+# Fallback when OpenAI fails on quota, billing or access (needs ANTHROPIC_API_KEY).
+ANTHROPIC_MODEL = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-5-5")
+ANTHROPIC_EFFORT = os.environ.get("ANTHROPIC_EFFORT", "medium")   # low | medium | high | xhigh | max
