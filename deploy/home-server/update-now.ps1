@@ -12,11 +12,19 @@ $image = "ghcr.io/samguercho/job-search-tracker"
 
 function Fail($message) { Write-Host $message -ForegroundColor Red; exit 1 }
 
+# Runs a program silently and says whether it succeeded. Windows PowerShell turns any text a program writes on
+# its error output into a fatal error when output is redirected and ErrorActionPreference is "Stop"; here that
+# text is expected (e.g. "manifest unknown" while CI is still building), so it is ignored in this function only.
+function Test-Quiet([scriptblock]$command) {
+    $ErrorActionPreference = "Continue"
+    try { & $command *> $null } catch { return $false }
+    return ($LASTEXITCODE -eq 0)
+}
+
 if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
     Fail "git is not installed: winget install -e --id Git.Git, then open a new PowerShell (see the guide, step 4)."
 }
-docker info *> $null
-if ($LASTEXITCODE -ne 0) { Fail "Docker is not running: start Docker Desktop, wait until it is ready, then run this again." }
+if (-not (Test-Quiet { docker info })) { Fail "Docker is not running: start Docker Desktop, wait until it is ready, then run this again." }
 
 Write-Host "1/3  Getting the latest code (git pull)..."
 git -C $repo pull --ff-only
@@ -34,8 +42,7 @@ if ($pinned -and $pinned.Matches[0].Groups[1].Value -ne "latest") {
 Write-Host "2/3  Waiting for the app image of commit $sha (CI publishes it a few minutes after a push)..."
 $deadline = (Get-Date).AddMinutes($WaitMinutes)
 while ($true) {
-    docker manifest inspect "${image}:sha-$sha" *> $null
-    if ($LASTEXITCODE -eq 0) { Write-Host "     Image ready."; break }
+    if (Test-Quiet { docker manifest inspect "${image}:sha-$sha" }) { Write-Host "     Image ready."; break }
     if ((Get-Date) -gt $deadline) {
         Write-Host "     No image for $sha after $WaitMinutes minutes: did CI fail? See GitHub > Actions. Using the newest published image." -ForegroundColor Yellow
         break

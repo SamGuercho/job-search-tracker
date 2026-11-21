@@ -5,9 +5,18 @@ Set-Location -Path $PSScriptRoot
 $log = Join-Path $PSScriptRoot "update.log"
 function Log($message) { "$(Get-Date -Format s)  $message" | Tee-Object -FilePath $log -Append }
 
+# Runs a program, hiding its output; returns its output text, or $null if it failed. Windows PowerShell turns
+# any text a program writes on its error output into a fatal error under "Stop" when output is redirected;
+# that text is expected here (e.g. Docker not started yet), so it is ignored in this function only.
+function Invoke-Quiet([scriptblock]$command) {
+    $ErrorActionPreference = "Continue"
+    try { $out = & $command 2> $null } catch { return $null }
+    if ($LASTEXITCODE -ne 0) { return $null }
+    return ($out | Out-String)
+}
+
 try {
-    docker info *> $null
-    if ($LASTEXITCODE -ne 0) {
+    if ($null -eq (Invoke-Quiet { docker info })) {
         # Watchdog: Docker Desktop was closed or hasn't started (e.g. after a reboot): start it, the app follows
         $desktop = "$env:ProgramFiles\Docker\Docker\Docker Desktop.exe"
         if ((Test-Path $desktop) -and -not (Get-Process "Docker Desktop" -ErrorAction SilentlyContinue)) {
@@ -16,10 +25,10 @@ try {
         } else { Log "Docker is not running yet; skipping." }
         exit 0
     }
-    $before = docker compose images app --format json 2>$null
+    $before = Invoke-Quiet { docker compose images app --format json }
     docker compose pull app --quiet
     docker compose up -d --remove-orphans
-    $after = docker compose images app --format json 2>$null
+    $after = Invoke-Quiet { docker compose images app --format json }
     if ($before -ne $after) { Log "Updated to the newest image." ; docker image prune -f *> $null }
     # keep the log short
     if ((Get-Item $log -ErrorAction SilentlyContinue).Length -gt 1MB) { Get-Content $log -Tail 500 | Set-Content $log }
