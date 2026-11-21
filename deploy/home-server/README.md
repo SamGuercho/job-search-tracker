@@ -140,7 +140,9 @@ powershell -ExecutionPolicy Bypass -File .\install-update-task.ps1
 ```
 Every 15 minutes (and at sign-in), `update.ps1` pulls the newest image published by CI and restarts the app if it
 changed; if Docker Desktop isn't running, it starts it. Push to `main` → CI tests and publishes → the server updates itself. History: `update.log`.
-Update by hand any time with `powershell -ExecutionPolicy Bypass -File .\update.ps1`. To stay on a version, set `IMAGE_TAG` in `.env` to a commit tag
+The task updates the app only (the image), not the files in this folder. To update **everything at once, right
+now** (the files with `git pull`, then the app once CI has published that exact version, a few minutes after a
+push): `powershell -ExecutionPolicy Bypass -File .\update-now.ps1`. To stay on a version, set `IMAGE_TAG` in `.env` to a commit tag
 (e.g. `sha-ade50a6`, see the repository's *Packages*).
 
 ## 10. Backups (recommended)
@@ -204,6 +206,7 @@ Your own devices keep full access; people you shared with reach only the https a
 | You want to… | Do |
 |---|---|
 | Use the app | Open the https address (or the installed app) on any of your devices |
+| **Update everything now** | `powershell -ExecutionPolicy Bypass -File .\update-now.ps1` (git pull, waits for CI's image of that commit, restarts the app, checks it answers) |
 | See the logs | `docker compose logs -f app` |
 | Restart | `docker compose restart app` |
 | Stop / start | `docker compose down` / `docker compose up -d` |
