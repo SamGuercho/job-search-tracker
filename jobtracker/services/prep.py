@@ -25,7 +25,7 @@ from .. import config, users
 from ..logs import log
 from ..models import InterviewPrep, PrepBook, PrepResult
 from ..storage import UserDocument
-from . import companies, files, master_cv, usage
+from . import companies, files, master_cv, push, usage
 
 store = UserDocument("preps.json", PrepBook)
 PREP_FILENAME = "Interview_Prep.md"
@@ -242,9 +242,13 @@ def _run(user: str, company_id: str, run_id: str, task: dict, by: str) -> None:
             result = run_codex(task)
             usage.record_plan(config.PREP_MODEL, time.monotonic() - started)
             save(company_id, result, by, run_id)
+            push.notify("Interview prep ready", f"{task['company']}: research, likely questions and "
+                        f"{len(result.exercises)} exercises.", f"/#/company/{company_id}", tag=f"prep:{company_id}")
             log.info("Interview prep done for %s", task["company"])
         except Exception as e:  # recorded on the prep, shown in the app
             log.warning("Interview prep failed for %s: %s", task["company"], e)
+            push.notify("Interview prep failed", f"{task['company']}: open the application to see why and retry.",
+                        f"/#/company/{company_id}", tag=f"prep:{company_id}")
             _store(InterviewPrep(id=run_id, company_id=company_id, status="error", by=by, error=str(e)[:2_000],
                                  finished_at=datetime.now().isoformat(timespec="seconds")))
 

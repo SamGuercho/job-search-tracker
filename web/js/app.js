@@ -7,7 +7,8 @@ import { renderChat } from "./views/chat.js";
 import { renderAnalytics } from "./views/analytics.js";
 import { renderPractice } from "./views/practice.js";
 import { renderCosts } from "./views/costs.js";
-import { h, modal, mount } from "./ui.js";
+import { call } from "./api.js";
+import { attempt, h, modal, mount, toast } from "./ui.js";
 
 const routes = [
   { pattern: /^\/$/, nav: "tracker", view: () => renderTracker },
@@ -43,7 +44,9 @@ document.querySelector(".tab-more")?.addEventListener("click", () => {
   const pages = [["#/cv/master", "Master CV", "Your achievements and their wordings"],
     ["#/analytics", "Analytics", "How your search is going"], ["#/costs", "Costs", "What the AI features cost"]];
   const close = modal("More", h("div", { class: "more-list" }, pages.map(([href, label, note]) =>
-    h("a", { href, onclick: () => close() }, h("b", {}, label), h("span", { class: "small muted" }, note)))));
+    h("a", { href, onclick: () => close() }, h("b", {}, label), h("span", { class: "small muted" }, note))),
+    h("a", { href: `webcal://${location.host}/api/calendar/interviews.ics`, onclick: () => close() },
+      h("b", {}, "Subscribe to my interviews"), h("span", { class: "small muted" }, "A calendar of all your scheduled interviews, kept up to date (Apple Calendar, Outlook)"))));
 });
 
 // Pull down at the top of a page to reload it (installed apps have no reload button). A touch that starts
@@ -73,3 +76,79 @@ window.addEventListener("touchend", () => {
 
 // Installable app: register the service worker (needs https, or localhost)
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
+
+
+// ----------------------------------------------------------- notifications & calendar
+// 🔔 in the top bar: turn notifications on for this device, test them, subscribe to the interviews calendar.
+const pushSupported = "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+
+function keyBytes(b64) {
+  const s = atob((b64 + "=".repeat((4 - (b64.length % 4)) % 4)).replace(/-/g, "+").replace(/_/g, "/"));
+  return Uint8Array.from(s, (c) => c.charCodeAt(0));
+}
+
+function deviceName() {
+  const ua = navigator.userAgent;
+  const os = /Android/.test(ua) ? "Android" : /iPhone|iPad/.test(ua) ? "iPhone" : /Mac/.test(ua) ? "Mac" : /Windows/.test(ua) ? "Windows" : "Device";
+  const browser = /Edg\//.test(ua) ? "Edge" : /Chrome\//.test(ua) ? "Chrome" : /Firefox\//.test(ua) ? "Firefox" : /Safari\//.test(ua) ? "Safari" : "";
+  return `${os}${browser ? ` · ${browser}` : ""}${standalone ? " (app)" : ""}`;
+}
+
+async function notificationsPanel() {
+  const box = h("div", { class: "stack-tight" });
+  const draw = async () => {
+    if (!pushSupported) {
+      return mount(box, h("p", { class: "small" }, isIOS && !standalone
+        ? "On iPhone, notifications work in the installed app: Share → Add to Home Screen, then open Job Search from the Home Screen."
+        : "This browser can't receive notifications."));
+    }
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    if (sub && Notification.permission === "granted") {
+      return mount(box,
+        h("p", { class: "small" }, "✓ On for this device: interview reminders (the day before and 1 hour before), prep and debrief alerts, follow-ups due."),
+        h("div", { class: "row" },
+          h("button", { onclick: () => attempt(() => call("push.test"), "Test sent") }, "Send a test"),
+          h("button", {
+            onclick: async () => { await attempt(() => call("push.unsubscribe", { endpoint: sub.endpoint })); await sub.unsubscribe(); draw(); },
+          }, "Turn off")));
+    }
+    mount(box,
+      h("p", { class: "small" }, "Interview reminders (the day before and 1 hour before), “prep ready” and “debrief ready”, and follow-ups due."),
+      Notification.permission === "denied"
+        ? h("p", { class: "small muted" }, "Notifications are blocked for this app: allow them in the browser or phone settings, then come back.")
+        : h("button", {
+          class: "primary", onclick: async () => {
+            if ((await Notification.requestPermission()) !== "granted") return toast("Notifications were not allowed", true);
+            const { public_key: key } = await call("push.key");
+            const created = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(key) });
+            await attempt(() => call("push.subscribe", {
+              subscription: created.toJSON(), timezone: Intl.DateTimeFormat().resolvedOptions().timeZone, device: deviceName(),
+            }), "Notifications on");
+            draw();
+          },
+        }, "Turn on notifications"));
+  };
+  await draw();
+  return box;
+}
+
+document.querySelector(".bell")?.addEventListener("click", async () => {
+  modal("Notifications & calendar", h("div", { class: "stack" },
+    await notificationsPanel(),
+    h("div", { class: "more-list" },
+      h("a", { href: `webcal://${location.host}/api/calendar/interviews.ics` },
+        h("b", {}, "Subscribe to my interviews"),
+        h("span", { class: "small muted" }, "A calendar of all your scheduled interviews that stays up to date (Apple Calendar, Outlook). "
+          + "For Google Calendar, use 📅 on each interview step.")))));
+});
+
+// Follow-ups due as a badge on the app icon (Android, desktop; iPhone with notifications on)
+const badge = () => call("app.info").then((i) => {
+  if (!navigator.setAppBadge) return;
+  i.follow_ups_due ? navigator.setAppBadge(i.follow_ups_due) : navigator.clearAppBadge();
+}).catch(() => {});
+badge();
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") badge(); });

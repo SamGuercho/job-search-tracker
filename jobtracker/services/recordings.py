@@ -15,6 +15,7 @@
 """
 from __future__ import annotations
 
+import re
 import shutil
 import subprocess
 import tempfile
@@ -26,7 +27,7 @@ from .. import config, prices, users
 from ..logs import log
 from ..models import Debrief, PracticeAttempt, Recording, RecordingBook, TranscriptSegment
 from ..storage import UserDocument
-from . import companies, files, llm, practice, usage
+from . import companies, files, llm, practice, push, usage
 
 store = UserDocument("recordings.json", RecordingBook)
 AUDIO_TYPES = {".m4a", ".mp3", ".wav", ".ogg", ".oga", ".opus", ".webm", ".mp4", ".mpeg", ".mpga", ".flac", ".aac",
@@ -114,12 +115,20 @@ def _tool(name: str) -> str:
 
 
 def duration(path: Path) -> float:
+    """Length in seconds. Recordings made in a browser (WebM) often have no length in their header: then the
+    audio is decoded once and the last timestamp is read."""
     done = subprocess.run([_tool("ffprobe"), "-v", "error", "-show_entries", "format=duration", "-of",
                            "default=noprint_wrappers=1:nokey=1", str(path)], capture_output=True, text=True, timeout=60)
     try:
         return float(done.stdout.strip())
-    except ValueError as e:
-        raise RecordingUnavailable("Could not read this audio file (unsupported or damaged).") from e
+    except ValueError:
+        pass
+    decoded = subprocess.run([_tool("ffmpeg"), "-v", "error", "-nostats", "-progress", "pipe:1", "-i", str(path),
+                              "-vn", "-f", "null", "-"], capture_output=True, text=True, timeout=600)
+    times = re.findall(r"^out_time_(?:us|ms)=(\d+)$", decoded.stdout, re.MULTILINE)  # both are microseconds
+    if not times or not int(times[-1]):
+        raise RecordingUnavailable("Could not read this audio file (unsupported or damaged).")
+    return int(times[-1]) / 1_000_000
 
 
 def upload(company: str, filename: str, content: bytes, step: str = "") -> Recording:
@@ -216,6 +225,9 @@ def _transcribe(recording_id: str) -> None:
         raise RecordingUnavailable("The transcription is empty: is there speech in this recording?")
     rec = _update(recording_id, segments=segments, model=model, diarized=diarized, me=guess_me(segments),
                   cost_usd={**rec.cost_usd, **cost}, status="choose_speaker" if diarized else "analyzing")
+    if diarized:
+        push.notify("Which voice is yours?", "The recording is transcribed: pick your voice to get the debrief.",
+                    f"/#/company/{rec.company_id}", tag=f"recording:{rec.id}")
     if not diarized:
         _analyze(recording_id)
 
@@ -293,6 +305,10 @@ def _analyze(recording_id: str) -> None:
             recording_id=recording_id, at=rec.uploaded_at)
         with practice.store.transaction() as book:
             book.attempts.append(attempt)
+    average = sum(q.score for q in debrief.questions) / len(debrief.questions) if debrief.questions else None
+    push.notify(f"Debrief ready: {c.name}", f"{len(debrief.questions)} questions"
+                + (f", average {average:.1f}/10" if average is not None else "") + ". Thank-you email included.",
+                f"/#/company/{c.id}", tag=f"recording:{recording_id}")
     _update(recording_id, debrief=debrief, debrief_file=files.relative(path), status="done",
             cost_usd={**get(recording_id).cost_usd, "analysis": usage.sum_cost(spent)})
 

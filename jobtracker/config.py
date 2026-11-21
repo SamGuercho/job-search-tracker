@@ -62,6 +62,8 @@ PREP_TIMEOUT_MIN = int(os.environ.get("JOBTRACKER_PREP_TIMEOUT_MIN", "40"))
 # it down on 2027-02-26, after which the app falls back to TRANSCRIBE_FALLBACK_MODEL (text only).
 TRANSCRIBE_MODEL = os.environ.get("JOBTRACKER_TRANSCRIBE_MODEL", "gpt-4o-transcribe-diarize")
 TRANSCRIBE_FALLBACK_MODEL = os.environ.get("JOBTRACKER_TRANSCRIBE_FALLBACK_MODEL", "gpt-transcribe")
+# Notifications: the contact the push services (Google, Apple…) see in the server's signed requests
+PUSH_CONTACT = os.environ.get("JOBTRACKER_PUSH_CONTACT", "mailto:noreply@example.com")
 FFMPEG_BIN = os.environ.get("JOBTRACKER_FFMPEG", "ffmpeg")      # reads and shrinks the audio
 FFPROBE_BIN = os.environ.get("JOBTRACKER_FFPROBE", "ffprobe")
 MAX_RECORDING_MB = int(os.environ.get("JOBTRACKER_MAX_RECORDING_MB", "500"))

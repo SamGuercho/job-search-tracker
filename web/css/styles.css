@@ -395,3 +395,7 @@ button.danger.solid { background: var(--red); color: #fff; border-color: var(--r
 }
 @keyframes sheet-up { from { transform: translateY(40px); opacity: .6; } to { transform: none; opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .modal { animation: none; } }
+
+.record-btn.on { background: var(--red); border-color: var(--red); color: #fff; font-variant-numeric: tabular-nums; }
+
+.topbar .bell { margin-left: auto; order: 3; font-size: 17px; }

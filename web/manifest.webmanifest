@@ -1,7 +1,7 @@
 {
   "name": "Job Search Tracker",
   "short_name": "Job Search",
-  "description": "Follow your applications and generate tailored one-page CVs.",
+  "description": "Follow your applications, prepare your interviews and generate tailored one-page CVs.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
@@ -25,5 +25,14 @@
       "sizes": "any",
       "type": "image/svg+xml"
     }
-  ]
+  ],
+  "share_target": {
+    "action": "/share",
+    "method": "GET",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url"
+    }
+  }
 }

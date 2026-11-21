@@ -201,6 +201,14 @@ Your own devices keep full access; people you shared with reach only the https a
 
 ---
 
+## Phone features
+
+Nothing to set up: **📅 Add to calendar** on interview steps, **Share → Job Search** from LinkedIn (Android, once
+the app is installed), **🎙 Record** on the application page, and **🔔 notifications** (each person turns them on
+on their own devices; reminders follow each device's time zone). The server creates its notification key on first
+use, in `HOST_DATA_DIR` (`vapid_private.pem`): keep it with your data. Turn the reminder checks off with
+`JOBTRACKER_REMINDERS=0` in `.env`.
+
 ## Interview prep (premium accounts)
 
 On an application's page, **✨ Prepare interview** researches the company and writes a prep pack: what the company

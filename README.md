@@ -152,6 +152,18 @@ steps, every question with your answer graded /10 and what was missed, strengths
 thank-you email (also saved as `Debrief_….md`). The graded answers go to the Practice page (as "interview"), and
 the next prep builds on them. Needs `OPENAI_API_KEY` and ffmpeg (included in the Docker image).
 
+### On your phone
+- **Add to calendar:** give an interview step a date, time, duration and place (address or video link), then
+  📅 *Add to calendar*: Google Calendar, or an `.ics` file for Apple Calendar / Outlook (reminders the day
+  before and 1 hour before). 🔔 → *Subscribe to my interviews* gives a calendar of every scheduled interview that
+  stays up to date (Apple Calendar, Outlook; Google Calendar can't reach a private Tailscale address).
+- **Share a job (Android):** in LinkedIn or Chrome, *Share* → *Job Search*: the assistant adds the job and makes
+  your CV. On iPhone, paste the link in the assistant.
+- **Record an interview** in the app (🎙 on the application page): keep the screen on until you stop.
+- **Notifications** (🔔 → *Turn on*): interview reminders, prep ready, debrief ready, follow-ups due. On iPhone
+  they work in the app installed on the Home Screen (iOS 16.4+). The follow-ups due also show as a badge on the
+  app icon (Android, desktop).
+
 ### Costs
 The **Costs** page shows what the AI features cost: this month and last, per day, by feature, provider and model,
 the typical cost of one use of each feature, and (owner, shared server) per person. Each Assistant answer shows

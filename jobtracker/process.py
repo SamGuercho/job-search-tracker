@@ -40,6 +40,9 @@ class Node(BaseModel):
     category: Category = ""      # applied / response / hr / technical / interview / reference / offer / other
     state: NodeState = "todo"    # todo = off, planned = scheduled, done = on (red for the Closed node)
     date: str | None = None
+    time: str | None = None      # "14:30" (local time) for scheduled interviews: makes a timed calendar event
+    duration_min: int = 60
+    location: str = ""           # address, or a video call link
     notes: str = ""
 
 

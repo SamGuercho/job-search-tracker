@@ -1,7 +1,7 @@
 // Process graph of one application: layered layout, click a node to edit it,
 // "+" on a link inserts a step there, and a red Closed rail every step leads to.
 import { call } from "../api.js";
-import { attempt, confirmSheet, field, formatDate, h, mount, readForm } from "../ui.js";
+import { addToCalendar, attempt, confirmSheet, field, formatDate, h, mount, readForm } from "../ui.js";
 
 const W = 136, H = 70, COL = 184, ROW = 96, PAD = 12, RAIL = 26;
 const SUGGESTIONS = ["Applied", "Response received", "First HR interview", "Hiring manager interview", "Technical interview",
@@ -94,7 +94,7 @@ export function processCard(company, { onChange, stepTypes = {} }) {
     },
       h("span", { class: "pg-dot" }, n.state === "done" ? "✓" : n.state === "planned" ? "◷" : ""),
       h("span", { class: "pg-name" }, n.name, n.kind === "offer" ? " 🎉" : ""),
-      h("span", { class: "pg-date" }, n.date ? formatDate(n.date) : n.state === "todo" ? "off" : ""));
+      h("span", { class: "pg-date" }, n.date ? `${formatDate(n.date)}${n.time ? ` · ${n.time}` : ""}` : n.state === "todo" ? "off" : ""));
 
     mount(card,
       h("div", { class: "row" },
@@ -122,6 +122,9 @@ export function processCard(company, { onChange, stepTypes = {} }) {
     const form = h("form", { class: "step-editor form-grid" },
       field("Step name", h("input", { name: "name", value: n.name, required: true, list: "pg-names" })),
       field("Date", h("input", { name: "date", type: "date", value: n.date || "" })),
+      field("Time", h("input", { name: "time", type: "time", value: n.time || "" })),
+      field("Duration (min)", h("input", { name: "duration_min", type: "number", min: 5, step: 5, value: n.duration_min || 60 })),
+      field("Where (address or video link)", h("input", { name: "location", value: n.location || "", placeholder: "Office address, or https://meet.google.com/…" })),
       field("Type (for analytics)", h("select", { name: "category" },
         h("option", { value: "" }, `Automatic (${stepTypes[inferred(n)] || "Other"})`),
         Object.entries(stepTypes).map(([k, label]) => h("option", { value: k, selected: n.category === k || (n.kind === "offer" && k === "offer") }, label)))),
@@ -133,6 +136,10 @@ export function processCard(company, { onChange, stepTypes = {} }) {
           onclick: () => run("process.set_state", { step: n.id, state: s, ...(s !== "todo" && !n.date ? { date: today() } : {}) }),
         }, label)),
         h("span", { class: "spacer" }),
+        n.date && h("button", {
+          type: "button", title: "Add this interview to your calendar",
+          onclick: () => addToCalendar(company.id, n.id),
+        }, "📅 Add to calendar"),
         h("button", { type: "submit", class: "primary" }, "Save")),
       h("div", { class: "row wide" },
         h("button", { type: "button", class: "small", onclick: () => { adding = { mode: "before", ref: n.id }; draw(); } }, "+ Step before"),
@@ -148,7 +155,11 @@ export function processCard(company, { onChange, stepTypes = {} }) {
     form.addEventListener("submit", (e) => {
       e.preventDefault();
       const d = readForm(form);
-      run("process.update_step", { step: n.id, fields: { name: d.name, date: d.date || null, notes: d.notes, category: d.category } }, "Step saved");
+      run("process.update_step", {
+        step: n.id,
+        fields: { name: d.name, date: d.date || null, time: d.time || null, duration_min: Number(d.duration_min) || 60,
+          location: d.location, notes: d.notes, category: d.category },
+      }, "Step saved");
     });
     return form;
   }

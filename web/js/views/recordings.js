@@ -48,6 +48,62 @@ export function recordingsCard(company, info) {
     },
   }, "Upload");
 
+  // ------------------------------------------------------- record in the app
+  // The microphone records until Stop; then it is uploaded like a file. The screen is kept awake (a phone that
+  // locks can pause the recording), and the page warns before closing.
+  let recorder = null;
+  let startedAt = 0;
+  let wakeLock = null;
+  const recordLabel = h("span", {}, "🎙 Record");
+  const recordBtn = h("button", { class: "record-btn", onclick: () => (recorder ? recorder.stop() : startRecording()) }, recordLabel);
+  const tick = () => {
+    if (!recorder) return;
+    const s = Math.floor((Date.now() - startedAt) / 1000);
+    recordLabel.textContent = `■ Stop · ${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+    setTimeout(tick, 1000);
+  };
+  const warnOnLeave = (e) => { e.preventDefault(); e.returnValue = ""; };
+
+  async function startRecording() {
+    if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) return toast("This browser can't record audio", true);
+    const ok = await confirmSheet("Keep this page open and the screen on until you tap Stop. Make sure the people you record agree to it.",
+      { title: "Record the interview?", ok: "Start recording" });
+    if (!ok) return;
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+    } catch { return toast("Microphone access was refused", true); }
+    const type = ["audio/webm;codecs=opus", "audio/mp4", "audio/webm", "audio/ogg"].find((t) => MediaRecorder.isTypeSupported(t)) || "";
+    const chunks = [];
+    recorder = new MediaRecorder(stream, type ? { mimeType: type, audioBitsPerSecond: 64000 } : {});
+    recorder.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
+    recorder.onstop = async () => {
+      stream.getTracks().forEach((t) => t.stop());
+      wakeLock?.release().catch(() => {});
+      window.removeEventListener("beforeunload", warnOnLeave);
+      const mime = recorder.mimeType || type || "audio/webm";
+      recorder = null;
+      recordLabel.textContent = "Uploading…";
+      recordBtn.disabled = true;
+      const ext = mime.includes("mp4") ? "m4a" : mime.includes("ogg") ? "ogg" : "webm";
+      const file = new File(chunks, `Interview ${new Date().toISOString().slice(0, 16).replace("T", " ").replace(":", "h")}.${ext}`, { type: mime });
+      try {
+        await upload(`/api/recordings/upload?company=${encodeURIComponent(company.id)}&step=${encodeURIComponent(stepSelect.value)}`, file);
+        toast("Recording saved: check the estimate, then transcribe");
+      } catch (e) { toast(`${e.message}. The recording was not saved: try again.`, true); }
+      recordBtn.disabled = false;
+      recordLabel.textContent = "🎙 Record";
+      recordBtn.classList.remove("on");
+      load();
+    };
+    recorder.start(10000);  // a chunk every 10 s, so a long recording doesn't sit in one buffer
+    startedAt = Date.now();
+    recordBtn.classList.add("on");
+    window.addEventListener("beforeunload", warnOnLeave);
+    try { wakeLock = await navigator.wakeLock?.request("screen"); } catch { wakeLock = null; }
+    tick();
+  }
+
   // ------------------------------------------------------------- one recording
   const act = async (fn, msg) => {
     if (busy) return;
@@ -143,7 +199,7 @@ export function recordingsCard(company, info) {
       h("div", { class: "row" }, h("h2", { style: "margin:0" }, "Interview recordings")),
       h("p", { class: "small muted" }, "Upload the audio of an interview: it is transcribed (≈ $0.006 per minute), you pick your voice, and you get a debrief: the questions asked, your answers graded, what to improve, and a thank-you email. The graded answers go to your Practice page, and the next prep builds on them."),
       !info.recordings && h("div", { class: "result warn card" }, "Recordings need OPENAI_API_KEY and ffmpeg on the server."),
-      info.recordings && h("div", { class: "row" }, stepSelect, fileInput, uploadBtn),
+      info.recordings && h("div", { class: "row" }, stepSelect, recordBtn, h("span", { class: "small muted" }, "or"), fileInput, uploadBtn),
       list.length ? [...list].reverse().map(recording) : h("p", { class: "muted small" }, "No recording yet."));
   }
 

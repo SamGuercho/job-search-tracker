@@ -17,6 +17,7 @@ os.environ.update({
     "JOBTRACKER_PDF_ENGINE": "none",
     "OPENAI_API_KEY": "",
     "JOBTRACKER_PASSWORD": "",
+    "JOBTRACKER_REMINDERS": "0",          # no background reminder thread (tests call it directly)
 })
 
 

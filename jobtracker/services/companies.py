@@ -193,8 +193,10 @@ def _process_op(ref: str, op):
 
 def add_step(ref: str, name: str, after: str | None = None, before: str | None = None,
              branch_from: str | None = None, join: str | None = None, state: str = "todo",
-             date: str | None = None, notes: str = "", kind: str = "step") -> tuple[Company, Node]:
-    node = Node(name=name, state=state, date=date, notes=notes, kind=kind)
+             date: str | None = None, notes: str = "", kind: str = "step", time: str | None = None,
+             location: str = "", duration_min: int = 60) -> tuple[Company, Node]:
+    node = Node(name=name, state=state, date=date, notes=notes, kind=kind, time=time, location=location,
+                duration_min=duration_min)
 
     def op(p: Process):
         if branch_from:

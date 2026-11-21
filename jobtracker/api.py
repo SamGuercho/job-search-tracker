@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import Body, FastAPI, File, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from mcp.server.streamable_http_manager import StreamableHTTPASGIApp
 from pydantic import ValidationError
@@ -21,7 +21,7 @@ from . import (
     registry,
     users,
 )
-from .services import llm, pdf, recordings
+from .services import calendar, llm, pdf, recordings, reminders
 from .services.companies import NotFound
 from .services.cv_import import SUPPORTED
 from .services.llm import LLMUnavailable
@@ -34,6 +34,7 @@ _mcp = {"app": None}  # the /mcp handler; a session manager runs only once, so e
 @asynccontextmanager
 async def lifespan(_app):
     manager = mcp_server.http_manager()
+    reminders.start()  # interview / follow-up notifications (JOBTRACKER_REMINDERS=0 turns them off)
     async with manager.run():
         _mcp["app"] = StreamableHTTPASGIApp(manager)
         yield
@@ -110,6 +111,39 @@ def run_action(name: str, payload: dict = Body(default={})):
         raise HTTPException(422, e.errors(include_url=False, include_context=False)) from e
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
+
+
+@app.get("/api/calendar/step.ics")
+def calendar_step(request: Request, company: str, step: str):
+    """One interview step as a calendar event: phones open it in their calendar app."""
+    try:
+        name, text = calendar.step_ics(company, step, str(request.base_url))
+    except NotFound as e:
+        raise HTTPException(404, str(e)) from e
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
+    safe = "".join(ch if ch.isalnum() or ch in " -_." else "_" for ch in name)
+    return Response(text, media_type="text/calendar; charset=utf-8",
+                    headers={"Content-Disposition": f'inline; filename="{safe}"'})
+
+
+@app.get("/api/calendar/interviews.ics")
+def calendar_feed(request: Request):
+    """All upcoming interviews, as a calendar to subscribe to (updates by itself)."""
+    return Response(calendar.feed_ics(str(request.base_url)), media_type="text/calendar; charset=utf-8",
+                    headers={"Content-Disposition": 'inline; filename="Job interviews.ics"'})
+
+
+@app.get("/share")
+def share_target(title: str = "", text: str = "", url: str = ""):
+    """Android share sheet -> "Job Search": the shared job link (or text) goes to the assistant to add the job."""
+    import re
+
+    found = url or next(iter(re.findall(r"https?://\S+", f"{text} {title}")), "")
+    content = found or text or title
+    message = f"Add this job and make my CV: {content}" if content else ""
+    from urllib.parse import quote
+    return RedirectResponse(f"/#/chat?q={quote(message)}" if message else "/#/", status_code=303)
 
 
 @app.post("/api/recordings/upload")

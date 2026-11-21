@@ -218,3 +218,25 @@ export function usd(v) {
   if (v === 0) return "$0";
   return `$${v < 0.1 ? v.toFixed(3) : v.toFixed(2)}`;
 }
+
+/** "Add to calendar" sheet for a scheduled step: Google Calendar, or an .ics file (Apple Calendar, Outlook…). */
+export async function addToCalendar(companyId, stepId) {
+  const { call } = await import("./api.js");
+  let e;
+  try { e = await call("calendar.event", { company: companyId, step: stepId }); } catch (err) { return toast(err.message, true); }
+  const compact = (v) => v.replace(/[-:]/g, "");  // 2026-12-01T14:30 -> 20261201T1430(00)
+  const dates = e.all_day ? `${compact(e.start)}/${compact(e.end)}` : `${compact(e.start)}00/${compact(e.end)}00`;
+  const details = `${e.description}\n\nApplication, prep and notes: ${location.origin}/#/company/${companyId}`;
+  const google = "https://calendar.google.com/calendar/render?action=TEMPLATE"
+    + `&text=${encodeURIComponent(e.title)}&dates=${dates}&details=${encodeURIComponent(details)}`
+    + `&location=${encodeURIComponent(e.location || "")}`;
+  const ics = `/api/calendar/step.ics?company=${encodeURIComponent(companyId)}&step=${encodeURIComponent(stepId)}`;
+  const when = e.all_day ? e.start : e.start.replace("T", " at ");
+  const close = modal("Add to calendar", h("div", { class: "more-list" },
+    h("p", { class: "small muted", dir: "auto" }, `${e.title} · ${when}`, e.location && ` · ${e.location}`),
+    h("a", { href: google, target: "_blank", rel: "noopener", onclick: () => close() },
+      h("b", {}, "Google Calendar"), h("span", { class: "small muted" }, "Opens the event, ready to save")),
+    h("a", { href: ics, onclick: () => setTimeout(close, 300) },
+      h("b", {}, "Apple Calendar, Outlook, other"), h("span", { class: "small muted" }, "Downloads the event (.ics) for your calendar app")),
+    h("p", { class: "small muted" }, "Reminders: the day before and 1 hour before. Adding it again updates it.")));
+}

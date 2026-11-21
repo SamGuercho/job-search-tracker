@@ -35,6 +35,7 @@ from .registry import action
 from .services import (
     analytics,
     assistant,
+    calendar,
     companies,
     cv_builder,
     cv_import,
@@ -43,6 +44,7 @@ from .services import (
     master_cv,
     practice,
     prep,
+    push,
     recordings,
     usage,
     web,
@@ -82,7 +84,9 @@ def app_info():
             "templates": [{"name": t.name, "label": t.label} for t in TEMPLATES.values()],
             "llm_available": llm.available(), "user": users.current() or users.owner(),
             "premium": users.is_premium(),
-            "recordings": llm.openai_available() and bool(recordings.shutil.which(config.FFMPEG_BIN))}
+            "recordings": llm.openai_available() and bool(recordings.shutil.which(config.FFMPEG_BIN)),
+            "follow_ups_due": sum(1 for c in companies.list_companies() if c.status in ("Applied", "In process")
+                                  and (c.days_since_update() or 0) >= 14)}
 
 
 @action("company.list")
@@ -297,6 +301,56 @@ def recording_delete(id: str):
     return {"deleted": id}
 
 
+# ================================================================== calendar
+
+@action("calendar.event")
+def calendar_event(company: str, step: str):
+    """A scheduled step as a calendar event (title, start/end, all_day, location, description), to add it to
+    the user's calendar. The app offers Google Calendar and .ics (Apple, Outlook) buttons on the step."""
+    c, n = calendar.for_step(company, step)
+    return calendar.event(c, n)
+
+
+@action("calendar.upcoming")
+def calendar_upcoming():
+    """Upcoming scheduled interviews (open applications), soonest first: company, step, date, time, location."""
+    return [{"company_id": c.id, "company": c.name, "step_id": n.id, "step": n.name, "date": n.date, "time": n.time,
+             "duration_min": n.duration_min, "location": n.location} for c, n in calendar.upcoming()]
+
+
+# ============================================================= notifications
+
+@action("push.key")
+def push_key():
+    """The server's public key, for a browser to subscribe to notifications."""
+    return {"public_key": push.public_key()}
+
+
+@action("push.subscribe")
+def push_subscribe(subscription: dict, timezone: str = "UTC", device: str = ""):
+    """Register this device for notifications (prep ready, debrief ready, interview and follow-up reminders)."""
+    return push.subscribe(subscription, timezone, device)
+
+
+@action("push.unsubscribe")
+def push_unsubscribe(endpoint: str):
+    """Stop notifications on one device."""
+    return push.unsubscribe(endpoint)
+
+
+@action("push.devices")
+def push_devices():
+    """The devices that receive this person's notifications."""
+    return push.devices()
+
+
+@action("push.test")
+def push_test():
+    """Send a test notification to this person's devices."""
+    return {"sent": push.notify("Notifications are on", "You'll get interview reminders and prep/debrief alerts here.",
+                                "/#/", tag="test")}
+
+
 # ===================================================================== costs
 
 @action("usage.report")
@@ -379,11 +433,15 @@ def process_get(company: str):
 @action("process.add_step")
 def process_add_step(company: str, name: str, after: Optional[str] = None, before: Optional[str] = None,
                      state: NodeState = "todo", date: Optional[str] = None, notes: str = "",
-                     kind: Literal["step", "offer"] = "step"):
+                     kind: Literal["step", "offer"] = "step", time: Optional[str] = None, location: str = "",
+                     duration_min: int = 60):
     """Add a step. With `after` and `before` (two linked steps): inserted between them. With only `after`: right
     after it. With only `before`: right before it. With neither: at the end. state: todo (off), planned
-    (scheduled, give a date), done. kind "offer": reaching this step means an offer."""
-    c, _ = companies.add_step(company, name, after=after, before=before, state=state, date=date, notes=notes, kind=kind)
+    (scheduled, give a date), done. kind "offer": reaching this step means an offer. For a scheduled interview
+    also give `time` ("14:30", local), `duration_min` and `location` (address or video link): it can then be
+    added to the user's calendar."""
+    c, _ = companies.add_step(company, name, after=after, before=before, state=state, date=date, notes=notes, kind=kind,
+                              time=time, location=location, duration_min=duration_min)
     return _process_view(c)
 
 
@@ -398,7 +456,8 @@ def process_add_branch(company: str, from_step: str, name: str, join: Optional[s
 
 @action("process.update_step")
 def process_update_step(company: str, step: str, fields: StepPatch):
-    """Change a step: name, state (todo/planned/done), date, notes, kind (step/offer)."""
+    """Change a step: name, state (todo/planned/done), date, time ("14:30"), duration_min, location (address or
+    video link), notes, kind (step/offer)."""
     c, _ = companies.update_step(company, step, **_patch(fields))
     return _process_view(c)
 
