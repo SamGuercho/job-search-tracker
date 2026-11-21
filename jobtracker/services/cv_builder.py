@@ -159,14 +159,23 @@ def generate_general(template: str | None = None, export_pdf: bool = True) -> di
     return generate_cv([], company_name=GENERAL_FOLDER, template=template, export_pdf=export_pdf, everything=True)
 
 
-def use_summary(cv: TailoredCV, company) -> TailoredCV:
-    """An application's tailored summary and title replace the master ones in its CV."""
-    if company is None:
-        return cv
-    update = {k: v for k, v in {"summary": company.cv_summary.strip(), "title": company.cv_title.strip()}.items() if v}
+def use_summary(cv: TailoredCV, company, keywords: list[str] | None = None) -> dict:
+    """The top of the CV: the application's own title/summary if it has them, else those of the title variant
+    closest to the job (see headlines.py). Returns what was used, for the report."""
+    from . import headlines
+
+    pick = headlines.choose(company, keywords)
+    h = pick["headline"]
+    own_title = company.cv_title.strip() if company is not None else ""
+    own_summary = company.cv_summary.strip() if company is not None else ""
+    title = own_title or (h.title if h else "")
+    summary = own_summary or (h.summary if h else "")
+    update = {k: v for k, v in {"title": title, "summary": summary}.items() if v}
     if update:
         cv.profile = cv.profile.model_copy(update=update)
-    return cv
+    return {"title": title, "variant": h.title if h else None, "how": pick["how"],
+            "title_tailored": bool(company is not None and company.cv_title.strip()),
+            "summary_tailored": bool(company is not None and company.cv_summary.strip())}
 
 
 # ------------------------------------------------------------- 2. trimming
@@ -215,7 +224,7 @@ def generate_cv(keywords: list[str], company_id: str | None = None, company_name
     tpl = get_template(template)
 
     cv = select_bullets(keywords, keep_unmatched_roles, required, everything)
-    use_summary(cv, company)
+    headline = use_summary(cv, company, keywords)
     engine = pdf.available_engine() if export_pdf else None
     # With a real PDF check we can afford an optimistic estimate; otherwise be safe.
     fit_estimate(cv, template, budget=1.05 if engine else 0.97)
@@ -264,5 +273,6 @@ def generate_cv(keywords: list[str], company_id: str | None = None, company_name
         "kept": [b.model_dump() for e in cv.experiences for b in e.bullets],
         "removed": [b.model_dump() for b in cv.removed],
         "unmatched_keywords": cv.unmatched_keywords,
+        "headline": headline,   # title/summary used at the top, and whether it came from a variant or the application
         "warnings": warnings,
     }

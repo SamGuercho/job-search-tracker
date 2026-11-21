@@ -39,6 +39,7 @@ from .services import (
     companies,
     cv_builder,
     cv_import,
+    headlines,
     jd_match,
     jobs,
     llm,
@@ -64,6 +65,7 @@ def partial(model: type[BaseModel], exclude: set[str] = frozenset()) -> type[Bas
 
 
 CompanyPatch = partial(Company, exclude={"id", "status", "process", "documents", "created_at", "cv_summary", "cv_title",
+                                         "cv_headline",
                                          "job_description_file", "job_description_saved_at", "logo_file", "logo_source",
                                          "logo_checked_at"})
 StepPatch = partial(Node, exclude={"id"})
@@ -546,10 +548,59 @@ def cv_master_get():
     return master_cv.get_master()
 
 
+@action("cv.headline.list")
+def cv_headline_list():
+    """The title variants of the master CV (title + summary, one default). For each application the closest one
+    to the job is used automatically; see cv.headline.for_application."""
+    return [h.model_dump() for h in headlines.variants()]
+
+
+@action("cv.headline.add", confirm=True)
+def cv_headline_add(title: str, summary: str = "", keywords: list[str] = [], make_default: bool = False):
+    """Add a title variant (e.g. "Data Scientist") with its own summary, built only from the CV's facts.
+    `keywords`: hint words that point to it (e.g. "machine learning", "experimentation")."""
+    return headlines.add(title, summary, keywords, make_default).model_dump()
+
+
+@action("cv.headline.update", confirm=True)
+def cv_headline_update(id: str, title: Optional[str] = None, summary: Optional[str] = None,
+                       keywords: Optional[list[str]] = None, make_default: Optional[bool] = None):
+    """Change a title variant (its title, summary, hint words), or make it the default."""
+    return headlines.update(id, title, summary, keywords, make_default).model_dump()
+
+
+@action("cv.headline.delete", confirm=True)
+def cv_headline_delete(id: str):
+    """Delete a title variant (at least one stays)."""
+    return [h.model_dump() for h in headlines.delete(id)]
+
+
+@action("cv.headline.for_application")
+def cv_headline_for_application(company: str):
+    """What an application's CV shows at the top: the title and summary, the variant used (pinned, closest to the
+    job, or default) and whether the application overrides them. Check it fits the job before making a CV."""
+    return headlines.effective(company)
+
+
+@action("company.set_cv_headline")
+def company_set_cv_headline(company: str, headline_id: str = ""):
+    """Use this title variant for this application's CVs ("" = the closest one, picked automatically)."""
+    return headlines.pin(company, headline_id)
+
+
 @action("cv.profile.update", confirm=True)
 def cv_profile_update(fields: ProfilePatch):
-    """Update the CV header/profile (name, title, contacts, summary)."""
-    return master_cv.update_profile(**_patch(fields))
+    """Update the CV header/profile (name, contacts). The title and summary are title variants (cv.headline.*):
+    a title/summary given here changes the default variant."""
+    changes = _patch(fields)
+    title, summary = changes.pop("title", None), changes.pop("summary", None)
+    if title is not None or summary is not None:
+        d = headlines.default()
+        if d:
+            headlines.update(d.id, title, summary)
+        else:
+            headlines.add(title or "Title", summary or "", make_default=True)
+    return master_cv.update_profile(**changes) if changes else master_cv.get_master().profile
 
 
 @action("cv.experience.add")

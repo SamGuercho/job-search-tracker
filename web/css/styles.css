@@ -509,3 +509,9 @@ body.is-offline main { padding-top: 8px; }
 .chat-archived .chat-item { opacity: .75; }
 .keys-hint { padding: 0 12px 8px; text-align: right; }
 .cv-title-row { gap: 6px; flex-wrap: wrap; } .cv-title-row input { flex: 1 1 220px; }
+
+/* Titles & summaries (master CV) */
+.headline-row { display: flex; flex-direction: column; gap: 6px; padding: 12px 0; border-top: 1px solid var(--border); }
+.headline-row > .row { gap: 8px; }
+.headline-row > .row input { flex: 1; font-weight: 600; }
+.headline-row.is-default > .row input { border-color: var(--accent); }

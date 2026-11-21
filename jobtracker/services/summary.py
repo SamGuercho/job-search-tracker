@@ -65,7 +65,8 @@ def review_summary(company_ref: str, summary: str | None = None, facts: str = ""
     c = companies.resolve(company_ref)
     if not c.job_description.strip():
         raise ValueError(f"{c.name} has no job description to compare with")
-    master = master_cv.get_master().profile.summary
+    from . import headlines
+    master = headlines.effective(c.id)["summary"] or master_cv.get_master().profile.summary
     current = summary if summary is not None else (c.cv_summary or master)
     cv_text = _cv_text()
     prompt = (f"JOB: {c.position} at {c.name}\n{c.job_description}\n\n=== SUMMARY TO REVIEW ===\n{current}\n\n"

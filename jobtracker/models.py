@@ -61,7 +61,8 @@ class Company(BaseModel):
     job_description_saved_at: str | None = None
     keywords: list[str] = []
     cv_summary: str = ""          # tailored CV summary for this application ("" = master CV summary)
-    cv_title: str = ""            # the title under your name on this application's CV ("" = master CV title)
+    cv_title: str = ""            # the title under your name on this application's CV ("" = its title variant's)
+    cv_headline: str = ""         # the title variant pinned for this application ("" = the closest, automatically)
     last_update: str = Field(default_factory=today)
     last_update_by: UpdateSide = "me"
     process: Process = Field(default_factory=default_process)
@@ -189,14 +190,33 @@ DEFAULT_SYNONYMS = [
 ]
 
 
+class Headline(BaseModel):
+    """A title variant: the title under your name and its summary (see services/headlines.py)."""
+    id: str = Field(default_factory=new_id)
+    title: str
+    summary: str = ""
+    keywords: list[str] = []   # optional hint words: a job mentioning them points to this variant
+    default: bool = False      # used when no variant fits a job better
+
+
 class MasterCV(BaseModel):
     profile: Profile = Field(default_factory=Profile)
+    headlines: list[Headline] = []   # title variants; profile.title/summary mirror the default one
     experiences: list[Experience] = []
     education: list[Education] = []
     skills: list[SkillGroup] = []
     languages: list[str] = []   # e.g. "French (Native)"
     synonyms: list[list[str]] = Field(default_factory=lambda: [list(g) for g in DEFAULT_SYNONYMS])
     extra_keywords: list[str] = []  # keywords you track that no bullet uses yet
+
+    @model_validator(mode="after")
+    def _first_headline(self):
+        """CVs from before title variants: their title and summary become the first (default) variant."""
+        if not self.headlines and (self.profile.title or self.profile.summary):
+            # a fixed id: the same variant on every read, even before anything saves it
+            self.headlines = [Headline(id="main", title=self.profile.title or "Title", summary=self.profile.summary,
+                                       default=True)]
+        return self
 
 
 # --------------------------------------------------------------------- chats

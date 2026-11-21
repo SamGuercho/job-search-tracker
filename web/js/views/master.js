@@ -1,11 +1,11 @@
 // Master CV editor: profile, experiences + achievements (with alternative wordings), education, skills.
 // Bullets and experiences save automatically when a field loses focus.
 import { call, fileUrl } from "../api.js";
-import { attempt, confirmSheet, field, h, joinList, keywordPattern, mount, readForm, splitList } from "../ui.js";
+import { attempt, confirmSheet, field, h, joinList, keywordPattern, mount, promptSheet, readForm, splitList } from "../ui.js";
 import { openImport } from "./import.js";
 
 const PROFILE_FIELDS = [
-  ["name", "Name"], ["title", "Position (shown under your name)", "e.g. Senior Data Scientist · NLP & LLM Systems"],
+  ["name", "Name"],
   ["email", "Email"], ["phone", "Phone"], ["location", "Location"], ["linkedin", "LinkedIn URL"], ["website", "Website"],
 ];
 
@@ -16,13 +16,50 @@ export async function renderMasterCv(root) {
     render();
   };
 
+  // ------------------------------------------------------- titles & summaries
+  // Several titles, each with its own summary; each job's CV uses the one closest to the job's title.
+  const headlinesCard = () => {
+    const save = async (id, changes, msg) => {
+      if (await attempt(() => call("cv.headline.update", { id, ...changes }), msg)) reload();
+    };
+    const row = (v) => {
+      const title = h("input", { value: v.title, "aria-label": "Title", dir: "auto" });
+      const summary = h("textarea", { rows: 3, "aria-label": "Summary", dir: "auto" }, v.summary);
+      const hints = h("input", { value: joinList(v.keywords), placeholder: "Hint words (optional), e.g. machine learning, experimentation" });
+      return h("div", { class: `headline-row ${v.default ? "is-default" : ""}` },
+        h("div", { class: "row" }, title,
+          v.default ? h("span", { class: "pill applied", title: "Used when no title fits a job better" }, "Default")
+            : h("button", { class: "ghost small", onclick: () => save(v.id, { make_default: true }, `“${v.title}” is now the default`) }, "Make default"),
+          cv.headlines.length > 1 && h("button", {
+            class: "ghost icon danger", title: "Delete this title", onclick: async () => {
+              if (await confirmSheet("Applications that pinned it go back to the closest title.", { title: `Delete “${v.title}”?`, ok: "Delete", danger: true })
+                && await attempt(() => call("cv.headline.delete", { id: v.id }), "Deleted")) reload();
+            },
+          }, "✕")),
+        summary, hints,
+        h("div", { class: "row" }, h("span", { class: "spacer" }),
+          h("button", { class: "small", onclick: () => save(v.id, { title: title.value, summary: summary.value, keywords: splitList(hints.value) }, "Saved") }, "Save")));
+    };
+    return h("div", { class: "card" },
+      h("div", { class: "row" }, h("h2", { style: "margin:0" }, "Titles & summaries"), h("span", { class: "spacer" }),
+        h("button", {
+          onclick: async () => {
+            const title = await promptSheet("Its summary can then be written for that title.", "", { title: "Add a title", ok: "Add", placeholder: "e.g. Data Scientist" });
+            if (title && await attempt(() => call("cv.headline.add", { title, summary: "" }), "Title added: write its summary")) reload();
+          },
+        }, "+ Add a title")),
+      h("p", { class: "small muted" }, "The line under your name and the paragraph below it, in several versions (Data Scientist, AI Engineer…). "
+        + "Each job's CV uses the title closest to the job's title (then the hint words); the default when none fits. "
+        + "You can still adjust them for one application on its page."),
+      cv.headlines.map(row));
+  };
+
   // ---------------------------------------------------------------- profile
   const profile = () => {
     const p = cv.profile;
     const form = h("form", { class: "form-grid" },
       PROFILE_FIELDS.map(([k, label, placeholder]) =>
         field(label, h("input", { name: k, value: p[k], placeholder: placeholder || "" }))),
-      field("Summary", h("textarea", { name: "summary", rows: 3 }, p.summary), "wide"),
       h("div", { class: "row wide" }, h("span", { class: "spacer" }), h("button", { class: "primary", type: "submit" }, "Save profile")));
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
@@ -283,6 +320,7 @@ export async function renderMasterCv(root) {
       h("div", { class: "stack" },
         generalResult,
         profile(),
+        headlinesCard(),
         newExperience(),
         cv.experiences.map(experience),
         h("div", { class: "grid cols-2" },

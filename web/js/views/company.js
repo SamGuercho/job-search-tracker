@@ -7,6 +7,7 @@ import { recordingsCard } from "./recordings.js";
 export async function renderCompany(root, id) {
   const [company, info, master] = await Promise.all([call("company.get", { id }), call("app.info"), call("cv.master.get")]);
   let prep = await call("prep.get", { company: id });
+  let top = await call("cv.headline.for_application", { company: id });  // title & summary this CV will show
   let practiceLog = await call("practice.history", { company: id });  // newest first
   let prepLanguage = "English";
   const recordings = recordingsCard(company, info);
@@ -139,18 +140,29 @@ export async function renderCompany(root, id) {
   // -------------------------------------------------------------- CV summary
   // The application's own summary if it has one, else the master CV summary.
   const summaryCard = () => {
-    const tailored = !!company.cv_summary;
-    const text = h("textarea", { rows: 5 }, company.cv_summary || master.profile.summary);
-    const titleInput = h("input", { value: company.cv_title || master.profile.title, placeholder: master.profile.title || "Your title" });
+    const variant = top.variant || { title: master.profile.title, summary: master.profile.summary };
+    const tailored = top.summary_tailored;
+    const text = h("textarea", { rows: 5, dir: "auto" }, top.summary);
+    const how = { pinned: "chosen for this application", closest: "closest to the job's title", default: "default (no title fits better)" }[top.how] || "";
+    const variantSelect = h("select", {
+      "aria-label": "Title variant", onchange: async (e) => {
+        const r = await attempt(() => call("company.set_cv_headline", { company: id, headline_id: e.target.value }), "Title variant changed");
+        if (r) { top = r; render(); toast("Regenerate the CV to apply it"); }
+      },
+    }, h("option", { value: "", selected: top.how !== "pinned" }, `Automatic${top.how !== "pinned" && top.variant ? ` (${top.variant.title})` : ""}`),
+    top.variants.map((v) => h("option", { value: v.id, selected: top.how === "pinned" && top.variant?.id === v.id }, v.title + (v.default ? " · default" : ""))));
+    const titleInput = h("input", { value: top.title, placeholder: variant.title || "Your title", dir: "auto" });
     const titleRow = h("div", { class: "stack-tight", style: "margin-bottom:12px" },
+      h("div", { class: "row cv-title-row" }, h("b", {}, "Title variant"), variantSelect,
+        h("span", { class: "small muted" }, how)),
       h("div", { class: "row" }, h("b", {}, "Title under your name"), h("span", { class: "spacer" }),
-        h("span", { class: `pill ${company.cv_title ? "applied" : "not-applied"}` }, company.cv_title ? "Tailored" : "Master CV title")),
+        h("span", { class: `pill ${top.title_tailored ? "applied" : "not-applied"}` }, top.title_tailored ? "Tailored" : `From “${variant.title}”`)),
       h("div", { class: "row cv-title-row" }, titleInput,
         company.position && company.position !== titleInput.value && h("button", {
           class: "ghost small", title: "Use the job's title", onclick: () => { titleInput.value = company.position; titleInput.focus(); },
         }, `Use “${company.position}”`),
-        company.cv_title && h("button", { class: "ghost small", onclick: () => saveTitle("", "Back to the master title") }, "Master title"),
-        h("button", { class: "small", onclick: () => saveTitle(titleInput.value === master.profile.title ? "" : titleInput.value, "Title saved for this application") }, "Save")));
+        top.title_tailored && h("button", { class: "ghost small", onclick: () => saveTitle("", "Back to the variant's title") }, "Variant's title"),
+        h("button", { class: "small", onclick: () => saveTitle(titleInput.value === variant.title ? "" : titleInput.value, "Title saved for this application") }, "Save")));
     const checkBtn = h("button", {
       disabled: !info.llm_available || !company.job_description,
       title: !company.job_description ? "Add the job description first" : !info.llm_available ? "Needs OPENAI_API_KEY" : "",
@@ -163,21 +175,22 @@ export async function renderCompany(root, id) {
     }, "✨ Check relevance with AI");
     return h("div", { class: "card" },
       h("div", { class: "row" }, h("h2", { style: "margin:0" }, "CV summary"), h("span", { class: "spacer" }),
-        h("span", { class: `pill ${tailored ? "applied" : "not-applied"}` }, tailored ? "Tailored for this application" : "Master CV summary")),
+        h("span", { class: `pill ${tailored ? "applied" : "not-applied"}` }, tailored ? "Tailored for this application" : `From “${variant.title}”`)),
       h("p", { class: "small muted" }, "The top of this application's CV. Saving here changes this application only."),
       titleRow,
       text,
       h("div", { class: "row", style: "margin-top:8px" },
         checkBtn,
         h("span", { class: "spacer" }),
-        tailored && h("button", { class: "ghost", onclick: () => saveSummary("", "Back to the master summary") }, "Use master summary"),
-        h("button", { class: "primary", onclick: () => saveSummary(text.value, "Summary saved for this application") }, "Save for this application")),
+        tailored && h("button", { class: "ghost", onclick: () => saveSummary("", "Back to the variant's summary") }, "Variant's summary"),
+        h("button", { class: "primary", onclick: () => saveSummary(text.value.trim() === (variant.summary || "").trim() ? "" : text.value, "Summary saved for this application") }, "Save for this application")),
       review && reviewPanel(review, text));
   };
 
   const saveTitle = async (value, msg) => {
     if (await attempt(() => call("company.set_cv_title", { company: id, title: value }), msg)) {
       await reload();
+      top = await call("cv.headline.for_application", { company: id });
       render();
       toast("Regenerate the CV to apply it");
     }
@@ -186,6 +199,7 @@ export async function renderCompany(root, id) {
   const saveSummary = async (value, msg) => {
     if (await attempt(() => call("company.set_cv_summary", { company: id, summary: value }), msg)) {
       await reload();
+      top = await call("cv.headline.for_application", { company: id });
       render();
       toast("Regenerate the CV to apply it");
     }
