@@ -9,7 +9,10 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
 from datetime import datetime
+from functools import cache
 from pathlib import Path
 
 from . import config, users
@@ -19,6 +22,22 @@ from .storage import REGISTERED
 BACKUP_FILE = "last_backup.json"
 BACKUP_MAX_AGE_HOURS = 72          # a daily backup that missed more than two runs
 _state: dict = {"problems": None}  # filled by check_data() at startup
+
+
+@cache
+def version() -> dict:
+    """The commit this app runs: written into the image by CI; from git when run from a checkout."""
+    commit = os.environ.get("JOBTRACKER_COMMIT", "").strip()
+    if commit:
+        return {"commit": commit, "commit_message": os.environ.get("JOBTRACKER_COMMIT_MESSAGE", "").strip(),
+                "built_at": os.environ.get("JOBTRACKER_BUILT_AT", "").strip()}
+    try:
+        out = subprocess.run(["git", "log", "-1", "--format=%h%x00%s%x00%cI", "--abbrev=7"], cwd=config.ROOT,
+                             capture_output=True, text=True, timeout=5)
+        commit, message, at = out.stdout.strip().split("\x00") if out.returncode == 0 else ("", "", "")
+    except (OSError, subprocess.SubprocessError, ValueError):
+        commit, message, at = "", "", ""
+    return {"commit": commit, "commit_message": message, "built_at": at}
 
 
 def data_folders() -> list[Path]:

@@ -11,7 +11,7 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, create_model
 
-from . import config, users
+from . import config, maintenance, users
 from .cv_templates import TEMPLATES
 from .models import (
     SOURCE_TYPES,
@@ -88,7 +88,7 @@ def app_info():
             "work_models": WORK_MODELS, "source_types": SOURCE_TYPES,
             "templates": [{"name": t.name, "label": t.label} for t in TEMPLATES.values()],
             "llm_available": llm.available(), "user": users.current() or users.owner(),
-            "premium": users.is_premium(),
+            "premium": users.is_premium(), "version": maintenance.version(),
             "recordings": llm.openai_available() and bool(recordings.shutil.which(config.FFMPEG_BIN)),
             "follow_ups_due": sum(1 for c in companies.list_companies() if c.status in ("Applied", "In process")
                                   and (c.days_since_update() or 0) >= 14)}

@@ -40,6 +40,32 @@ function RunningImage {
     $id = Invoke-Quiet { docker inspect --format "{{.Image}}" $c }
     if ($id) { return $id.Trim() } else { return "" }
 }
+# "88a95d4 (Assistant: compact long conversations)": the commit an image was built from, for update.log.
+# Images before versions were written into them: the commit from the image's label, its message from git.
+function Describe($ref) {
+    if (-not $ref) { return "nothing" }
+    $commit, $message = "", ""
+    $envJson = Invoke-Quiet { docker image inspect --format "{{json .Config.Env}}" $ref }
+    if ($envJson) {
+        foreach ($line in ($envJson | ConvertFrom-Json)) {
+            if ($line -like "JOBTRACKER_COMMIT=*") { $commit = $line.Substring(18) }
+            elseif ($line -like "JOBTRACKER_COMMIT_MESSAGE=*") { $message = $line.Substring(26) }
+        }
+    }
+    if (-not $commit) {
+        $labels = Invoke-Quiet { docker image inspect --format "{{json .Config.Labels}}" $ref }
+        $revision = if ($labels) { ($labels | ConvertFrom-Json)."org.opencontainers.image.revision" } else { "" }
+        if ($revision) { $commit = $revision.Substring(0, [Math]::Min(7, $revision.Length)) }
+    }
+    if ($commit -and -not $message -and (Get-Command git -ErrorAction SilentlyContinue)) {
+        $repo = Resolve-Path (Join-Path $PSScriptRoot "..\..")
+        $found = Invoke-Quiet { git -C $repo log -1 --format=%s $commit }
+        if ($found) { $message = $found.Trim() }
+    }
+    if (-not $commit) { return ($ref -replace "^sha256:", "").Substring(0, 12) }   # unknown: the image id
+    if ($message) { return "$commit ($message)" } else { return $commit }
+}
+
 # Waits for the app (up to ~2 minutes): true only if it answers with status "ok"
 function Healthy {
     foreach ($i in 1..40) {
@@ -79,20 +105,20 @@ try {
     if ($current) { docker tag $current "${image}:previous" }   # kept, to go back to
     docker compose up -d --remove-orphans
     if (Healthy) {
-        Log "Updated to the newest image."
+        Log "Updated: $(Describe $current) -> $(Describe $latest)"
         Remove-Item $badFile -ErrorAction SilentlyContinue
         docker image prune -f *> $null
     } elseif (-not $current) {
         Log "The app does not pass its health check, and there is no previous version to go back to. See: docker compose logs --tail 50"
         exit 1
     } else {
-        Log "The new version failed its health check: going back to the previous one (its logs: failed-update.log)."
+        Log "The new version $(Describe $latest) failed its health check: going back to the previous one (its logs: failed-update.log)."
         Invoke-Quiet { docker compose logs app --tail 300 } | Set-Content -Path (Join-Path $PSScriptRoot "failed-update.log")
         $env:IMAGE_TAG = "previous"
         docker compose up -d --remove-orphans
         if (Healthy) {
             Set-Content -Path $badFile -Value $latest
-            Log "Back on the previous version. The failed one is skipped until CI publishes a new version."
+            Log "Rolled back: $(Describe $latest) -> $(Describe $current). The failed one is skipped until CI publishes a new version."
         } else {
             # The previous version fails too: the cause is elsewhere (data, disk, PC). Keep the new version.
             Remove-Item Env:IMAGE_TAG

@@ -526,3 +526,5 @@ body.is-offline main { padding-top: 8px; }
 .compact-tip span { flex: 1; }
 .compact-summary { align-self: center; max-width: 90%; margin: -4px 0 6px; }
 .compact-summary > div { font-size: 0.9em; padding: 8px 12px; border: 1px dashed var(--border); border-radius: 10px; }
+
+.app-version { margin-top: 12px; text-align: center; overflow-wrap: anywhere; }

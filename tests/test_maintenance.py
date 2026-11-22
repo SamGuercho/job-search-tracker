@@ -46,6 +46,22 @@ class MaintenanceTests(unittest.TestCase):
         self.assertEqual((health["status"], health["data_problems"]), ("error", 2))
         self.assertNotIn("friend", json.dumps(health))  # public: reveals no data
 
+    def test_version_comes_from_the_image_or_git(self):
+        import os
+        maintenance.version.cache_clear()
+        os.environ.update(JOBTRACKER_COMMIT="88a95d4", JOBTRACKER_COMMIT_MESSAGE="Compact chats", JOBTRACKER_BUILT_AT="2026-11-22T08:00:00Z")
+        try:
+            with TestClient(app) as client:
+                health = client.get("/health").json()
+                info = client.post("/api/actions/app.info", json={}).json()["result"]
+            self.assertEqual((health["commit"], health["commit_message"]), ("88a95d4", "Compact chats"))
+            self.assertEqual(info["version"]["commit"], "88a95d4")
+        finally:
+            for k in ("JOBTRACKER_COMMIT", "JOBTRACKER_COMMIT_MESSAGE", "JOBTRACKER_BUILT_AT"):
+                os.environ.pop(k, None)
+            maintenance.version.cache_clear()
+        self.assertRegex(maintenance.version()["commit"], r"^[0-9a-f]{7,}$|^$")  # from git in a checkout
+
     def test_backup_status(self):
         self.assertIsNone(maintenance.backup_status())
         now = datetime(2026, 11, 22, 9, 0)

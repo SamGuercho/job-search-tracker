@@ -50,19 +50,29 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-buildx-action@v3
+      - name: Version (written into the image)
+        id: version
+        run: |
+          echo "commit=$(git rev-parse --short=7 HEAD)" >> "$GITHUB_OUTPUT"
+          echo "message=$(git log -1 --format=%s | cut -c1-200)" >> "$GITHUB_OUTPUT"
+          echo "built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
       - name: Build image
         uses: docker/build-push-action@v6
         with:
           context: .
           load: true
           tags: job-search-tracker:ci
+          build-args: |
+            JOBTRACKER_COMMIT=${{ steps.version.outputs.commit }}
+            JOBTRACKER_COMMIT_MESSAGE=${{ steps.version.outputs.message }}
+            JOBTRACKER_BUILT_AT=${{ steps.version.outputs.built_at }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
       - name: Smoke test (starts, healthy, PDF engine available)
         run: |
           docker run -d --name app -p 8000:8000 job-search-tracker:ci
           for i in $(seq 1 30); do curl -fs localhost:8000/health && break; sleep 2; done
-          curl -fs localhost:8000/health | python3 -c "import json,sys; h=json.load(sys.stdin); assert h['status']=='ok' and h['pdf_engine']=='libreoffice', h; print(h)"
+          curl -fs localhost:8000/health | python3 -c "import json,sys; h=json.load(sys.stdin); assert h['status']=='ok' and h['pdf_engine']=='libreoffice' and h['commit']=='${{ steps.version.outputs.commit }}', h; print(h)"
           docker logs app | tail -5
       - name: Log in to GitHub Container Registry
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -87,4 +97,8 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            JOBTRACKER_COMMIT=${{ steps.version.outputs.commit }}
+            JOBTRACKER_COMMIT_MESSAGE=${{ steps.version.outputs.message }}
+            JOBTRACKER_BUILT_AT=${{ steps.version.outputs.built_at }}
           cache-from: type=gha

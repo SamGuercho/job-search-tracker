@@ -55,4 +55,13 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD curl -fsS "http://127.0.0.1:${PORT}/health" || exit 1
 
+# Which commit this image was built from (CI passes them; shown on /health, in the app and in update.log).
+# Last, so a new commit only rebuilds this tiny layer.
+ARG JOBTRACKER_COMMIT=""
+ARG JOBTRACKER_COMMIT_MESSAGE=""
+ARG JOBTRACKER_BUILT_AT=""
+ENV JOBTRACKER_COMMIT=$JOBTRACKER_COMMIT \
+    JOBTRACKER_COMMIT_MESSAGE=$JOBTRACKER_COMMIT_MESSAGE \
+    JOBTRACKER_BUILT_AT=$JOBTRACKER_BUILT_AT
+
 CMD ["python", "-m", "jobtracker", "serve"]

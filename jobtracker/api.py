@@ -74,7 +74,8 @@ def health():
     back to the previous version."""
     problems = maintenance.data_problems() or []
     backup = maintenance.backup_status()
-    return {"status": "error" if problems else "ok", "version": __version__, "pdf_engine": pdf.available_engine(),
+    return {"status": "error" if problems else "ok", "version": __version__, **maintenance.version(),
+            "pdf_engine": pdf.available_engine(),
             "ai": llm.available(), "login": auth.enabled(), "data_problems": len(problems),
             "backup": {k: backup[k] for k in ("at", "ok", "age_hours", "stale")} if backup else None}
 

@@ -143,6 +143,12 @@ changed; if Docker Desktop isn't running, it starts it. Push to `main` → CI te
 **Safety net:** after each update the app must answer its health check (which also checks it can read your data).
 If it doesn't, the previous version is put back within two minutes, the failed one is skipped until CI publishes a
 new one (`bad-image.txt`), and its logs are kept in `failed-update.log`.
+
+**Which version runs, and going back to one:** each update writes a line in `update.log` naming the versions, e.g.
+`Updated: dda754a (Robustness: …) -> 88a95d4 (Assistant: compact long conversations)` (and `Rolled back: …` when
+the safety net acts). The running version is also shown in the app (🔔 panel, or *More* on phones) and on
+`/health`. To run a given version, put its commit in `.env`, e.g. `IMAGE_TAG=sha-dda754a`, then `docker compose up -d`;
+back to following updates: `IMAGE_TAG=latest`.
 The task updates the app only (the image), not the files in this folder. To update **everything at once, right
 now** (the files with `git pull`, then the app once CI has published that exact version, a few minutes after a
 push): `powershell -ExecutionPolicy Bypass -File .\update-now.ps1`. To stay on a version, set `IMAGE_TAG` in `.env` to a commit tag

@@ -43,14 +43,25 @@ async function route() {
 window.addEventListener("hashchange", route);
 route();
 
+// Which version of the app runs (the commit CI built it from): to know where to go back to if needed
+const versionLine = () => {
+  const line = h("div", { class: "app-version small muted" });
+  call("app.info").then(({ version: v }) => {
+    if (!v?.commit) return;
+    line.textContent = `Version ${v.commit}${v.commit_message ? ` · ${v.commit_message}` : ""}${v.built_at ? ` · ${v.built_at.slice(0, 10)}` : ""}`;
+  }).catch(() => {});
+  return line;
+};
+
 // Phones: "More" in the tab bar lists the pages that have no tab
 document.querySelector(".tab-more")?.addEventListener("click", () => {
   const pages = [["#/cv", "CV builder", "A tailored CV for an application"], ["#/cv/master", "Master CV", "Your achievements and their wordings"],
     ["#/analytics", "Analytics", "How your search is going"], ["#/costs", "Costs", "What the AI features cost"]];
-  const close = modal("More", h("div", { class: "more-list" }, pages.map(([href, label, note]) =>
+  const close = modal("More", h("div", {}, h("div", { class: "more-list" }, pages.map(([href, label, note]) =>
     h("a", { href, onclick: () => close() }, h("b", {}, label), h("span", { class: "small muted" }, note))),
     h("a", { href: `webcal://${location.host}/api/calendar/interviews.ics`, onclick: () => close() },
-      h("b", {}, "Subscribe to my interviews"), h("span", { class: "small muted" }, "A calendar of all your scheduled interviews, kept up to date (Apple Calendar, Outlook)"))));
+      h("b", {}, "Subscribe to my interviews"), h("span", { class: "small muted" }, "A calendar of all your scheduled interviews, kept up to date (Apple Calendar, Outlook)"))),
+  versionLine()));
 });
 
 // Pull down at the top of a page to reload it (installed apps have no reload button). A touch that starts
@@ -167,7 +178,8 @@ document.querySelector(".bell")?.addEventListener("click", async () => {
       h("a", { href: `webcal://${location.host}/api/calendar/interviews.ics` },
         h("b", {}, "Subscribe to my interviews"),
         h("span", { class: "small muted" }, "A calendar of all your scheduled interviews that stays up to date (Apple Calendar, Outlook). "
-          + "For Google Calendar, use 📅 on each interview step.")))));
+          + "For Google Calendar, use 📅 on each interview step."))),
+    versionLine()));
 });
 
 // Follow-ups due as a badge on the app icon (Android, desktop; iPhone with notifications on)
