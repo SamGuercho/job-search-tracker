@@ -834,8 +834,8 @@ def cv_generate(keywords: list[str], company_id: Optional[str] = None, company_n
 
 @action("job.remember_board")
 def job_remember_board(url: str, platform: Literal["greenhouse", "lever", "ashby", "smartrecruiters"], account: str):
-    """Remember that a company's site publishes its jobs through a job board account (e.g. sentinelone.com uses
-    Greenhouse "sentinellabs"): its job links are then read through the board's public API."""
+    """Remember that a company's site publishes its jobs through a job board account (e.g. orbitex.com uses
+    Greenhouse "orbitexlabs"): its job links are then read through the board's public API."""
     jobs.remember(url, platform, account)
     return {"site": jobs.site_of(url), "platform": platform, "account": account}
 

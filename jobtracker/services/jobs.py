@@ -9,7 +9,7 @@
    - SmartRecruiters  jobs.smartrecruiters.com/<company>/<id>-…
 2. The page itself: the job data embedded for search engines (schema.org JobPosting, JSON-LD) if present,
    else the readable text. A 429 is retried once if the site says to wait a few seconds.
-When a page loads, the job board it embeds (e.g. Greenhouse "for=sentinellabs") is remembered for its site, so
+When a page loads, the job board it embeds (e.g. Greenhouse "for=orbitexlabs") is remembered for its site, so
 the next link from that company goes through the API. Pages that refuse robots (or need a login, like LinkedIn)
 can't be read: the user sends the text from their own browser (Share → Ezri, or the "Send to Ezri" bookmark).
 """

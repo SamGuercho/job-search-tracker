@@ -12,10 +12,10 @@ from jobtracker.api import app
 from jobtracker.services import jobs, web
 from tests.test_core import reset  # sets the temp data/output env vars first
 
-GH_JOB = {"title": "Staff Data Scientist", "company_name": "SentinelOne", "location": {"name": "Israel"},
-          "absolute_url": "https://www.sentinelone.com/jobs/?gh_jid=8206876003",
+GH_JOB = {"title": "Staff Data Scientist", "company_name": "Orbitex", "location": {"name": "Israel"},
+          "absolute_url": "https://www.orbitex.com/jobs/?gh_jid=4815162003",
           "content": "&lt;h3&gt;Our Purpose&lt;/h3&gt;&lt;p&gt;Build &amp;amp; ship&lt;/p&gt;&lt;ul&gt;&lt;li&gt;Python&lt;/li&gt;&lt;li&gt;SQL&lt;/li&gt;&lt;/ul&gt;"}
-S1 = "https://www.sentinelone.com/jobs/?search=data&gh_jid=8206876003&utm_source=telegram"
+S1 = "https://www.orbitex.com/jobs/?search=data&gh_jid=4815162003&utm_source=telegram"
 
 
 class FakeWeb:
@@ -49,7 +49,7 @@ class JobLinkTests(unittest.TestCase):
         return web.fetch_bytes
 
     def test_links_that_name_their_board(self):
-        self.assertEqual(jobs.board_link("https://job-boards.greenhouse.io/sentinellabs/jobs/8206876003"), ("greenhouse", "sentinellabs", "8206876003"))
+        self.assertEqual(jobs.board_link("https://job-boards.greenhouse.io/orbitexlabs/jobs/4815162003"), ("greenhouse", "orbitexlabs", "4815162003"))
         self.assertEqual(jobs.board_link("https://boards.greenhouse.io/embed/job_app?for=acme&token=42"), ("greenhouse", "acme", "42"))
         lever = "https://jobs.lever.co/palantir/6ed76ce8-4156-4b60-b120-403538bd66cd"
         self.assertEqual(jobs.board_link(lever)[0:2], ("lever", "palantir"))
@@ -59,39 +59,39 @@ class JobLinkTests(unittest.TestCase):
         self.assertIsNone(jobs.board_link(S1))  # gh_jid on the company's site: account not known yet
 
     def test_greenhouse_api_text(self):
-        self.use({"https://boards-api.greenhouse.io/v1/boards/sentinellabs/jobs/8206876003": (GH_JOB, "application/json")})
-        r = jobs.read("https://job-boards.greenhouse.io/sentinellabs/jobs/8206876003")
+        self.use({"https://boards-api.greenhouse.io/v1/boards/orbitexlabs/jobs/4815162003": (GH_JOB, "application/json")})
+        r = jobs.read("https://job-boards.greenhouse.io/orbitexlabs/jobs/4815162003")
         self.assertEqual((r["via"], r["title"], r["location"]), ("Greenhouse API", "Staff Data Scientist", "Israel"))
         self.assertIn("Build & ship", r["text"])
         self.assertIn("• Python", r["text"])
-        self.assertTrue(r["text"].startswith("Staff Data Scientist\nCompany: SentinelOne"))
+        self.assertTrue(r["text"].startswith("Staff Data Scientist\nCompany: Orbitex"))
 
     def test_blocked_site_then_remembered_account(self):
         fake = self.use({S1: web.FetchError("HTTP Error 429", 429, retry_after=None),
-                         "https://boards-api.greenhouse.io/v1/boards/sentinellabs/jobs/8206876003": (GH_JOB, "application/json")})
+                         "https://boards-api.greenhouse.io/v1/boards/orbitexlabs/jobs/4815162003": (GH_JOB, "application/json")})
         with self.assertRaises(ValueError) as e:
             registry.run("job.fetch_url", {"url": S1})
         self.assertIn("refuses automated reading (HTTP 429)", str(e.exception))
         self.assertIn("Share → Ezri", str(e.exception))
-        registry.run("job.remember_board", {"url": "https://www.sentinelone.com/jobs/", "platform": "greenhouse", "account": "sentinellabs"})
+        registry.run("job.remember_board", {"url": "https://www.orbitex.com/jobs/", "platform": "greenhouse", "account": "orbitexlabs"})
         r = registry.run("job.fetch_url", {"url": S1})
         self.assertEqual(r["via"], "Greenhouse API")
-        self.assertEqual(fake.calls[-1], "https://boards-api.greenhouse.io/v1/boards/sentinellabs/jobs/8206876003")
+        self.assertEqual(fake.calls[-1], "https://boards-api.greenhouse.io/v1/boards/orbitexlabs/jobs/4815162003")
 
     def test_greenhouse_account_found_without_the_company_site(self):
-        embed = "https://boards.greenhouse.io/embed/job_app?token=8206876003"
-        api = "https://boards-api.greenhouse.io/v1/boards/sentinellabs/jobs/8206876003"
+        embed = "https://boards.greenhouse.io/embed/job_app?token=4815162003"
+        api = "https://boards-api.greenhouse.io/v1/boards/orbitexlabs/jobs/4815162003"
         fake = self.use({S1: web.FetchError("HTTP Error 429", 429), embed: (b"<html>Staff Data Scientist</html>", "text/html"), api: (GH_JOB, "application/json")})
         fake_final = fake.__call__
 
         def with_redirect(url, *a, **k):  # Greenhouse redirects to ...?for=<account>&token=<id>
             body, ctype, final = fake_final(url, *a, **k)
-            return body, ctype, ("https://job-boards.greenhouse.io/embed/job_app?for=sentinellabs&token=8206876003" if url == embed else final)
+            return body, ctype, ("https://job-boards.greenhouse.io/embed/job_app?for=orbitexlabs&token=4815162003" if url == embed else final)
         web.fetch_bytes = with_redirect
         r = jobs.read(S1)
         self.assertEqual((r["via"], r["title"]), ("Greenhouse API", "Staff Data Scientist"))
         self.assertNotIn(S1, fake.calls)  # the company's protected site was never requested
-        self.assertEqual(jobs.known_board("https://www.sentinelone.com/").account, "sentinellabs")
+        self.assertEqual(jobs.known_board("https://www.orbitex.com/").account, "orbitexlabs")
 
     def test_page_teaches_its_board_and_polite_retry(self):
         page = b'<html><script src="https://boards.greenhouse.io/embed/job_board/js?for=acmeco"></script></html>'
@@ -121,7 +121,7 @@ class JobLinkTests(unittest.TestCase):
     def test_closed_job(self):
         self.use({})
         with self.assertRaises(ValueError) as e:
-            jobs.read("https://job-boards.greenhouse.io/sentinellabs/jobs/8204536003")
+            jobs.read("https://job-boards.greenhouse.io/orbitexlabs/jobs/4815169003")
         self.assertIn("no longer published", str(e.exception))
 
     def test_lever_ashby_smartrecruiters(self):
@@ -145,12 +145,12 @@ class ShareTargetTests(unittest.TestCase):
         self.client = TestClient(app)
 
     def test_shared_text_goes_to_the_confirmation_page(self):
-        text = "Staff Data Scientist at SentinelOne. " * 20 + "https://www.sentinelone.com/jobs/?gh_jid=1"
+        text = "Staff Data Scientist at Orbitex. " * 20 + "https://www.orbitex.com/jobs/?gh_jid=1"
         r = self.client.get("/share", params={"title": "Job", "text": text}, follow_redirects=False)
         location = r.headers["location"]
         self.assertTrue(location.startswith("/#/clip?d="))
         data = json.loads(base64.urlsafe_b64decode(location.split("d=")[1] + "==").decode())
-        self.assertEqual(data["u"], "https://www.sentinelone.com/jobs/?gh_jid=1")
+        self.assertEqual(data["u"], "https://www.orbitex.com/jobs/?gh_jid=1")
         self.assertIn("Staff Data Scientist", data["x"])
         self.assertNotIn("https://", data["x"])
 

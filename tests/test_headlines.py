@@ -27,7 +27,7 @@ class HeadlineTests(unittest.TestCase):
         self.assertEqual([(h.title, h.summary, h.default) for h in cv.headlines], [("Analyst", "I analyse.", True)])
 
     def test_closest_title_ignoring_seniority_then_hints_then_default(self):
-        staff = companies.create_company(name="SentinelOne", position="Staff Data Scientist")
+        staff = companies.create_company(name="Orbitex", position="Staff Data Scientist")
         self.assertEqual(headlines.choose(staff)["headline"].title, "Data Scientist")
         self.assertEqual(headlines.choose(staff)["how"], "closest")
         research = companies.create_company(name="Lab", position="Senior Research Scientist")
@@ -39,7 +39,7 @@ class HeadlineTests(unittest.TestCase):
         self.assertEqual((pick["headline"].title, pick["how"]), ("AI Engineer", "default"))
 
     def test_pinning_and_overrides(self):
-        c = companies.create_company(name="SentinelOne", position="Staff Data Scientist")
+        c = companies.create_company(name="Orbitex", position="Staff Data Scientist")
         registry.run("company.set_cv_headline", {"company": c.id, "headline_id": self.sci["id"]})
         top = registry.run("cv.headline.for_application", {"company": c.id})
         self.assertEqual((top["title"], top["how"]), ("Research Scientist", "pinned"))
@@ -50,7 +50,7 @@ class HeadlineTests(unittest.TestCase):
         self.assertEqual(registry.run("cv.headline.for_application", {"company": c.id})["how"], "closest")
 
     def test_generated_cv_uses_the_variant_and_reports_it(self):
-        c = companies.create_company(name="SentinelOne", position="Staff Data Scientist")
+        c = companies.create_company(name="Orbitex", position="Staff Data Scientist")
         r = cv_builder.generate_cv(["SQL"], company_id=c.id, export_pdf=False)
         self.assertEqual((r["headline"]["title"], r["headline"]["how"]), ("Data Scientist", "closest"))
         self.assertIn("data scientist", texts(r))
