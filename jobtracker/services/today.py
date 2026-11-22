@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, timedelta
 
+from .. import maintenance
 from . import calendar, companies, practice, prep, recordings
 
 FOLLOW_UP_DAYS = 14
@@ -80,6 +81,7 @@ def summary(days_ahead: int = 14) -> dict:
                             if n.state == "done" and n.type() == "applied" and (n.date or "")[:10] >= week_start)
     return {
         "date": today.isoformat(),
+        "server": maintenance.warnings(),   # owner only: backup missing/failed/old, unreadable data
         "interviews": interviews,
         "follow_ups": follow_ups,
         "waiting": waiting,

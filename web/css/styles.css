@@ -515,3 +515,7 @@ body.is-offline main { padding-top: 8px; }
 .headline-row > .row { gap: 8px; }
 .headline-row > .row input { flex: 1; font-weight: 600; }
 .headline-row.is-default > .row input { border-color: var(--accent); }
+
+/* Today: server problems (owner only: backup, unreadable data) */
+.server-warning { border-color: var(--amber); background: var(--amber-soft); }
+.server-warning p { margin: 4px 0 0; overflow-wrap: anywhere; }

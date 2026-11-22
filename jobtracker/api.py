@@ -9,6 +9,7 @@ from fastapi.responses import FileResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from mcp.server.streamable_http_manager import StreamableHTTPASGIApp
 from pydantic import ValidationError
+from starlette.concurrency import run_in_threadpool  # keeps the request's user (context variables)
 from starlette.routing import Route
 
 from . import (
@@ -17,6 +18,7 @@ from . import (
     auth,
     config,
     logs,
+    maintenance,
     mcp_server,
     registry,
     users,
@@ -34,6 +36,7 @@ _mcp = {"app": None}  # the /mcp handler; a session manager runs only once, so e
 @asynccontextmanager
 async def lifespan(_app):
     manager = mcp_server.http_manager()
+    maintenance.check_data()  # a version that can't read the data says so on /health (the update script rolls back)
     reminders.start()  # interview / follow-up notifications (JOBTRACKER_REMINDERS=0 turns them off)
     async with manager.run():
         _mcp["app"] = StreamableHTTPASGIApp(manager)
@@ -66,9 +69,14 @@ async def no_stale_ui(request, call_next):
 
 @app.get("/health")
 def health():
-    """For container / cloud health checks. Public, reveals no data."""
-    return {"status": "ok", "version": __version__, "pdf_engine": pdf.available_engine(),
-            "ai": llm.available(), "login": auth.enabled()}
+    """For container / cloud health checks. Public, reveals no data (only how many files fail and the backup date).
+    "status" is "error" when this version can't read existing data: the home server's update script then goes
+    back to the previous version."""
+    problems = maintenance.data_problems() or []
+    backup = maintenance.backup_status()
+    return {"status": "error" if problems else "ok", "version": __version__, "pdf_engine": pdf.available_engine(),
+            "ai": llm.available(), "login": auth.enabled(), "data_problems": len(problems),
+            "backup": {k: backup[k] for k in ("at", "ok", "age_hours", "stale")} if backup else None}
 
 
 @app.get("/login")
@@ -168,9 +176,8 @@ async def upload_logo(company: str, file: UploadFile = File(...)):
 async def upload_recording(company: str, step: str = "", file: UploadFile = File(...)):
     """Upload an interview recording for an application: saved in its folder, measured, with cost estimates.
     Nothing is spent until recording.transcribe."""
-    content = await file.read()
-    try:
-        rec = recordings.upload(company, Path(file.filename or "recording").name, content, step)
+    try:  # the upload is already spooled to a temporary file: copied from there, never loaded whole
+        rec = await run_in_threadpool(recordings.upload, company, Path(file.filename or "recording").name, file.file, step)
     except NotFound as e:
         raise HTTPException(404, str(e)) from e
     except recordings.RecordingUnavailable as e:

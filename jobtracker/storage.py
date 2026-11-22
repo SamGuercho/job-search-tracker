@@ -53,9 +53,15 @@ class JsonDocument(Generic[M]):
         with self._lock:
             self.path.parent.mkdir(parents=True, exist_ok=True)
             fd, tmp = tempfile.mkstemp(dir=self.path.parent, suffix=".tmp")
-            with os.fdopen(fd, "w", encoding="utf-8") as f:
-                json.dump(doc.model_dump(mode="json"), f, indent=2, ensure_ascii=False)
-            os.replace(tmp, self.path)
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as f:
+                    json.dump(doc.model_dump(mode="json"), f, indent=2, ensure_ascii=False)
+                    f.flush()
+                    os.fsync(f.fileno())  # on disk before it replaces the old file: a power cut keeps one or the other
+                os.replace(tmp, self.path)
+            except BaseException:
+                Path(tmp).unlink(missing_ok=True)
+                raise
 
     def transaction(self):
         """`with store.transaction() as doc:` loads, yields, then saves."""
@@ -80,11 +86,16 @@ class _Transaction(Generic[M]):
         return False
 
 
+# Every per-user file and its model (filled by UserDocument), so the data can be checked at startup.
+REGISTERED: dict[str, type[BaseModel]] = {}
+
+
 class UserDocument(Generic[M]):
     """A JsonDocument per user: `filename` inside the current user's data folder."""
 
     def __init__(self, filename: str, model: type[M], seed_name: str | None = None):
         self.filename, self.model, self.seed_name = filename, model, seed_name
+        REGISTERED[filename] = model
         self._docs: dict[Path, JsonDocument[M]] = {}
         self._lock = threading.Lock()
 

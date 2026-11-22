@@ -131,20 +131,43 @@ def duration(path: Path) -> float:
     return int(times[-1]) / 1_000_000
 
 
-def upload(company: str, filename: str, content: bytes, step: str = "") -> Recording:
+def _write(target: Path, content) -> None:
+    """Save bytes or a file object (copied in chunks: a long recording never sits whole in memory)."""
+    limit = config.MAX_RECORDING_MB * 1024 * 1024
+    too_large = ValueError(f"File too large (max {config.MAX_RECORDING_MB} MB).")
+    if isinstance(content, (bytes, bytearray)):
+        if len(content) > limit:
+            raise too_large
+        target.write_bytes(content)
+        return
+    written = 0
+    try:
+        with target.open("wb") as out:
+            while chunk := content.read(1024 * 1024):
+                written += len(chunk)
+                if written > limit:
+                    raise too_large
+                out.write(chunk)
+    except BaseException:
+        target.unlink(missing_ok=True)
+        raise
+
+
+def upload(company: str, filename: str, content, step: str = "") -> Recording:
+    """content: the audio as bytes or a readable binary file object."""
     c = companies.resolve(company)
     suffix = Path(filename).suffix.lower()
     if suffix not in AUDIO_TYPES:
         allowed = ", ".join(sorted(AUDIO_TYPES))
         raise ValueError(f"Unsupported file type {suffix or '(none)'}: use an audio file ({allowed}).")
-    if len(content) > config.MAX_RECORDING_MB * 1024 * 1024:
+    if isinstance(content, (bytes, bytearray)) and len(content) > config.MAX_RECORDING_MB * 1024 * 1024:
         raise ValueError(f"File too large (max {config.MAX_RECORDING_MB} MB).")
     node = next((n for n in c.process.nodes if step and (n.id == step or n.name.lower() == step.lower())), None)
     folder = files.output_folder(c.name) / "recordings"
     folder.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now().strftime("%Y-%m-%d_%H%M")
     target = folder / f"{stamp}_{files.safe_name(Path(filename).stem)}{suffix}"
-    target.write_bytes(content)
+    _write(target, content)
     try:
         seconds = duration(target)
     except Exception:

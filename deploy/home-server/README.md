@@ -140,6 +140,9 @@ powershell -ExecutionPolicy Bypass -File .\install-update-task.ps1
 ```
 Every 15 minutes (and at sign-in), `update.ps1` pulls the newest image published by CI and restarts the app if it
 changed; if Docker Desktop isn't running, it starts it. Push to `main` → CI tests and publishes → the server updates itself. History: `update.log`.
+**Safety net:** after each update the app must answer its health check (which also checks it can read your data).
+If it doesn't, the previous version is put back within two minutes, the failed one is skipped until CI publishes a
+new one (`bad-image.txt`), and its logs are kept in `failed-update.log`.
 The task updates the app only (the image), not the files in this folder. To update **everything at once, right
 now** (the files with `git pull`, then the app once CI has published that exact version, a few minutes after a
 push): `powershell -ExecutionPolicy Bypass -File .\update-now.ps1`. To stay on a version, set `IMAGE_TAG` in `.env` to a commit tag
@@ -147,16 +150,19 @@ push): `powershell -ExecutionPolicy Bypass -File .\update-now.ps1`. To stay on a
 
 ## 10. Backups (recommended)
 
-Your data lives only on this PC. Copy it regularly to a synced folder:
+Your data lives only on this PC. Once, from this folder, set up a daily backup to a synced folder (3am, or at the
+next start if the PC was off), and run a first one now:
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\backup.ps1                                   # → OneDrive\JobSearch-backups (default)
-powershell -ExecutionPolicy Bypass -File .\backup.ps1 -Destination "D:\Backups\JobSearch"
+powershell -ExecutionPolicy Bypass -File .\backup.ps1 -Install                                     # → OneDrive\JobSearch-backups
+powershell -ExecutionPolicy Bypass -File .\backup.ps1 -Install -Destination "D:\Backups\JobSearch"  # or another folder
 ```
-Automate it like the update task, e.g. daily:
-```powershell
-$a = New-ScheduledTaskAction -Execute powershell.exe -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$PWD\backup.ps1`""
-Register-ScheduledTask -TaskName JobSearchTracker-Backup -Action $a -Trigger (New-ScheduledTaskTrigger -Daily -At 3am) -Force
-```
+What it keeps: your **data** (master CV, applications, chats, practice, friends' spaces) as a dated zip, the 30
+most recent; and the **companies** folder (generated CVs, job descriptions, logos, **interview recordings**),
+copied file by file: only what changed is copied, and nothing is ever deleted from the backup. History: `backup.log`.
+The Today page tells you when the last backup failed or is more than 3 days old. The Codex sign-in is never backed up.
+
+To restore: stop the app (`docker compose down`), unzip the newest `jobsearch-data-*.zip` into `C:\JobSearch\data`,
+copy `companies` back to `C:\JobSearch\companies`, then `docker compose up -d`.
 
 ## 11. Share with friends
 
@@ -270,4 +276,7 @@ run `./run.sh` on a laptop against a copy of the same data, or the two copies wi
   `JOBTRACKER_OWNER=<your Tailscale login>` in `.env`, then `docker compose up -d` (step 11).
 - **CVs have no PDF** → `curl.exe http://127.0.0.1:8000/health` must show `"pdf_engine":"libreoffice"`
   (it does with the published image).
+- **`/health` says `"status":"error"`** (or the Today page says data files can't be read) → this version can't
+  read some of your data files: `docker compose logs app | Select-String "Data check failed"` names them. After an
+  update, the previous version is normally put back by itself (`update.log`, `failed-update.log`).
 - **Something else** → `docker compose logs --tail 100 app`.

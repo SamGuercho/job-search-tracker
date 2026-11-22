@@ -19,6 +19,9 @@ __pycache__/
 deploy/home-server/data/
 deploy/home-server/companies/
 deploy/home-server/update.log
+deploy/home-server/backup.log
+deploy/home-server/failed-update.log
+deploy/home-server/bad-image.txt
 
 # Codex sign-in on the home server (a ChatGPT login token: never commit it)
 deploy/home-server/codex/

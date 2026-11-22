@@ -74,6 +74,8 @@ export async function renderToday(root) {
   mount(root,
     h("div", { class: "page-head" },
       h("div", {}, h("h1", {}, greeting()), h("div", { class: "sub muted" }, date))),
+    (t.server || []).length > 0 && h("div", { class: "card server-warning", role: "status" },
+      h("b", {}, "Server"), (t.server || []).map((w) => h("p", { class: "small" }, w))),
     h("div", { class: "today-stats" },
       h("a", { href: "#/" }, h("b", {}, t.week.interviews_next_7_days), "interviews this week"),
       h("a", { href: "#/" }, h("b", { class: t.follow_ups.length ? "due" : "" }, t.follow_ups.length), "to follow up"),

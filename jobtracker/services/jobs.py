@@ -37,8 +37,15 @@ class BoardBook(BaseModel):
     sites: dict[str, Board] = {}   # company site (host) -> its job board account (not personal: shared by everyone)
 
 
+_board_store: dict = {}
+
+
 def _boards() -> JsonDocument:
-    return JsonDocument(config.DATA_DIR / "job_boards.json", BoardBook)
+    """One document per path (not one per call), so its lock really serialises concurrent saves."""
+    path = config.DATA_DIR / "job_boards.json"
+    if path not in _board_store:
+        _board_store[path] = JsonDocument(path, BoardBook)
+    return _board_store[path]
 
 
 def site_of(url: str) -> str:

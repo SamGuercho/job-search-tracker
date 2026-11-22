@@ -62,5 +62,8 @@ foreach ($i in 1..20) {
     try { $health = Invoke-RestMethod -Uri "http://127.0.0.1:$port/health" -TimeoutSec 5; break }
     catch { Start-Sleep -Seconds 3 }
 }
-if ($health.status -eq "ok") { Write-Host "Done: the app is up to date and running." -ForegroundColor Green }
+if ((Test-Path (Join-Path $PSScriptRoot "bad-image.txt")) -and $health.status -eq "ok") {
+    Write-Host "The newest version failed its health check, so the app runs the previous one. See update.log and failed-update.log." -ForegroundColor Yellow
+} elseif ($health.status -eq "ok") { Write-Host "Done: the app is up to date and running." -ForegroundColor Green }
+elseif ($health.status -eq "error") { Fail "The app runs but can't read some data files: docker compose logs --tail 50" }
 else { Fail "The app does not answer yet: docker compose logs --tail 50" }

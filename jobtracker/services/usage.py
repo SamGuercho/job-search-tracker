@@ -51,6 +51,17 @@ def feature(name: str):
             _feature.reset(token)
 
 
+ARCHIVE = "usage-archive.jsonl"
+
+
+def _archive(old: list[UsageEntry]) -> None:
+    """The oldest entries leave usage.json (it is rewritten on every AI call, so it stays small) but are kept,
+    one JSON line each, in usage-archive.jsonl next to it: appended, never rewritten."""
+    with (store.path.parent / ARCHIVE).open("a", encoding="utf-8") as f:
+        for e in old:
+            f.write(e.model_dump_json() + "\n")
+
+
 def _add(entry: UsageEntry) -> UsageEntry:
     for collected in _tallies.get():
         collected.append(entry)
@@ -58,6 +69,7 @@ def _add(entry: UsageEntry) -> UsageEntry:
         with store.transaction() as book:
             book.entries.append(entry)
             if len(book.entries) > MAX_ENTRIES:
+                _archive(book.entries[:-MAX_ENTRIES])
                 book.entries = book.entries[-MAX_ENTRIES:]
     except Exception as e:  # never let bookkeeping break the feature itself
         log.warning("Could not record usage: %s", e)
