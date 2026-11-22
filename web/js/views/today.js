@@ -2,7 +2,7 @@
 // interviews (with readiness), interviews to debrief, applications to send (positions fill fast), follow-ups and
 // "probably no answer", then what's waiting, what came back and what to review. The rules are in services/rules.py.
 import { call } from "../api.js";
-import { addToCalendar, attempt, chatHref, companyLogo, h, mount, promptSheet } from "../ui.js";
+import { addToCalendar, attempt, chatHref, companyLogo, formatSlot, h, mount, promptSheet, studyRow } from "../ui.js";
 
 const chat = (q) => chatHref(q);
 const DISMISSED_KEY = "today-dismissed";  // debrief prompts closed on this device (they expire after 3 days anyway)
@@ -32,7 +32,8 @@ function dismiss(key) {
 export async function renderToday(root) {
   const [raw, info] = await Promise.all([call("today.get"), call("app.info")]);
   // defaults: an offline copy saved by an older version may lack the newer lists
-  const t = { to_apply: [], no_answer: [], debriefs: [], train_first: null, goals: null, ...raw };
+  const t = { to_apply: [], no_answer: [], debriefs: [], train_first: null, goals: null, study: null, ...raw };
+  const study = { today: [], upcoming: [], suggested: [], moved: [], hours_set: true, ...(t.study || {}) };
   const isLink = (s) => /^https?:\/\//.test(s || "");
   const reload = () => renderToday(root);
   const logo = (x, size = 32) => companyLogo({ name: x.company, logo_file: x.logo_file, logo_checked_at: x.logo_checked_at }, size);
@@ -73,6 +74,40 @@ export async function renderToday(root) {
         ? `${f.readiness.practised} of ${f.readiness.total} exercises done · ready ${f.readiness.score}%`
         : f.prep.ready ? `Ready ${f.readiness.score}%` : "No prep yet: prepare, then practise")),
     h("span", { class: "btn small primary" }, f.prep.ready ? "Practise" : "Prepare"));
+
+  // ------------------------------------------------------------ study
+  // Today's sessions of the teach/check cycle, the next one, sessions moved because they were missed, and checks
+  // suggested for notions that are new to you.
+  const moveSession = async (s) => { if (await attempt(() => call("learning.move", { session: s.id }), "Moved to the next free slot")) reload(); };
+  const suggestion = (c) => {
+    const teach = c.sessions[0];
+    return h("div", { class: "today-row" },
+      h("span", { class: `score ${teach.score >= 7 ? "good" : "low"}` }, `${teach.score}/10`),
+      h("div", { class: "today-main" },
+        h("b", { dir: "auto" }, c.topic),
+        h("div", { class: "small muted", dir: "auto" }, c.reason === "new notion"
+          ? "New for you: two short checks in the coming days fix it in memory." : "Your first good score on it: two checks will show it's not luck."),
+        h("div", { class: "row today-actions" },
+          study.hours_set
+            ? h("button", { class: "small primary", onclick: async () => {
+              if (await attempt(() => call("learning.accept", { courses: [c.id] }), "Checks scheduled")) reload();
+            } }, "Schedule 2 checks")
+            : h("a", { class: "btn small primary", href: "#/profile" }, "Set your study hours first"),
+          h("button", { class: "small", onclick: async () => {
+            if (await attempt(() => call("learning.decline", { courses: [c.id] }))) reload();
+          } }, "No thanks"))));
+  };
+  const studyCard = () => {
+    const next = study.upcoming[0];
+    const rows = [
+      ...study.today.map((s) => studyRow(s, { onMove: moveSession })),
+      !study.today.length && next && h("div", { class: "small muted" }, "Nothing today. Next: ", h("b", {}, `${next.label} · ${next.topic}`), `, ${formatSlot(next.start)}`),
+      ...study.moved.map((s) => h("div", { class: "small muted" }, `Missed, moved: ${s.label} · ${s.topic} → ${s.start ? formatSlot(s.start) : "no free slot"}`)),
+      study.suggested.length > 0 && h("div", { class: "group-label small muted" }, "Checks to schedule"),
+      ...study.suggested.map(suggestion),
+    ].filter(Boolean);
+    return rows.length > 0 && h("section", { class: "card today-card" }, h("h2", {}, "Study", h("span", { class: "small muted" }, " learn, then check")), rows);
+  };
 
   // ------------------------------------------------------------ weekly goals
   const goals = (g) => {
@@ -217,7 +252,7 @@ export async function renderToday(root) {
   };
   const debriefs = t.debriefs.map(debrief).filter(Boolean);
   const nothing = !t.interviews.length && !t.follow_ups.length && !t.no_answer.length && !t.to_apply.length && !debriefs.length
-    && !t.waiting.length && !t.recent.length && !t.practice.to_review.length;
+    && !t.waiting.length && !t.recent.length && !t.practice.to_review.length && !study.today.length && !study.upcoming.length && !study.suggested.length;
   const date = new Date(`${t.date}T00:00:00`).toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" });
   const urgentApply = t.to_apply.filter((a) => a.level !== "new").length;
   const withReferee = t.to_apply.filter((a) => a.referee);
@@ -243,6 +278,7 @@ export async function renderToday(root) {
     h("div", { class: "today-grid" },
       h("div", { class: "stack" },
         card("Next interviews", t.interviews.map(interview)),
+        studyCard(),
         card("How did it go?", debriefs),
         card("To apply", [
           withReferee.length > 0 && noReferee.length > 0 && h("div", { class: "group-label small muted" }, "With a referee"),

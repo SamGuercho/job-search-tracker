@@ -103,7 +103,7 @@ def _vevent(e: dict) -> list[str]:
     if e["location"]:
         lines.append(f"LOCATION:{_escape(e['location'])}")
     # reminders: the day before, and 1 hour before (all-day events: 9:00 the day before)
-    for trigger in (["-P1D", "-PT1H"] if not e["all_day"] else ["-PT15H"]):
+    for trigger in e.get("alarms") or (["-P1D", "-PT1H"] if not e["all_day"] else ["-PT15H"]):
         lines += ["BEGIN:VALARM", "ACTION:DISPLAY", f"DESCRIPTION:{_escape(e['title'])}", f"TRIGGER:{trigger}", "END:VALARM"]
     return lines + ["END:VEVENT"]
 
@@ -126,4 +126,6 @@ def step_ics(company_ref: str, step: str, app_url: str = "") -> tuple[str, str]:
 
 
 def feed_ics(app_url: str = "") -> str:
-    return ics([event(c, n, app_url) for c, n in upcoming()], name="Job interviews")
+    """Upcoming interviews and the study sessions you accepted (services/learning.py)."""
+    from . import learning  # (imports calendar)
+    return ics([event(c, n, app_url) for c, n in upcoming()] + learning.events(app_url), name="Job interviews")

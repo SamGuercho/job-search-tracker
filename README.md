@@ -153,6 +153,20 @@ prep pack: likely interview process, topics, your angle, exercises with solution
 to ask (also saved as `Interview_Prep.md`). **Practice with the assistant** then quizzes you and grades your
 answers with the rubrics. Codex runs with your ChatGPT plan, not API billing: setup in the home-server guide.
 
+### Study plan: learn, then check
+Under the prep, **📅 Schedule my prep** turns each exercise into a topic to learn, with an estimated time: a
+**learn** session (the assistant teaches the notion, then gives the exercise and grades it), **check 1** one or two
+days later, and **check 2** three or four days after check 1. A 3rd check is added only when check 2 scores below
+7/10 or drops 2 points below check 1. Checks ask new questions, never the exercise again, and must cover the
+rubric points you missed last time.
+
+Slots are proposed between now and the interview, only in your study hours (**Profile → Working and study
+hours**: working hours, weekend days, Friday and Saturday by default, whether you study on weekends, and the most
+per day), never in working hours or around interviews. You accept them (untick what you don't want); they then
+show on Today with **Start** (opens the session with the assistant) and **Move**, and in the calendar feed. A
+missed session moves to the next free slot by itself. Practice answers that show a notion new to you (a first
+score below 7, or a first 7+ after low scores) suggest two checks on Today.
+
 ### Interview recordings
 On an application's page, upload the audio of an interview (from your phone's recorder, Zoom/Meet…). You see the
 estimated cost first (≈ $0.006 per minute to transcribe, a few cents for the debrief), then: transcription with

@@ -1,10 +1,12 @@
 // Profile: who you are for the app and what you're looking for. Name and LinkedIn are your master CV's (one place,
 // also on your CV header). The rest is used: greetings, referral messages, warnings on jobs that don't fit,
-// the default salary of new applications, the default language of preps, and weekly goals on Today.
+// the default salary of new applications, the default language of preps, weekly goals on Today, and the working and
+// study hours study sessions are planned in.
 import { call, upload } from "../api.js";
 import { attempt, chatHref, field, formatDate, h, joinList, mount, splitList, toast } from "../ui.js";
 
 const WORK_MODELS = ["On-site", "Hybrid", "Remote"];
+const DAYS = [[6, "Sun"], [0, "Mon"], [1, "Tue"], [2, "Wed"], [3, "Thu"], [4, "Fri"], [5, "Sat"]];  // Python weekdays
 const LANGUAGES = [["English", "English"], ["Hebrew", "Hebrew · עברית"], ["French", "French"]];
 
 export async function renderProfile(root) {
@@ -27,6 +29,16 @@ export async function renderProfile(root) {
   const goalApps = input(p.goals.applications || "", { type: "number", min: 0, max: 100, placeholder: "0 = no goal" });
   const goalPractice = input(p.goals.practice_answers || "", { type: "number", min: 0, max: 100, placeholder: "0 = no goal" });
 
+  const st = p.study;
+  const time = (value) => input(value, { type: "time", step: 900 });
+  const workStart = time(st.work_start), workEnd = time(st.work_end);
+  const studyStart = time(st.study_start), studyEnd = time(st.study_end);
+  const weekendStart = time(st.weekend_start), weekendEnd = time(st.weekend_end);
+  const weekendFree = h("input", { type: "checkbox", checked: st.weekend_free });
+  const weekendDays = DAYS.map(([n, label]) => h("label", { class: "check" },
+    h("input", { type: "checkbox", value: n, checked: st.weekend_days.includes(n) }), ` ${label}`));
+  const maxPerDay = input(st.max_per_day_min, { type: "number", min: 15, max: 600, step: 15 });
+
   const save = async () => {
     const changes = {
       name: name.value, preferred_name: first.value, linkedin: linkedin.value,
@@ -35,6 +47,12 @@ export async function renderProfile(root) {
       max_commute_min: Number(commute.value) || 0, salary_expectation: salary.value, notice_period: notice.value,
       available_from: from.value, interview_language: language.value,
       goals: { applications: Number(goalApps.value) || 0, practice_answers: Number(goalPractice.value) || 0 },
+      study: {
+        work_start: workStart.value, work_end: workEnd.value, study_start: studyStart.value, study_end: studyEnd.value,
+        weekend_days: weekendDays.map((l) => l.querySelector("input")).filter((c) => c.checked).map((c) => Number(c.value)),
+        weekend_free: weekendFree.checked, weekend_start: weekendStart.value, weekend_end: weekendEnd.value,
+        max_per_day_min: Number(maxPerDay.value) || 90,
+      },
     };
     if (await attempt(() => call("profile.update", changes), "Profile saved")) renderProfile(root);
   };
@@ -61,6 +79,15 @@ export async function renderProfile(root) {
         h("div", { class: "form-grid" },
           field("Salary expectation", salary), field("Notice period", notice), field("Available from", from),
           field("Interview prep language", language))),
+      section("Working and study hours", "Study sessions are planned only in your study time, never in working hours or around interviews. Leave working hours empty if you're not working.",
+        h("div", { class: "form-grid" },
+          field("Work starts", workStart), field("Work ends", workEnd),
+          h("div", { class: "field wide" }, "Weekend days", h("div", { class: "day-picks" }, weekendDays)),
+          field("On work days, I can study from", studyStart), field("until", studyEnd),
+          h("div", { class: "field wide" }, h("label", { class: "check" }, weekendFree, " I can also study on weekends")),
+          field("On weekends, from", weekendStart), field("until", weekendEnd),
+          field("At most per day (minutes)", maxPerDay)),
+        !(st.study_start && st.study_end) && !st.weekend_free && h("p", { class: "small", style: "color:var(--amber)" }, "Set your study hours to schedule interview preps.")),
       section("Weekly goals", "Shown on Today as this week's progress (weeks start on Monday).",
         h("div", { class: "form-grid" }, field("Applications per week", goalApps), field("Practice answers per week", goalPractice))),
       h("div", { class: "row" }, h("span", { class: "spacer" }), h("button", { class: "primary", onclick: save }, "Save"))));

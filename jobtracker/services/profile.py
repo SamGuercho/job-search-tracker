@@ -3,11 +3,12 @@
 Name and LinkedIn are the master CV's (one place to edit them, on the CV header too); everything else lives in
 profile.json: the greeting name, target roles, places and work models (jobs outside them get a warning, see
 fit()), salary expectation (the default for new applications), notice period and start date, the default
-language of interview preps, and weekly goals (shown on Today). The assistant gets a short summary (context()).
+language of interview preps, weekly goals (shown on Today), and working and study hours (study sessions are
+planned in them, services/learning.py). The assistant gets a short summary (context()).
 """
 from __future__ import annotations
 
-from ..models import UserProfile, WeeklyGoals
+from ..models import StudyHours, UserProfile, WeeklyGoals
 from ..storage import UserDocument
 from . import master_cv
 
@@ -55,9 +56,14 @@ def update(name: str | None = None, linkedin: str | None = None, **fields) -> di
                     v = WeeklyGoals.model_validate({**data["goals"], **given})
                     v = v.model_copy(update={g: max(0, min(getattr(v, g), 100))
                                              for g in ("applications", "practice_answers")})
+                elif k == "study":
+                    given = v.model_dump(exclude_unset=True) if hasattr(v, "model_dump") else v
+                    v = StudyHours.model_validate({**data["study"], **given})
+                    v = v.model_copy(update={"max_per_day_min": max(15, min(v.max_per_day_min, 600)),
+                                             "weekend_days": sorted({d for d in v.weekend_days if 0 <= d <= 6})})
                 elif k == "max_commute_min":
                     v = max(0, int(v)) or None
-                data[k] = v if k == "goals" else _clean(v)
+                data[k] = v if k in ("goals", "study") else _clean(v)
             updated = UserProfile.model_validate(data)
             for k in UserProfile.model_fields:
                 setattr(p, k, getattr(updated, k))

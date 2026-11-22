@@ -26,6 +26,7 @@ from .models import (
     Profile,
     SkillGroup,
     SourceType,
+    StudyHours,
     UpdateSide,
     Variant,
     WeeklyGoals,
@@ -44,6 +45,7 @@ from .services import (
     headlines,
     jd_match,
     jobs,
+    learning,
     linkedin,
     llm,
     logos,
@@ -191,12 +193,73 @@ def prep_get(company: str, version: Optional[str] = None):
 
 @action("practice.record")
 def practice_record(company: str, exercise: str, score: int, missed: list[str] = [], feedback: str = "",
-                    topic: str = "", kind: str = "", capability: str = ""):
+                    topic: str = "", kind: str = "", capability: str = "", session: str = ""):
     """Log a graded practice answer: `exercise` is the prep exercise's number or title, `score` out of 10
     (from the rubric), `missed` the rubric points the answer missed, `feedback` one or two lines. For an
     exercise that isn't in the prep, also give its topic, kind and capability (the broad skill: SQL, Statistics,
-    System design…). Call it after every graded answer."""
-    return practice.record(company, exercise, score, missed, feedback, topic, kind, capability).model_dump(mode="json")
+    System design…). In a study session, give its id as `session`. Call it after every graded answer.
+    `learning` in the result says what it changed: the session completed and what comes next (a check, a 3rd
+    check, or learned), or checks suggested for a new notion: tell the user."""
+    attempt = practice.record(company, exercise, score, missed, feedback, topic, kind, capability)
+    return {**attempt.model_dump(mode="json"), "learning": learning.on_attempt(attempt, session)}
+
+
+@action("learning.agenda")
+def learning_agenda(days: int = 7):
+    """Study sessions planned from now to `days` ahead (today's, then upcoming), checks suggested for new
+    notions, and sessions just moved because they were missed (they move to the next free slot by themselves)."""
+    return learning.agenda(days)
+
+
+@action("learning.courses")
+def learning_courses(company: Optional[str] = None):
+    """Courses (topics to learn, each a teach session then spaced checks), all or one application's: state
+    (proposed, suggested, scheduled, done), outcome (learned, needs_work), sessions with times and scores."""
+    return learning.courses(company)
+
+
+@action("learning.session")
+def learning_session(session: str):
+    """How to run a study session: the topic, the exercise (teach) or the points the user missed last time
+    (check: ask NEW questions that cover them), and step-by-step `instructions` to follow."""
+    return learning.session_brief(session)
+
+
+@action("learning.propose")
+def learning_propose(company: str, exercises: Optional[list[str]] = None):
+    """Propose study slots for an application's interview prep: one course per exercise (or the given exercise
+    titles), each a teach session (estimated time) then check 1 (1-2 days later) and check 2 (3-4 days after
+    check 1), in the user's free study time between now and the interview. Nothing is booked until
+    learning.accept: show the proposal and ask first."""
+    return learning.propose(company, exercises)
+
+
+@action("learning.accept")
+def learning_accept(company: Optional[str] = None, courses: Optional[list[str]] = None):
+    """Book proposed courses (all of an application's, or the given course ids) or suggested checks (by course
+    id): their sessions go on Today and in the calendar feed."""
+    return learning.accept(company, courses)
+
+
+@action("learning.decline")
+def learning_decline(company: Optional[str] = None, courses: Optional[list[str]] = None):
+    """Drop an application's proposed courses, or the given courses (proposed, suggested or scheduled): their
+    planned sessions are freed."""
+    return learning.decline(company, courses)
+
+
+@action("learning.move")
+def learning_move(session: str, start: Optional[str] = None):
+    """Move a planned study session to `start` (YYYY-MM-DDTHH:MM, local time) or, without it, to the next free
+    slot. Later checks of the course move too if they'd come too soon."""
+    return learning.move(session, start)
+
+
+@action("learning.complete")
+def learning_complete(session: str, score: int, missed: list[str] = []):
+    """Mark a study session done without a practice answer (practice.record with `session` does it by itself):
+    score /10 and the rubric points missed."""
+    return learning.complete(session, score, missed)
 
 
 @action("practice.capabilities")
@@ -622,16 +685,19 @@ def profile_update(name: Optional[str] = None, preferred_name: Optional[str] = N
                    locations: Optional[list[str]] = None, work_models: Optional[list[WorkModel]] = None,
                    max_commute_min: Optional[int] = None, salary_expectation: Optional[str] = None,
                    notice_period: Optional[str] = None, available_from: Optional[str] = None,
-                   interview_language: Optional[str] = None, goals: Optional[WeeklyGoals] = None):
+                   interview_language: Optional[str] = None, goals: Optional[WeeklyGoals] = None,
+                   study: Optional[StudyHours] = None):
     """Change the user's profile (only the fields given): name and LinkedIn (the master CV header's), greeting
     name, what they look for (target roles, seniority, locations, work models, max commute: jobs outside get a
     warning), salary expectation (default for new applications), notice period, available from (YYYY-MM-DD),
-    interview prep language, weekly goals (applications, practice answers)."""
+    interview prep language, weekly goals (applications, practice answers), and `study`: working hours (never
+    used for study), study hours on work days, weekend days (Python weekdays, Monday = 0; default Friday and
+    Saturday), whether they're free to study on weekends and when, and the most study per day (minutes)."""
     return profile.update(name=name, linkedin=linkedin, preferred_name=preferred_name, target_roles=target_roles,
                           seniority=seniority, locations=locations, work_models=work_models,
                           max_commute_min=max_commute_min, salary_expectation=salary_expectation,
                           notice_period=notice_period, available_from=available_from,
-                          interview_language=interview_language, goals=goals)
+                          interview_language=interview_language, goals=goals, study=study)
 
 
 @action("company.referral")

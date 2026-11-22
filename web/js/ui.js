@@ -173,6 +173,31 @@ export function formatDate(iso) {
   return d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
 }
 
+// A study session's slot: "Sun 22 Nov · 19:00"
+export function formatSlot(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return `${d.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" })} · ${iso.slice(11, 16)}`;
+}
+
+// A study session as a row: when, what, and Start (in the chat) / Move (to the next free slot)
+export function studyRow(s, { onMove, showCompany = true, showTopic = true } = {}) {
+  const done = s.state === "done";
+  return h("div", { class: `study-row ${s.state}` },
+    h("span", { class: `chip ${s.kind === "teach" ? "on" : ""}` }, s.label),
+    h("div", { class: "today-main" },
+      showTopic && h("b", { dir: "auto" }, s.topic),
+      h("div", { class: `small ${showTopic ? "muted" : ""}`, dir: "auto" }, [
+        done ? `done${s.score !== null ? ` · ${s.score}/10` : ""}` : s.start ? formatSlot(s.start) : "no free slot",
+        !done && `${s.duration_min} min`, showCompany && s.company,
+        s.state === "skipped" && "not needed"].filter(Boolean).join(" · "),
+      s.after_interview && !done && h("span", { class: "chip warn", style: "margin-left:6px" }, "after the interview"),
+      s.moved > 0 && !done && h("span", { class: "small muted" }, " · moved"))),
+    s.state === "planned" && s.course_state === "scheduled" && h("div", { class: "row today-actions" },
+      s.is_next && h("a", { class: "btn small primary", href: chatHref(`Start my study session ${s.id}: ${s.label} on ${s.topic}${s.company ? ` (${s.company})` : ""}.`) }, "Start"),
+      onMove && h("button", { class: "small", title: "Move it to the next free slot", onclick: () => onMove(s) }, "Move")));
+}
+
 export function debounce(fn, ms = 300) {
   let t;
   return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };

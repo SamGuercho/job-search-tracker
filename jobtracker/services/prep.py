@@ -45,7 +45,9 @@ Prepare the candidate below for their next interviews at {company}, as the best 
 4. Write {count} exercises the candidate is likely to face in the technical interviews, from easy to hard,
    matching the job's actual requirements (e.g. coding, SQL, system design, case study, depending on the role).
    For each: why this company would ask it, the prompt as an interviewer would say it, a complete reference
-   solution, a grading rubric whose points add up to 10, what a strong answer looks like, and common mistakes.
+   solution, a grading rubric whose points add up to 10, what a strong answer looks like, common mistakes, and
+   `estimated_min`: the minutes a focused study session needs to learn the notion from this candidate's level
+   and do the exercise (15 to 90; the app schedules the session in their free time).
    The rubric must let another, simpler model grade the candidate's answer fairly and consistently.
    If a practice history is given below: never repeat an exercise already practised; put more weight on the
    weak topics and the points the candidate missed (with new exercises, not the same ones); match the

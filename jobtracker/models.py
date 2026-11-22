@@ -187,6 +187,22 @@ class WeeklyGoals(BaseModel):
     practice_answers: int = 0    # practice answers per week
 
 
+HHMM = r"^(([01]\d|2[0-3]):[0-5]\d)?$"  # "19:30", or "" for not set
+
+
+class StudyHours(BaseModel):
+    """When study sessions can be planned (services/learning.py). Times are local, "HH:MM"."""
+    work_start: str = Field("", pattern=HHMM)   # working hours on work days ("" = not working): never used for study
+    work_end: str = Field("", pattern=HHMM)
+    weekend_days: list[int] = [4, 5]            # Python weekdays (Monday = 0): Friday and Saturday
+    study_start: str = Field("", pattern=HHMM)  # when you can study on work days ("" = not set)
+    study_end: str = Field("", pattern=HHMM)
+    weekend_free: bool = False                  # you can also study on weekend days
+    weekend_start: str = Field("10:00", pattern=HHMM)
+    weekend_end: str = Field("14:00", pattern=HHMM)
+    max_per_day_min: int = 90                   # at most this much study a day
+
+
 class UserProfile(BaseModel):
     """Settings about the person (services/profile.py); name and LinkedIn stay on the master CV profile."""
     preferred_name: str = ""     # how Today greets you ("" = the first word of your name)
@@ -202,6 +218,7 @@ class UserProfile(BaseModel):
     available_from: str = ""         # earliest start date (YYYY-MM-DD)
     interview_language: str = "English"  # default language of interview preps
     goals: WeeklyGoals = Field(default_factory=WeeklyGoals)
+    study: StudyHours = Field(default_factory=StudyHours)
 
 
 # ----------------------------------------------------------------- LinkedIn
@@ -392,6 +409,7 @@ class Exercise(BaseModel):
     rubric: list[RubricPoint]
     strong_answer: str   # what a strong answer looks like, in a few lines
     common_mistakes: list[str]
+    estimated_min: int = 0  # minutes a focused session needs to learn the notion and do the exercise (0 = older preps)
 
 
 class PrepResult(BaseModel):
@@ -444,6 +462,49 @@ class PracticeAttempt(BaseModel):
 class PracticeBook(BaseModel):
     attempts: list[PracticeAttempt] = []
     targets: dict[str, int] = {}   # capability -> target score /10 the user aims for
+
+
+# ------------------------------------------------------------------ learning
+# Courses: a topic to learn for an application, as a teach session then spaced checks (services/learning.py).
+
+class StudySession(BaseModel):
+    id: str = Field(default_factory=new_id)
+    kind: Literal["teach", "check"]
+    number: int = 0              # check 1, 2 or 3 (0 for the teach)
+    start: str | None = None     # "YYYY-MM-DDTHH:MM" local time (None = not placed: no free slot)
+    duration_min: int = 15
+    state: Literal["planned", "done", "skipped"] = "planned"
+    score: int | None = None     # /10, from the graded answer
+    missed: list[str] = []       # rubric points that got nothing: the next check must cover them
+    done_at: str | None = None
+    attempt_id: str = ""         # the practice attempt that completed it
+    moved: int = 0               # times it was moved (missed, or by the user)
+
+
+CourseState = Literal["proposed", "suggested", "scheduled", "done", "dropped"]
+
+
+class Course(BaseModel):
+    id: str = Field(default_factory=new_id)
+    company_id: str = ""
+    company: str = ""
+    topic: str
+    capability: str = ""
+    exercise: str = ""           # prep exercise title the teach session uses ("" = none)
+    estimated_min: int = 45      # the teach session
+    due: str | None = None       # the interview it prepares for, "YYYY-MM-DDTHH:MM" (or a date)
+    due_step: str = ""
+    # proposed: slots offered, not accepted yet · suggested: a new notion seen in practice, checks offered ·
+    # scheduled: accepted · done: cycle finished · dropped
+    state: CourseState = "proposed"
+    reason: str = ""             # "prep", "new notion", "first high score"
+    outcome: Literal["", "learned", "needs_work"] = ""
+    created_at: str = Field(default_factory=lambda: datetime.now().isoformat(timespec="seconds"))
+    sessions: list[StudySession] = []
+
+
+class LearningBook(BaseModel):
+    courses: list[Course] = []
 
 
 # ------------------------------------------------------------------- usage

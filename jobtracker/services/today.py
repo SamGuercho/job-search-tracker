@@ -5,6 +5,7 @@
 - interviews of the last days to debrief;
 - recordings waiting for you (pick your voice) and what came back recently (preps, debriefs);
 - practice: what to review first and the capability furthest from its target;
+- study sessions planned today and next, and checks suggested for new notions (services/learning.py);
 - the week in numbers.
 """
 from __future__ import annotations
@@ -12,7 +13,7 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta
 
 from .. import maintenance
-from . import calendar, companies, practice, prep, profile, recordings, rules
+from . import calendar, companies, learning, practice, prep, profile, recordings, rules
 
 RECENT_DAYS = 3
 
@@ -104,6 +105,7 @@ def summary(days_ahead: int = 14) -> dict:
             "needs_work": training["needs_work"],
             "answers_this_week": sum(1 for a in attempts if a.at[:10] >= week_start),
         },
+        "study": learning.agenda(days=7),
         "goals": _goals(applied_this_week, sum(1 for a in attempts if a.at[:10] >= week_start)),
         "week": {"applied": applied_this_week, "interviews_next_7_days": sum(1 for i in interviews if i["days"] <= 7),
                  "active": sum(1 for c in apps if c.status in ("Applied", "In process", "Offer"))},

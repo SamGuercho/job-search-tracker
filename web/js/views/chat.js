@@ -14,6 +14,9 @@ const LABELS = {
   "workflow.new_application": "Created the application", "cv.bullet.add": "Add an achievement", "cv.bullet.update": "Update an achievement",
   "cv.variant.add": "Add a wording", "cv.variant.update": "Update a wording", "cv.variant.delete": "Delete a wording",
   "cv.variant.draft": "Drafted wordings", "cv.keywords.missing": "Checked keywords", "chat.set_title": "Renamed the conversation",
+  "learning.agenda": "Read your study plan", "learning.courses": "Read your courses", "learning.session": "Opened the study session",
+  "learning.propose": "Proposed study slots", "learning.accept": "Booked study sessions", "learning.decline": "Dropped courses",
+  "learning.move": "Moved a study session", "learning.complete": "Completed a study session", "practice.record": "Logged your answer",
 };
 const label = (a) => LABELS[a] || a;
 

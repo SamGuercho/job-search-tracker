@@ -574,3 +574,14 @@ body.is-offline main { padding-top: 8px; }
 .contact-row:first-child { border-top: 0; }
 .issue { padding: 8px 0; border-top: 1px solid var(--border); }
 .issue .vs { display: grid; grid-template-columns: auto 1fr; gap: 2px 8px; margin-top: 4px; }
+
+/* Study sessions (teach/check cycle) */
+.study-row { display: flex; align-items: flex-start; gap: 10px; padding: 8px 0; border-top: 1px solid var(--border); }
+.study-row:first-child { border-top: 0; }
+.study-row .chip { flex: none; margin-top: 2px; }
+.study-row.done, .study-row.skipped { opacity: .65; }
+.course { border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px; }
+.course-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.course-head input[type="checkbox"] { width: auto; margin: 0; flex: none; }
+.course .study-row { align-items: center; padding: 6px 0; }
+.day-picks { display: flex; flex-wrap: wrap; gap: 6px; }

@@ -1,6 +1,6 @@
 // Company page: details, follow-up counter, process graph, generated CVs.
 import { call, fileUrl, upload } from "../api.js";
-import { attempt, chatHref, chips, companyLogo, confirmSheet, daysBadge, field, formatDate, h, joinList, mapsUrl, markdown, matchPanel, modal, mount, readForm, toast } from "../ui.js";
+import { attempt, chatHref, chips, companyLogo, confirmSheet, daysBadge, field, formatDate, h, joinList, mapsUrl, markdown, matchPanel, modal, mount, readForm, studyRow, toast } from "../ui.js";
 import { processCard } from "./process-graph.js";
 import { recordingsCard } from "./recordings.js";
 
@@ -13,6 +13,8 @@ export async function renderCompany(root, id) {
   const recordings = recordingsCard(company, info);
   let review = null;   // last AI review of the summary, kept across re-renders
   let network = await call("linkedin.contacts", { company: id }).catch(() => null);  // LinkedIn contacts there
+  let courses = await call("learning.courses", { company: id }).catch(() => []);   // study sessions for this prep
+  let proposal = null;  // slots proposed, not accepted yet
 
   const save = async (fields, msg = "Saved") => {
     const updated = await attempt(() => call("company.update", { id, fields }), msg);
@@ -349,6 +351,61 @@ export async function renderCompany(root, id) {
       p?.status === "done" && prepBody(p));
   };
 
+  // --------------------------------------------------------- study plan
+  // The prep's exercises as courses: a learn session then spaced checks, in your free study time (Profile).
+  const studyCard = () => {
+    if (prep?.status !== "done") return null;
+    const refresh = async () => { courses = await call("learning.courses", { company: id }).catch(() => courses); render(); };
+    const move = async (s) => { if (await attempt(() => call("learning.move", { session: s.id }), "Moved to the next free slot")) refresh(); };
+    const schedule = async (e) => {
+      e.target.disabled = true;
+      const r = await attempt(() => call("learning.propose", { company: id }));
+      e.target.disabled = false;
+      if (r) { proposal = r; proposal.picked = new Set(r.courses.map((c) => c.id)); render(); }
+    };
+    const accept = async () => {
+      const ids = [...proposal.picked];
+      if (!ids.length) { await attempt(() => call("learning.decline", { company: id })); proposal = null; return refresh(); }
+      if (await attempt(() => call("learning.accept", { company: id, courses: ids }), "Booked: it's on Today and in your calendar feed")) { proposal = null; refresh(); }
+    };
+    const cancel = async () => { await attempt(() => call("learning.decline", { company: id })); proposal = null; render(); };
+    const active = courses.filter((c) => c.state === "scheduled" || c.state === "done");
+    const due = proposal?.due || active[0]?.due;
+
+    const proposed = proposal && h("div", { class: "stack-tight" },
+      h("div", { class: "small" }, proposal.courses.length
+        ? `${proposal.courses.length} topics, ${proposal.minutes} min in all${proposal.due ? `, before your ${proposal.due_step || "interview"} on ${formatDate(proposal.due.slice(0, 10))}` : ""}. Untick what you don't want.`
+        : "Nothing new to schedule."),
+      proposal.note && h("div", { class: "small", style: "color:var(--amber)" }, proposal.note),
+      proposal.courses.map((c) => h("div", { class: "course" },
+        h("label", { class: "course-head" },
+          h("input", { type: "checkbox", checked: proposal.picked.has(c.id), onchange: (e) => { e.target.checked ? proposal.picked.add(c.id) : proposal.picked.delete(c.id); } }),
+          h("b", { dir: "auto" }, c.topic), h("span", { class: "small muted" }, `${c.estimated_min} min to learn · ${c.exercise}`)),
+        c.sessions.map((s) => studyRow(s, { showCompany: false, showTopic: false })))),
+      proposal.skipped.length > 0 && h("div", { class: "small muted" }, "Not proposed: ", proposal.skipped.map((x) => `${x.exercise} (${x.why})`).join(", ")),
+      h("div", { class: "row" }, h("span", { class: "spacer" }), h("button", { onclick: cancel }, "Cancel"),
+        proposal.courses.length > 0 && h("button", { class: "primary", onclick: accept }, "Accept these slots")));
+
+    const booked = active.length > 0 && h("div", { class: "stack-tight" }, active.map((c) => h("div", { class: "course" },
+      h("div", { class: "course-head" }, h("b", { dir: "auto" }, c.topic),
+        c.outcome === "learned" && h("span", { class: "chip ok" }, "learned ✓"),
+        c.outcome === "needs_work" && h("span", { class: "chip bad" }, "learn it again"),
+        c.reason !== "prep" && h("span", { class: "chip" }, c.reason),
+        h("span", { class: "spacer" }),
+        c.state === "scheduled" && h("button", { class: "ghost small", title: "Stop this course and free its slots", onclick: async () => {
+          if (await attempt(() => call("learning.decline", { courses: [c.id] }), "Course stopped")) refresh();
+        } }, "Stop")),
+      c.sessions.map((s) => studyRow(s, { onMove: move, showCompany: false, showTopic: false })))));
+
+    return h("div", { class: "card stack-tight" },
+      h("div", { class: "row" }, h("h2", { style: "margin:0" }, "Study plan"), h("span", { class: "spacer" }),
+        !proposal && h("button", { class: active.length ? "" : "primary", onclick: schedule }, active.length ? "Schedule the rest" : "📅 Schedule my prep")),
+      !proposal && !active.length && h("p", { class: "small muted" },
+        "Each exercise becomes a topic to learn: a learn session (its estimated time), then check 1 a day or two later and check 2 three to four days after it, in your free study time",
+        due ? " before the interview." : ".", " ", h("a", { href: "#/profile" }, "Your hours ›")),
+      proposed, booked);
+  };
+
   // Practice scores per exercise title (from the log, newest first)
   const scores = () => {
     const out = {};
@@ -419,6 +476,7 @@ export async function renderCompany(root, id) {
       h("div", { class: "stack" },
         process(),
         prepCard(),
+        studyCard(),
         recordings,
         h("div", { class: "grid cols-main" },
           h("div", { class: "stack" }, summaryCard(), details()),
