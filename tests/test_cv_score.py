@@ -1,10 +1,10 @@
 """CV match score: requirements of the job vs the text of the generated CV."""
 import unittest
 
+from jobtracker import registry
+from jobtracker.models import JobMatch, Requirement
+from jobtracker.services import companies, cv_builder, cv_score, master_cv
 from tests.test_core import reset  # sets the temp data/output env vars first
-from jobtracker import registry  # noqa: E402
-from jobtracker.models import JobMatch, Requirement  # noqa: E402
-from jobtracker.services import companies, cv_builder, cv_score, master_cv  # noqa: E402
 
 JD = "We need strong SQL and Python. Kubernetes is a plus."
 
