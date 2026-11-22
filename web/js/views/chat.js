@@ -1,6 +1,6 @@
 // Assistant: conversations with the LLM agent that drives the app's actions.
 import { call, fileUrl } from "../api.js";
-import { attempt, chatRequest, confirmSheet, h, markdown, mount, promptSheet, usd } from "../ui.js";
+import { attempt, chatRequest, confirmSheet, h, markdown, mount, promptSheet, toast, usd } from "../ui.js";
 
 const LABELS = {
   "company.list": "Looked at your companies", "company.get": "Opened company", "company.create": "Added company",
@@ -30,6 +30,10 @@ export async function renderChat(root, chatId, params) {
     h("h2", { style: "margin:0", dir: "auto" }, chat.title),
     chat.archived && h("span", { class: "pill" }, "Archived"),
     h("span", { class: "spacer" }),
+    canCompact() && h("button", {
+      class: "ghost small", title: "The assistant continues from a short summary: cheaper, faster replies. Messages stay here. (or type /compact)",
+      onclick: () => compact(),
+    }, "Compact"),
     h("button", {
       class: "ghost icon", title: "Rename this conversation", "aria-label": "Rename", onclick: async () => {
         const title = await promptSheet("", chat.title, { title: "Rename this conversation", ok: "Rename" });
@@ -95,16 +99,26 @@ export async function renderChat(root, chatId, params) {
     onclick: () => layout.classList.remove("show-list"),  // same chat: no navigation, just close the list
   }, c.title);
 
-  const drawThread = (pendingText) => {
+  const canCompact = () => Boolean(chat) && chat.messages.slice(chat.history_from || 0).some((m) => (m.role === "user" || m.role === "assistant") && m.text);
+  const compactTip = h("div", { class: "compact-tip small" });
+  const drawTip = () => mount(compactTip, chat?.compact_suggested && canCompact() && [
+    h("span", {}, "This conversation is long: every message re-sends all of it. Compact it for cheaper, faster answers (the messages stay here)."),
+    h("button", { class: "small", onclick: () => compact() }, "Compact")]);
+
+  const drawThread = (pendingText, working = "Working on it…") => {
     const msgs = chat?.messages || [];
+    const lastCompaction = chat?.summary ? (chat.history_from || 0) - 1 : -1;  // the notice that ends the compacted part
     mount(thread,
       !msgs.length && !pendingText && h("div", { class: "empty" },
         h("h2", {}, "What can I do for you?"),
         h("div", { class: "chips", style: "justify-content:center" },
           ["Which companies need a follow-up?", "Add this job and make my CV: <paste the job description>", "What are my gaps for the last job I added?"]
             .map((q) => h("button", { class: "chip suggest", onclick: () => { input.value = q; input.focus(); } }, q)))),
-      msgs.map(message),
-      pendingText && [bubble("user", pendingText), h("div", { class: "msg assistant thinking" }, "Working on it…")]);
+      msgs.map((m, i) => [message(m), i === lastCompaction && h("details", { class: "compact-summary" },
+        h("summary", { class: "small muted" }, "What the assistant remembers"), h("div", { dir: "auto" }, markdown(chat.summary)))]),
+      pendingText && bubble("user", pendingText),
+      (pendingText || busy) && h("div", { class: "msg assistant thinking" }, working));
+    drawTip();  // before scrolling: the tip changes the thread's height
     thread.scrollTop = thread.scrollHeight;
   };
 
@@ -144,11 +158,11 @@ export async function renderChat(root, chatId, params) {
     ];
   };
 
-  async function run(fn, pendingText) {
+  async function run(fn, pendingText, working) {
     if (busy) return;
     busy = true;
     sendBtn.disabled = true;
-    drawThread(pendingText);
+    drawThread(pendingText, working);
     const result = await attempt(fn);
     busy = false;
     sendBtn.disabled = false;
@@ -166,8 +180,16 @@ export async function renderChat(root, chatId, params) {
     input.focus();
   }
 
+  const compact = () => chat && run(() => call("chat.compact", { id: chat.id }), null, "Summarising the conversation…");
+
   const send = (text = input.value.trim()) => {
     if (!text) return;
+    if (text.toLowerCase() === "/compact") {  // chat command
+      if (!canCompact()) { toast("Nothing to compact yet"); return; }
+      input.value = "";
+      compact();
+      return;
+    }
     input.value = "";
     run(() => call("chat.send", { message: text, ...(chat ? { chat_id: chat.id } : {}) }), text);
   };
@@ -180,6 +202,7 @@ export async function renderChat(root, chatId, params) {
       !info.llm_available && h("div", { class: "result warn card" }, "Add OPENAI_API_KEY (or ANTHROPIC_API_KEY) to .env and restart the server to use the assistant."),
       head,
       thread,
+      compactTip,
       h("div", { class: "chat-input" }, input, sendBtn),
       keysHint));
   mount(root, layout);

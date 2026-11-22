@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, computed_field, model_validator
 
 from .models_base import new_id, today  # noqa: E402  (re-exported)
 from .process import STATUSES, Process, default_process, from_legacy  # noqa: E402, F401  (STATUSES re-exported)
@@ -241,6 +241,10 @@ class ChatMessage(BaseModel):
     at: str = Field(default_factory=lambda: datetime.now().isoformat(timespec="seconds"))
 
 
+COMPACT_AT_TOKENS = 60_000    # what one AI call reads: tools and instructions (~20k) + the conversation
+COMPACT_AT_MESSAGES = 120     # messages and tool events since the last compaction (when no token count is known)
+
+
 class Chat(BaseModel):
     id: str = Field(default_factory=new_id)
     title: str = "New chat"
@@ -250,6 +254,17 @@ class Chat(BaseModel):
     title_locked: bool = False                 # renamed by the user: no automatic titles
     archived: bool = False                     # hidden from the main list (still searchable, can be reopened)
     messages: list[ChatMessage] = []
+    # Compacting (services/assistant.py): the model continues from `summary` and the messages from `history_from`
+    # on; the older messages stay here for the user to read. context_tokens: the last AI call's input size.
+    summary: str = ""
+    history_from: int = 0
+    context_tokens: int = 0
+
+    @computed_field
+    @property
+    def compact_suggested(self) -> bool:
+        """Long enough that each message re-sends a lot: the chat suggests compacting it."""
+        return self.context_tokens >= COMPACT_AT_TOKENS or len(self.messages) - self.history_from >= COMPACT_AT_MESSAGES
 
 
 class ChatBook(BaseModel):

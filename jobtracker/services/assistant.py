@@ -12,6 +12,8 @@ import re
 from datetime import date
 from urllib.parse import quote, unquote
 
+from pydantic import BaseModel
+
 from .. import config, registry, users
 from ..models import Chat, ChatBook, ChatMessage, ToolEvent
 from ..storage import UserDocument
@@ -260,7 +262,11 @@ def _keep(event: ToolEvent, result) -> None:
 
 def _instructions(chat: Chat) -> str:
     name = master_cv.get_master().profile.name or "the user"
-    return INSTRUCTIONS.format(name=name, today=date.today().isoformat(), title=chat.title)
+    text = INSTRUCTIONS.format(name=name, today=date.today().isoformat(), title=chat.title)
+    if chat.summary:  # after compacting: what came before, in short (appended after format: it may contain braces)
+        text += ("\nSummary of the earlier part of this conversation (its messages are no longer in your context; "
+                 "use tools or ask the user for details it doesn't give):\n" + chat.summary + "\n")
+    return text
 
 
 # ------------------------------------------------------------ link repair
@@ -359,6 +365,7 @@ def _converse_openai(chat: Chat, input_items: list) -> None:
             tools=tools(), previous_response_id=chat.previous_response_id)
         usage.record_openai(response, config.OPENAI_CHAT_MODEL)
         chat.previous_response_id = response.id
+        chat.context_tokens = getattr(getattr(response, "usage", None), "input_tokens", 0) or 0  # includes cached
         calls = [o for o in response.output if o.type == "function_call"]
         if response.output_text:
             chat.messages.append(ChatMessage(role="assistant", text=fix_links(response.output_text)))
@@ -396,7 +403,7 @@ def _claude_history(chat: Chat, note: str | None) -> list[dict]:
         else:
             messages.append({"role": role, "content": text})
 
-    for m in chat.messages:
+    for m in chat.messages[chat.history_from:]:  # after compacting, the summary (in the instructions) covers the rest
         if m.role == "user":
             add("user", m.text)
         elif m.role == "assistant" and m.text:
@@ -419,6 +426,9 @@ def _converse_claude(chat: Chat, note: str | None = None) -> None:
     try:
         for _ in range(MAX_STEPS):
             response = claude.chat(_instructions(chat), tool_defs, messages)
+            u = getattr(response, "usage", None)
+            chat.context_tokens = sum(getattr(u, k, 0) or 0 for k in
+                                      ("input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens"))
             text = "".join(b.text for b in response.content if b.type == "text").strip()
             if text:
                 chat.messages.append(ChatMessage(role="assistant", text=fix_links(text)))
@@ -443,6 +453,54 @@ def _converse_claude(chat: Chat, note: str | None = None) -> None:
             chat.messages.append(ChatMessage(role="assistant", text="(Stopped: too many steps. Ask me to continue.)"))
     except anthropic.AnthropicError as e:
         chat.messages.append(ChatMessage(role="assistant", text=f"⚠ Claude error: {e}"))
+
+
+# ---------------------------------------------------------------- compacting
+# Every message re-sends the whole conversation to the model (cached, but still billed, and slower). Compacting
+# replaces the old part with a short summary the model continues from; the messages stay visible to the user.
+
+COMPACT_INSTRUCTIONS = """Summarise this conversation between a job seeker and their job-search assistant, so the
+assistant can continue it without the messages. Keep what matters to continue: the applications discussed (company,
+role, stage, ids if given), decisions taken, what was created or changed (CVs, steps, achievements), preferences
+and instructions the user gave, open questions and what was about to be done next. Leave out greetings and details
+that are stored in the app anyway (the assistant can read them with its tools). Plain text, short bullet points,
+in the language of the conversation. If an earlier summary is given, merge it in."""
+MAX_COMPACT_INPUT = 300_000  # characters of conversation sent to the summary (the most recent part)
+
+
+class CompactSummary(BaseModel):
+    summary: str
+
+
+def _transcript(messages: list[ChatMessage]) -> str:
+    lines = []
+    for m in messages:
+        if m.role in ("user", "assistant") and m.text:
+            lines.append(f"{m.role.upper()}: {m.text}")
+        elif m.role == "tool" and m.tool:
+            lines.append(_tool_log(m.tool)[:600])
+    return "\n\n".join(lines)[-MAX_COMPACT_INPUT:]
+
+
+def compact(chat_id: str) -> Chat:
+    """Replace the conversation so far by a summary for the model (the cheap model writes it); messages stay."""
+    chat = get_chat(chat_id)
+    recent = chat.messages[chat.history_from:]
+    if not any(m.role in ("user", "assistant") and m.text for m in recent):
+        raise ValueError("Nothing new to compact in this conversation.")
+    with usage.tally() as spent:
+        earlier = f"Earlier summary:\n{chat.summary}\n\n---\n\n" if chat.summary else ""
+        result = llm.structured(COMPACT_INSTRUCTIONS, f"{earlier}Conversation:\n{_transcript(recent)}", CompactSummary)
+    if not result.summary.strip():
+        raise llm.LLMUnavailable("The summary came back empty: the conversation was not compacted.")
+    chat.summary = result.summary.strip()
+    chat.previous_response_id = None   # OpenAI's stored history is dropped: the summary replaces it
+    chat.context_tokens = 0
+    chat.messages.append(ChatMessage(role="notice", text=(
+        "Conversation compacted: the assistant continues from a summary of the messages above "
+        f"(they stay here for you). Cost: ${usage.sum_cost(spent):.4f}.")))
+    chat.history_from = len(chat.messages)
+    return _save(chat)
 
 
 def send(message: str, chat_id: str | None = None) -> Chat:

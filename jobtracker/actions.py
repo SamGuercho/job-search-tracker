@@ -910,6 +910,13 @@ def chat_archive(id: str, archived: bool = True):
     return assistant.archive_chat(id, archived)
 
 
+@action("chat.compact")
+def chat_compact(id: str):
+    """Compact a long conversation: the assistant continues from a short summary of it (cheaper, faster replies).
+    The messages stay visible. Also typed as /compact in the chat."""
+    return assistant.compact(id)
+
+
 @action("chat.delete")
 def chat_delete(id: str):
     """Delete a conversation for good."""

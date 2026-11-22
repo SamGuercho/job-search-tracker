@@ -7,7 +7,7 @@ from types import SimpleNamespace as NS
 import openai
 
 from jobtracker import registry
-from jobtracker.services import assistant, companies
+from jobtracker.services import assistant, companies, llm
 from tests.test_core import reset  # sets the temp data/output env vars first
 
 
@@ -26,6 +26,62 @@ class FakeOpenAI:
         FakeOpenAI.sent.append(kwargs)
         output, text = FakeOpenAI.script.pop(0)
         return NS(id=f"resp{len(FakeOpenAI.sent)}", output=output, output_text=text)
+
+
+class CompactTests(unittest.TestCase):
+    def setUp(self):
+        reset()
+        os.environ["OPENAI_API_KEY"] = "test"
+        self._orig, openai.OpenAI = openai.OpenAI, FakeOpenAI
+        self._structured = llm.structured
+        FakeOpenAI.sent = []
+
+    def tearDown(self):
+        openai.OpenAI, llm.structured = self._orig, self._structured
+        os.environ["OPENAI_API_KEY"] = ""
+
+    def test_compacting_continues_from_a_summary_and_keeps_the_messages(self):
+        FakeOpenAI.script = [([], "Nimbus is at the technical interview.")]
+        chat = registry.run("chat.send", {"message": "Where am I with {Nimbus}?"})
+        self.assertFalse(chat["compact_suggested"])
+        seen = {}
+
+        def fake(instructions, text, schema):
+            seen["text"] = text
+            return schema(summary="- Nimbus: technical interview next {braces ok}")
+        llm.structured = fake
+        chat = registry.run("chat.compact", {"id": chat["id"]})
+        self.assertIn("USER: Where am I with {Nimbus}?", seen["text"])
+        self.assertEqual([m["role"] for m in chat["messages"]], ["user", "assistant", "notice"])  # all still visible
+        self.assertEqual((chat["history_from"], chat["previous_response_id"]), (3, None))
+
+        FakeOpenAI.script = [([], "Good luck!")]
+        chat = registry.run("chat.send", {"message": "Thanks", "chat_id": chat["id"]})
+        sent = FakeOpenAI.sent[-1]
+        self.assertIsNone(sent["previous_response_id"])  # OpenAI's old history is not reused
+        self.assertIn("technical interview next {braces ok}", sent["instructions"])
+
+        # a second compaction merges the earlier summary and only sends what came after it
+        llm.structured = fake
+        registry.run("chat.compact", {"id": chat["id"]})
+        self.assertIn("Earlier summary:", seen["text"])
+        self.assertNotIn("Where am I", seen["text"].split("Conversation:")[1])
+        with self.assertRaises(ValueError):  # nothing new since
+            registry.run("chat.compact", {"id": chat["id"]})
+
+    def test_claude_rebuilds_only_the_messages_after_the_summary(self):
+        chat = assistant.Chat(messages=[assistant.ChatMessage(role="user", text="old"),
+                                        assistant.ChatMessage(role="assistant", text="old answer"),
+                                        assistant.ChatMessage(role="notice", text="compacted"),
+                                        assistant.ChatMessage(role="user", text="new")], history_from=3, summary="s")
+        self.assertEqual(assistant._claude_history(chat, None), [{"role": "user", "content": "new"}])
+
+    def test_long_conversations_suggest_compacting(self):
+        chat = assistant.Chat(context_tokens=70_000)
+        self.assertTrue(chat.compact_suggested)
+        self.assertTrue(assistant.Chat(messages=[assistant.ChatMessage(role="user", text="x")] * 130).compact_suggested)
+        self.assertFalse(assistant.Chat(messages=[assistant.ChatMessage(role="user", text="x")] * 130,
+                                        history_from=100).compact_suggested)
 
 
 class AssistantTests(unittest.TestCase):
