@@ -17,7 +17,7 @@ from pydantic import BaseModel
 from .. import config, registry, users
 from ..models import Chat, ChatBook, ChatMessage, ToolEvent
 from ..storage import UserDocument
-from . import claude, companies, llm, master_cv, usage
+from . import claude, companies, llm, master_cv, profile, usage
 from .companies import NotFound
 
 store = UserDocument("chats.json", ChatBook)
@@ -272,6 +272,10 @@ def _keep(event: ToolEvent, result) -> None:
 def _instructions(chat: Chat) -> str:
     name = master_cv.get_master().profile.name or "the user"
     text = INSTRUCTIONS.format(name=name, today=date.today().isoformat(), title=chat.title)
+    about = profile.context()
+    if about:  # what the user is looking for: warn when a job is outside it, use it for salary/notice questions
+        text += f"\nWhat {name} is looking for (profile.get; change with profile.update): {about}. Point out when " \
+                "a job doesn't fit it (role, place, work model), without refusing to help.\n"
     if chat.summary:  # after compacting: what came before, in short (appended after format: it may contain braces)
         text += ("\nSummary of the earlier part of this conversation (its messages are no longer in your context; "
                  "use tools or ask the user for details it doesn't give):\n" + chat.summary + "\n")

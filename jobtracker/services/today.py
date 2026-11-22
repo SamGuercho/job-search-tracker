@@ -26,6 +26,17 @@ def _prep_state(company_id: str) -> dict:
             "exercises": len(done[-1].result.exercises) if done and done[-1].result else 0}
 
 
+def _goals(applied: int, answers: int) -> dict | None:
+    """This week against the profile's weekly goals (None when no goal is set). Weeks start on Monday."""
+    g = profile.settings().goals
+    if not (g.applications or g.practice_answers):
+        return None
+    left = 6 - date.today().weekday()  # days left after today, Sunday = 0
+    return {"days_left": left,
+            "applications": {"done": applied, "goal": g.applications} if g.applications else None,
+            "practice_answers": {"done": answers, "goal": g.practice_answers} if g.practice_answers else None}
+
+
 def summary(days_ahead: int = 14) -> dict:
     today = date.today()
     horizon = (today + timedelta(days=days_ahead)).isoformat()
@@ -93,6 +104,7 @@ def summary(days_ahead: int = 14) -> dict:
             "needs_work": training["needs_work"],
             "answers_this_week": sum(1 for a in attempts if a.at[:10] >= week_start),
         },
+        "goals": _goals(applied_this_week, sum(1 for a in attempts if a.at[:10] >= week_start)),
         "week": {"applied": applied_this_week, "interviews_next_7_days": sum(1 for i in interviews if i["days"] <= 7),
                  "active": sum(1 for c in apps if c.status in ("Applied", "In process", "Offer"))},
     }

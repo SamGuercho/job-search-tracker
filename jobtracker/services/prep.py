@@ -108,13 +108,13 @@ def _context(company) -> str:
     return "\n".join(lines)
 
 
-def brief(ref: str, exercises: int = 5, language: str = "English") -> dict:
+def brief(ref: str, exercises: int = 5, language: str = "") -> dict:
     """Everything a model needs to write the prep: instructions, context and the JSON schema to return."""
     company = companies.resolve(ref)
     from . import practice  # (imports prep)
     instructions = INSTRUCTIONS.format(company=company.name, website=company.website or "find it", count=exercises,
                                        capabilities=", ".join(practice.known_capabilities()),
-                                       language=language.strip() or "English")
+                                       language=language.strip() or _default_language())
     return {"company_id": company.id, "company": company.name, "instructions": instructions,
             "context": _context(company), "output_schema": strict_schema()}
 
@@ -240,7 +240,12 @@ def auto_start(company) -> bool:
     return True
 
 
-def start(ref: str, exercises: int = 5, language: str = "English") -> InterviewPrep:
+def _default_language() -> str:
+    from . import profile
+    return profile.settings().interview_language or "English"
+
+
+def start(ref: str, exercises: int = 5, language: str = "") -> InterviewPrep:
     """Start a prep in the background (premium users only). Poll get() for the result."""
     if not users.is_premium():
         raise PermissionError("Interview prep is for premium accounts (JOBTRACKER_PREMIUM).")

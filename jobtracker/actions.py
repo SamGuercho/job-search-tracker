@@ -28,6 +28,7 @@ from .models import (
     SourceType,
     UpdateSide,
     Variant,
+    WeeklyGoals,
     WorkModel,
 )
 from .process import CATEGORIES, Node, NodeState
@@ -249,7 +250,7 @@ def prep_status():
 
 
 @action("prep.start")
-def prep_start(company: str, exercises: int = 5, language: str = "English"):
+def prep_start(company: str, exercises: int = 5, language: str = ""):
     """Start writing the interview prep for an application on the server (Codex with a strong model and web
     search; premium accounts only). Runs in the background for several minutes: check prep.get for the result.
     Replaces the previous prep (its file is archived). `language`: the language of the prep's text (e.g. Hebrew
@@ -258,7 +259,7 @@ def prep_start(company: str, exercises: int = 5, language: str = "English"):
 
 
 @action("prep.brief")
-def prep_brief(company: str, exercises: int = 5, language: str = "English"):
+def prep_brief(company: str, exercises: int = 5, language: str = ""):
     """For an AI client writing the prep itself (e.g. Codex or Claude through MCP): the coaching instructions,
     the application and CV context, and the JSON schema to fill. Follow the instructions (research with web
     search), then call prep.save with the JSON object."""
@@ -608,14 +609,27 @@ def company_set_cv_headline(company: str, headline_id: str = ""):
 
 @action("profile.get")
 def profile_get():
-    """The user: name, the first name Today greets them with, LinkedIn profile URL, email."""
+    """The user: name, greeting name, LinkedIn, email, what they look for (target roles, seniority, locations,
+    work models, max commute), salary expectation, notice period, start date, interview language, weekly goals."""
     return profile.get()
 
 
 @action("profile.update")
-def profile_update(name: Optional[str] = None, preferred_name: Optional[str] = None, linkedin: Optional[str] = None):
-    """Change the user's name or LinkedIn URL (the master CV header's) or the first name used for greetings."""
-    return profile.update(name, preferred_name, linkedin)
+def profile_update(name: Optional[str] = None, preferred_name: Optional[str] = None, linkedin: Optional[str] = None,
+                   target_roles: Optional[list[str]] = None, seniority: Optional[str] = None,
+                   locations: Optional[list[str]] = None, work_models: Optional[list[WorkModel]] = None,
+                   max_commute_min: Optional[int] = None, salary_expectation: Optional[str] = None,
+                   notice_period: Optional[str] = None, available_from: Optional[str] = None,
+                   interview_language: Optional[str] = None, goals: Optional[WeeklyGoals] = None):
+    """Change the user's profile (only the fields given): name and LinkedIn (the master CV header's), greeting
+    name, what they look for (target roles, seniority, locations, work models, max commute: jobs outside get a
+    warning), salary expectation (default for new applications), notice period, available from (YYYY-MM-DD),
+    interview prep language, weekly goals (applications, practice answers)."""
+    return profile.update(name=name, linkedin=linkedin, preferred_name=preferred_name, target_roles=target_roles,
+                          seniority=seniority, locations=locations, work_models=work_models,
+                          max_commute_min=max_commute_min, salary_expectation=salary_expectation,
+                          notice_period=notice_period, available_from=available_from,
+                          interview_language=interview_language, goals=goals)
 
 
 @action("company.referral")

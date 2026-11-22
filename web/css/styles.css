@@ -555,3 +555,14 @@ body.is-offline main { padding-top: 8px; }
 .topbar .profile-link { margin-left: auto; order: 3; font-size: 17px; text-decoration: none; padding: 6px 8px; border-radius: 8px; line-height: 1; }
 .topbar .profile-link + .bell { margin-left: -20px; }
 .topbar .profile-link.active { background: var(--accent-soft); }
+
+/* Today: weekly goals, fit warnings; Profile checkboxes */
+.goals { margin-bottom: 16px; }
+.goal-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 8px; }
+.goal { color: var(--text); display: flex; flex-direction: column; gap: 4px; }
+.goal:hover { text-decoration: none; }
+.goal .readiness-bar { width: 100%; height: 8px; }
+.goal b.done { color: var(--green); }
+.fit-warning { color: var(--amber); margin-top: 2px; }
+.check { display: inline-flex; align-items: center; gap: 4px; margin-right: 14px; font-weight: 400; }
+@media (max-width: 520px) { .goal-grid { grid-template-columns: 1fr; gap: 10px; } }

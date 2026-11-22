@@ -46,6 +46,9 @@ def find_by_name(name: str) -> Company | None:
 # ---------------------------------------------------------------- companies
 
 def create_company(**fields) -> Company:
+    if not fields.get("salary_expectation"):  # the profile's expectation, until set for this application
+        from . import profile
+        fields["salary_expectation"] = profile.settings().salary_expectation
     company = Company(**fields)
     _save_job_description(company)
     with store.transaction() as book:
@@ -222,6 +225,8 @@ def update_step(ref: str, node: str, **fields) -> tuple[Company, Node]:
         n = p.node(node)
         if "kind" in fields and (fields["kind"] == "closed") != (n.kind == "closed"):
             raise GraphError("The Closed node's type can't be changed, and only it can be 'closed'")
+        if fields.get("state") == "done" and not fields.get("date") and not n.date:
+            fields["date"] = today()  # marked done without a date: it happened today (counts for this week)
         for k, v in fields.items():
             setattr(n, k, v)
         if "category" in fields and n.kind != "closed":  # the "offer" type is what makes the status Offer

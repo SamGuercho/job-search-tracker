@@ -74,7 +74,9 @@ def _base(c: Company) -> dict:
 # --------------------------------------------------------------------- to apply
 
 def to_apply(apps: list[Company], today: date | None = None) -> list[dict]:
+    from . import profile
     today = today or date.today()
+    wanted = profile.settings()
     out = []
     for c in apps:
         if c.status != "Not applied":
@@ -88,7 +90,7 @@ def to_apply(apps: list[Company], today: date | None = None) -> list[dict]:
                     "level": "red" if age >= APPLY_RED else "amber" if age >= APPLY_AMBER else "new",
                     "stale": age >= APPLY_STALE and not snoozed(c, today),
                     "cv_ready": bool(c.documents), "applied_step_id": step.id if step else None,
-                    "job_url": c.job_url})
+                    "job_url": c.job_url, "fit": profile.fit(c, wanted)})
     return sorted(out, key=lambda x: -x["age"])
 
 

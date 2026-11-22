@@ -32,7 +32,7 @@ function dismiss(key) {
 export async function renderToday(root) {
   const [raw, info] = await Promise.all([call("today.get"), call("app.info")]);
   // defaults: an offline copy saved by an older version may lack the newer lists
-  const t = { to_apply: [], no_answer: [], debriefs: [], train_first: null, ...raw };
+  const t = { to_apply: [], no_answer: [], debriefs: [], train_first: null, goals: null, ...raw };
   const isLink = (s) => /^https?:\/\//.test(s || "");
   const reload = () => renderToday(root);
   const logo = (x, size = 32) => companyLogo({ name: x.company, logo_file: x.logo_file, logo_checked_at: x.logo_checked_at }, size);
@@ -74,6 +74,21 @@ export async function renderToday(root) {
         : f.prep.ready ? `Ready ${f.readiness.score}%` : "No prep yet: prepare, then practise")),
     h("span", { class: "btn small primary" }, f.prep.ready ? "Practise" : "Prepare"));
 
+  // ------------------------------------------------------------ weekly goals
+  const goals = (g) => {
+    if (!g) return null;
+    const bar = (label, x, href) => x && h("a", { class: "goal", href },
+      h("div", { class: "row" }, h("span", { class: "small" }, label), h("span", { class: "spacer" }),
+        h("b", { class: x.done >= x.goal ? "done" : "" }, `${x.done}/${x.goal}`)),
+      h("div", { class: `readiness-bar ${x.done >= x.goal ? "good" : ""}` }, h("span", { style: `width:${Math.min(100, Math.max(3, (100 * x.done) / x.goal))}%` })));
+    return h("section", { class: "card goals" },
+      h("div", { class: "row" }, h("b", {}, "This week"), h("span", { class: "spacer" }),
+        h("a", { class: "small muted", href: "#/profile" }, g.days_left === 0 ? "last day" : `${g.days_left} days left · goals`)),
+      h("div", { class: "goal-grid" },
+        bar("Applications sent", g.applications, "#/today"),
+        bar("Practice answers", g.practice_answers, "#/practice")));
+  };
+
   // ------------------------------------------------------------ debriefs
   const debrief = (d) => {
     const key = `debrief:${d.step_id}:${d.date}`;
@@ -98,6 +113,8 @@ export async function renderToday(root) {
       h("a", { href: `#/company/${a.company_id}`, class: "today-title", dir: "auto" }, a.company),
       h("div", { class: "small muted", dir: "auto" }, [a.position, a.cv_ready ? "CV ready" : "no CV yet"].filter(Boolean).join(" · "),
         a.job_url && h("a", { href: a.job_url, target: "_blank", rel: "noopener", title: "The job posting" }, " ↗")),
+      (a.fit || []).length > 0 && h("div", { class: "small fit-warning", dir: "auto", title: "Compared with what you're looking for (Profile)" },
+        `⚠ ${a.fit.join(" · ")}`),
       a.stale
         ? h("div", { class: "row today-actions" }, h("span", { class: "small" }, `Added ${a.age} days ago. Still interested?`),
           h("button", { class: "small", onclick: () => drop(a) }, "Drop it"),
@@ -205,6 +222,7 @@ export async function renderToday(root) {
       h("a", { href: "#/today" }, h("b", { class: urgentApply ? "due" : "" }, t.to_apply.length), "to apply"),
       h("a", { href: "#/today" }, h("b", { class: t.follow_ups.length + t.no_answer.length ? "due" : "" }, t.follow_ups.length + t.no_answer.length), "to follow up"),
       h("a", { href: "#/practice" }, h("b", {}, t.practice.to_review.length), "to review")),
+    goals(t.goals),
     trainFirst(t.train_first),
     nothing && h("div", { class: "card empty" }, h("h2", {}, "Nothing urgent today"),
       h("p", { class: "muted" }, "No interview coming, nothing to apply to or follow up. A good moment to add a job or practise."),

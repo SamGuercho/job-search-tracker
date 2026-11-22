@@ -9,7 +9,7 @@ export async function renderCompany(root, id) {
   let prep = await call("prep.get", { company: id });
   let top = await call("cv.headline.for_application", { company: id });  // title & summary this CV will show
   let practiceLog = await call("practice.history", { company: id });  // newest first
-  let prepLanguage = "English";
+  let prepLanguage = (await call("profile.get").catch(() => null))?.interview_language || "English";
   const recordings = recordingsCard(company, info);
   let review = null;   // last AI review of the summary, kept across re-renders
 

@@ -155,9 +155,26 @@ class SkillGroup(BaseModel):
     items: list[str] = []
 
 
+class WeeklyGoals(BaseModel):
+    applications: int = 0        # applications sent per week (0 = no goal)
+    practice_answers: int = 0    # practice answers per week
+
+
 class UserProfile(BaseModel):
     """Settings about the person (services/profile.py); name and LinkedIn stay on the master CV profile."""
     preferred_name: str = ""     # how Today greets you ("" = the first word of your name)
+    # What you're looking for: jobs outside it get a warning (rules.fit)
+    target_roles: list[str] = []     # "Data Scientist", "AI Engineer"
+    seniority: str = ""              # "Senior", "Staff"… (for the assistant: not a filter)
+    locations: list[str] = []        # cities / areas you'd work in ("Tel Aviv", "Herzliya")
+    work_models: list[WorkModel] = []  # On-site / Hybrid / Remote you accept ([] = any)
+    max_commute_min: int | None = None
+    # Practical
+    salary_expectation: str = ""     # default for new applications ("38k ILS/month")
+    notice_period: str = ""          # "1 month", "immediately"
+    available_from: str = ""         # earliest start date (YYYY-MM-DD)
+    interview_language: str = "English"  # default language of interview preps
+    goals: WeeklyGoals = Field(default_factory=WeeklyGoals)
 
 
 class Profile(BaseModel):
