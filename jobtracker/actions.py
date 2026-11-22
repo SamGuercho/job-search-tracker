@@ -49,6 +49,7 @@ from .services import (
     prep,
     push,
     recordings,
+    rules,
     today,
     usage,
     wording,
@@ -90,8 +91,7 @@ def app_info():
             "llm_available": llm.available(), "user": users.current() or users.owner(),
             "premium": users.is_premium(), "version": maintenance.version(),
             "recordings": llm.openai_available() and bool(recordings.shutil.which(config.FFMPEG_BIN)),
-            "follow_ups_due": sum(1 for c in companies.list_companies() if c.status in ("Applied", "In process")
-                                  and (c.days_since_update() or 0) >= 14)}
+            "follow_ups_due": sum(len(v) for v in rules.nudges(companies.list_companies()).values())}
 
 
 @action("company.list")
@@ -324,9 +324,20 @@ def recording_delete(id: str):
 
 @action("today.get")
 def today_get():
-    """What to do now: interviews in the next 14 days (with prep and practice status), follow-ups due,
-    recordings waiting for the user, what came back recently (preps, debriefs), what to review, the week in numbers."""
+    """What to do now: interviews in the next 14 days (with prep status and readiness 0-100) and the one to
+    train for first, applications not applied yet (oldest first), follow-ups due and "probably no answer"
+    (rules by stage: see services/rules.py), interviews to debrief, recordings waiting for the user, what came
+    back recently, what to review, the week in numbers."""
     return today.summary()
+
+
+@action("today.snooze")
+def today_snooze(company: str, days: int = rules.SNOOZE_DAYS):
+    """Hide an application's nudges on Today (follow-up, probably no answer, still interested?) for `days` days
+    (0 = show them again)."""
+    c = companies.resolve(company)
+    until = rules.snooze_until(max(1, min(days, 90))) if days > 0 else None
+    return companies.update_company(c.id, snooze_until=until).view()
 
 
 # ================================================================== calendar
@@ -456,6 +467,12 @@ def analytics_summary():
 # ================================================================= process
 # `company`: application id, or company name / position. `step`: step id, or step name.
 
+def _step_changed(c) -> dict:
+    """After a step change: a technical interview just scheduled starts its interview prep (see prep.auto_start)."""
+    prep.auto_start(c)
+    return _process_view(c)
+
+
 def _process_view(c) -> dict:
     return {**_app(c), "outline": c.process.outline(), "nodes": c.process.nodes, "edges": c.process.edges}
 
@@ -479,7 +496,7 @@ def process_add_step(company: str, name: str, after: Optional[str] = None, befor
     added to the user's calendar."""
     c, _ = companies.add_step(company, name, after=after, before=before, state=state, date=date, notes=notes, kind=kind,
                               time=time, location=location, duration_min=duration_min)
-    return _process_view(c)
+    return _step_changed(c)
 
 
 @action("process.add_branch")
@@ -488,7 +505,7 @@ def process_add_branch(company: str, from_step: str, name: str, join: Optional[s
     """Add an alternative path starting at `from_step` (e.g. a parallel take-home test). With `join`, the branch
     leads back into that step; without it, the branch is a dead end."""
     c, _ = companies.add_step(company, name, branch_from=from_step, join=join, state=state, date=date, notes=notes)
-    return _process_view(c)
+    return _step_changed(c)
 
 
 @action("process.update_step")
@@ -496,7 +513,7 @@ def process_update_step(company: str, step: str, fields: StepPatch):
     """Change a step: name, state (todo/planned/done), date, time ("14:30"), duration_min, location (address or
     video link), notes, kind (step/offer)."""
     c, _ = companies.update_step(company, step, **_patch(fields))
-    return _process_view(c)
+    return _step_changed(c)
 
 
 @action("process.set_state")
@@ -505,7 +522,7 @@ def process_set_state(company: str, step: str, state: NodeState, date: Optional[
     step="Applied", state="done") once the user says they applied."""
     fields = {"state": state, **({"date": date} if date else {})}
     c, _ = companies.update_step(company, step, **fields)
-    return _process_view(c)
+    return _step_changed(c)
 
 
 @action("process.close")
@@ -515,7 +532,7 @@ def process_close(company: str, reason: str = "", date: Optional[str] = None):
     c = companies.resolve(company)
     fields = {"state": "done", "date": date or companies.today(), **({"notes": reason} if reason else {})}
     c, _ = companies.update_step(c.id, c.process.closed.id, **fields)
-    return _process_view(c)
+    return _step_changed(c)
 
 
 @action("process.reopen")
@@ -523,21 +540,21 @@ def process_reopen(company: str):
     """Undo process.close: turns the Rejected/Closed node off again."""
     c = companies.resolve(company)
     c, _ = companies.update_step(c.id, c.process.closed.id, state="todo")
-    return _process_view(c)
+    return _step_changed(c)
 
 
 @action("process.delete_step", confirm=True)
 def process_delete_step(company: str, step: str):
     """Delete a step; the steps before it are reconnected to the steps after it."""
     c, _ = companies.delete_step(company, step)
-    return _process_view(c)
+    return _step_changed(c)
 
 
 @action("process.reset", confirm=True)
 def process_reset(company: str):
     """Replace an application's process with the default one (all steps off)."""
     c, _ = companies.reset_process(company)
-    return _process_view(c)
+    return _step_changed(c)
 
 
 # ================================================================ master CV

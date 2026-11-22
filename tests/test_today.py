@@ -13,9 +13,9 @@ class TodayTests(unittest.TestCase):
     def setUp(self):
         reset()
         self.nimbus = companies.create_company(name="Nimbus", position="Data Analyst")
-        self.quiet = companies.create_company(name="Quiet Co", position="Analyst")
+        self.quiet = companies.create_company(name="Quiet Co", position="Analyst", referee="Dana")  # someone to write to
         registry.run("process.set_state", {"company": "Quiet Co", "step": "Applied", "state": "done"})
-        companies.update_company(self.quiet.id, last_update=(date.today() - timedelta(days=30)).isoformat())
+        companies.update_company(self.quiet.id, last_update=(date.today() - timedelta(days=20)).isoformat())
 
     def test_interviews_come_with_prep_and_practice(self):
         soon = (date.today() + timedelta(days=2)).isoformat()

@@ -215,6 +215,31 @@ def codex_status() -> dict:
     return {"available": True, "reason": text.splitlines()[0] if text else "signed in"}
 
 
+def auto_start(company) -> bool:
+    """A technical interview was just scheduled and this application has no prep yet: start one in the background
+    (premium accounts; JOBTRACKER_AUTO_PREP=0 turns it off). Never raises: the step change must not fail."""
+    today = datetime.now().date().isoformat()
+    scheduled = any(n.state == "planned" and n.type() == "technical" and (n.date or "")[:10] >= today
+                    for n in company.process.steps)
+    try:
+        if not (config.AUTO_PREP and scheduled and users.is_premium()) or versions(company.id):
+            return False
+    except Exception:  # noqa: BLE001
+        return False
+    user = users.current()
+
+    def run() -> None:
+        with users.acting_as(user):
+            try:
+                if codex_status()["available"] and not versions(company.id):
+                    start(company.id)
+                    log.info("Interview prep started by itself for %s (technical interview scheduled)", company.name)
+            except Exception as e:  # noqa: BLE001  (best effort: the user can still press Prepare)
+                log.warning("Automatic prep for %s not started: %s", company.name, e)
+    threading.Thread(target=run, daemon=True, name=f"auto-prep-{company.id}").start()
+    return True
+
+
 def start(ref: str, exercises: int = 5, language: str = "English") -> InterviewPrep:
     """Start a prep in the background (premium users only). Poll get() for the result."""
     if not users.is_premium():

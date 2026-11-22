@@ -65,6 +65,7 @@ class Company(BaseModel):
     cv_headline: str = ""         # the title variant pinned for this application ("" = the closest, automatically)
     last_update: str = Field(default_factory=today)
     last_update_by: UpdateSide = "me"
+    snooze_until: str | None = None   # Today's nudges (follow-up, no answer, still interested?) hidden until this date
     process: Process = Field(default_factory=default_process)
     documents: list[GeneratedDocument] = []
     created_at: str = Field(default_factory=today)

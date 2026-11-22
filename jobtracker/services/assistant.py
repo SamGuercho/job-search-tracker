@@ -85,7 +85,12 @@ How to work:
   answers are already in the practice log (source "interview").
 - Costs: usage.report (this month, by feature/provider/person), usage.averages (typical cost per feature).
 - "How is my search going?" -> analytics.summary (funnel, rates, timing, where applications stop, by source).
-- Follow-ups: company.list gives days_since_update; 14+ days on Applied/In process = needs a follow-up.
+- Follow-ups (today.get has them, from these rules): Applied with no reply: follow up after 7 days when there is a
+  contact or referee; "probably no answer" 30 days after applying. After an interview: follow up after 7 days
+  (5 working days) without news; "probably no answer" 21 days after the user's follow-up. Never close an
+  application by yourself: propose process.close with reason "No answer" and let the user decide (process.reopen
+  undoes it); today.snooze hides the nudges. Not-applied applications: positions fill fast, push to apply soon.
+- Scheduling a technical interview starts its interview prep automatically (premium accounts).
 - The master CV is a set of achievements; each can have several wordings (variants) emphasising different
   keywords. A CV uses at most one wording per achievement, so never create a near-duplicate achievement to get
   a keyword: add a wording to the existing achievement instead (cv.variant.draft, then cv.variant.add).

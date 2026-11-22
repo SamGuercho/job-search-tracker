@@ -148,7 +148,7 @@ class PushTests(unittest.TestCase):
 
     def test_follow_up_reminder_once_a_day(self):
         before = registry.run("app.info", {})["follow_ups_due"]  # the example data has stale applications
-        c = companies.create_company(name="Quiet Co")
+        c = companies.create_company(name="Quiet Co", referee="Dana")
         registry.run("process.set_state", {"company": "Quiet Co", "step": "Applied", "state": "done"})
         companies.update_company(c.id, last_update=(date.today() - timedelta(days=20)).isoformat())
         self.subscribe(tz="UTC")

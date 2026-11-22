@@ -1,7 +1,8 @@
 """Today: what to do now, in one call (also what the app keeps for offline reading).
 
-- next interviews (the coming 14 days) with their prep status and practice score;
-- follow-ups due (14+ days without news on an active application);
+- next interviews (the coming 14 days) with their prep status and readiness, and the one to train for first;
+- applications to apply to, follow-ups due and "probably no answer" (see rules.py for the rules);
+- interviews of the last days to debrief;
 - recordings waiting for you (pick your voice) and what came back recently (preps, debriefs);
 - practice: what to review first and the capability furthest from its target;
 - the week in numbers.
@@ -11,9 +12,8 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta
 
 from .. import maintenance
-from . import calendar, companies, practice, prep, recordings
+from . import calendar, companies, practice, prep, recordings, rules
 
-FOLLOW_UP_DAYS = 14
 RECENT_DAYS = 3
 
 
@@ -31,26 +31,24 @@ def summary(days_ahead: int = 14) -> dict:
     horizon = (today + timedelta(days=days_ahead)).isoformat()
     apps = companies.list_companies()
     attempts = practice.store.load().attempts
+    profile = practice.profile()
 
     interviews = []
     for c, n in calendar.upcoming(days_back=0):
         if n.date[:10] > horizon:
             continue
         scores = [a.score for a in attempts if a.company_id == c.id]
+        done = [p for p in prep.versions(c.id) if p.status == "done" and p.result]
+        exercises = done[-1].result.exercises if done else []
         interviews.append({
             "company_id": c.id, "company": c.name, "position": c.position, "step_id": n.id, "step": n.name,
             "logo_file": c.logo_file, "logo_checked_at": c.logo_checked_at,
             "date": n.date[:10], "time": n.time, "duration_min": n.duration_min, "location": n.location,
             "days": (date.fromisoformat(n.date[:10]) - today).days, "prep": _prep_state(c.id),
             "practice_answers": len(scores), "practice_average": round(sum(scores) / len(scores), 1) if scores else None,
+            "type": n.type(), "readiness": rules.readiness(c.id, attempts, exercises, profile["needs_work"]),
         })
-
-    follow_ups = sorted(({"company_id": c.id, "company": c.name, "position": c.position, "stage": c.process.stage(),
-                          "logo_file": c.logo_file, "logo_checked_at": c.logo_checked_at,
-                          "days": c.days_since_update(), "last_update_by": c.last_update_by}
-                         for c in apps if c.status in ("Applied", "In process")
-                         and (c.days_since_update() or 0) >= FOLLOW_UP_DAYS),
-                        key=lambda f: -(f["days"] or 0))
+    silence = rules.nudges(apps, today)
 
     since = (datetime.now() - timedelta(days=RECENT_DAYS)).isoformat(timespec="seconds")
     names = {c.id: c.name for c in apps}
@@ -75,7 +73,6 @@ def summary(days_ahead: int = 14) -> dict:
                             "at": p.requested_at})
     recent.sort(key=lambda r: r["at"] or "", reverse=True)
 
-    profile = practice.profile()
     week_start = (today - timedelta(days=today.weekday())).isoformat()
     applied_this_week = sum(1 for c in apps for n in c.process.nodes
                             if n.state == "done" and n.type() == "applied" and (n.date or "")[:10] >= week_start)
@@ -83,7 +80,11 @@ def summary(days_ahead: int = 14) -> dict:
         "date": today.isoformat(),
         "server": maintenance.warnings(),   # owner only: backup missing/failed/old, unreadable data
         "interviews": interviews,
-        "follow_ups": follow_ups,
+        "train_first": rules.train_first(interviews),
+        "to_apply": rules.to_apply(apps, today),
+        "follow_ups": silence["follow_ups"],
+        "no_answer": silence["no_answer"],
+        "debriefs": rules.debriefs(apps, {r.step for r in recordings.store.load().recordings if r.step}, today),
         "waiting": waiting,
         "recent": recent[:6],
         "practice": {

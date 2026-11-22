@@ -45,6 +45,7 @@ def _facts(c: Company) -> dict:
         "interviews": sum(n.type() in INTERVIEW_TYPES for n in done),
         "technical_interviews": sum(n.type() == "technical" for n in done),
         "closed": closed, "closed_date": _d(c.process.closed.date),
+        "no_answer": closed and c.process.closed.notes.strip().lower() == "no answer",
         "stopped_at": (done[-1].name if done else "Before applying") if closed else None,
         "stopped_type": (done[-1].type() if done else "not applied") if closed else None,
     }
@@ -99,6 +100,7 @@ def summary() -> dict:
             "responses": count("response"), "interviews": sum(a["interviews"] for a in applied),
             "technical_interviews": sum(a["technical_interviews"] for a in applied),
             "offers": count("offer"), "closed": len(closed),
+            "no_answer": sum(a["no_answer"] for a in closed),  # closed as "No answer": silence, not a rejection
         },
         "rates": {
             "response_rate": _rate(count("response"), len(applied)),

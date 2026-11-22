@@ -57,6 +57,8 @@ CODEX_BIN = os.environ.get("JOBTRACKER_CODEX", "codex")          # the codex com
 PREP_MODEL = os.environ.get("JOBTRACKER_PREP_MODEL", "gpt-6.2-astra")
 PREP_EFFORT = os.environ.get("JOBTRACKER_PREP_EFFORT", "high")    # low | medium | high | xhigh | max | ultra
 PREP_TIMEOUT_MIN = int(os.environ.get("JOBTRACKER_PREP_TIMEOUT_MIN", "40"))
+# Scheduling a technical interview starts its prep by itself (premium accounts, once per application). 0 = off.
+AUTO_PREP = os.environ.get("JOBTRACKER_AUTO_PREP", "1") != "0"
 # Tailscale logins allowed to run it (comma-separated). Single-user mode (no Tailscale users): always allowed.
 # Interview recordings: transcription (OpenAI, billed per minute). The diarize model labels speakers; OpenAI shuts
 # it down on 2027-02-26, after which the app falls back to TRANSCRIBE_FALLBACK_MODEL (text only).

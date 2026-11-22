@@ -1,7 +1,7 @@
 """Reminders sent as notifications, checked every 10 minutes for every person with a registered device:
 
 - an interview the day before (24 h before; 9:00 the day before when it has no time) and 1 hour before;
-- once a day from 9:00, the applications that need a follow-up (14+ days without news).
+- once a day from 9:00, the applications that need a follow-up or probably got no answer (rules.py).
 
 Times are the person's local time (the time zone of their device). Each reminder is sent once (push.json
 remembers it). Disabled with JOBTRACKER_REMINDERS=0.
@@ -16,10 +16,9 @@ from zoneinfo import ZoneInfo
 
 from .. import config, users
 from ..logs import log
-from . import calendar, companies, push
+from . import calendar, companies, push, rules
 
 INTERVAL_S = 600
-FOLLOW_UP_DAYS = 14
 _started = False
 
 
@@ -56,13 +55,13 @@ def due(now_utc: datetime | None = None) -> list[dict]:
             out.append({"key": f"day:{n.id}:{n.date}", "title": f"Tomorrow: {n.name}",
                         "body": f"{c.name}. Your prep is on the application page.", "url": url})
     if now.hour >= 9:
-        stale = [c for c in companies.list_companies()
-                 if c.status in ("Applied", "In process") and (c.days_since_update() or 0) >= FOLLOW_UP_DAYS]
+        silence = rules.nudges(companies.list_companies(), now.date())
+        stale = silence["follow_ups"] + silence["no_answer"]
         if stale:
-            names = ", ".join(c.name for c in stale[:3]) + ("…" if len(stale) > 3 else "")
+            names = ", ".join(x["company"] for x in stale[:3]) + ("…" if len(stale) > 3 else "")
             title = f"{len(stale)} applications need a follow-up" if len(stale) > 1 else "1 application needs a follow-up"
             out.append({"key": f"followup:{now.date()}", "title": title,
-                        "body": f"No news for {FOLLOW_UP_DAYS}+ days: {names}", "url": "/#/"})
+                        "body": f"No news for a while: {names}", "url": "/#/today"})
     return [r for r in out if r["key"] not in book.sent]
 
 

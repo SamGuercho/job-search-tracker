@@ -528,3 +528,19 @@ body.is-offline main { padding-top: 8px; }
 .compact-summary > div { font-size: 0.9em; padding: 8px 12px; border: 1px dashed var(--border); border-radius: 10px; }
 
 .app-version { margin-top: 12px; text-align: center; overflow-wrap: anywhere; }
+
+/* Today: readiness, train first, to apply */
+.readiness { display: flex; align-items: center; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
+.readiness-bar { width: 90px; height: 6px; border-radius: 999px; background: var(--grey-soft); overflow: hidden; flex: none; }
+.readiness-bar span { display: block; height: 100%; background: var(--amber); }
+.readiness-bar.low span { background: var(--red); }
+.readiness-bar.good span { background: var(--green); }
+.train-first { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; color: var(--text); border-left: 4px solid var(--amber); }
+.train-first.low { border-left-color: var(--red); }
+.train-first:hover { text-decoration: none; border-color: var(--accent); }
+.train-first b { font-size: 1.05em; }
+.age { font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 999px; background: var(--grey-soft); color: var(--muted); font-variant-numeric: tabular-nums; }
+.age.amber { background: var(--amber-soft); color: var(--amber); }
+.age.red { background: var(--red-soft); color: var(--red); }
+.today-row .today-actions { margin-top: 4px; }
+.today-card h2 .small { font-weight: 400; }
