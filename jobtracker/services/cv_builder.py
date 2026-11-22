@@ -256,10 +256,17 @@ def generate_cv(keywords: list[str], company_id: str | None = None, company_name
 
     rel = lambda p: p.relative_to(users.output_dir()).as_posix() if p and p.exists() else None
     document = GeneratedDocument(keywords=cv.keywords, docx=rel(docx_path), pdf=rel(pdf_path))
+    match = None
     if company:
         companies.add_document(company.id, document)
         if not company.keywords:
             companies.update_company(company.id, keywords=cv.keywords)
+        if company.job_description.strip() and document.docx:
+            from . import cv_score
+            try:
+                match = cv_score.for_company(company.id)["match"]
+            except Exception as e:  # the CV is made; a failed score must not hide it
+                warnings.append(f"Match score not computed: {e}")
 
     return {
         "company": name,
@@ -273,6 +280,7 @@ def generate_cv(keywords: list[str], company_id: str | None = None, company_name
         "kept": [b.model_dump() for e in cv.experiences for b in e.bullets],
         "removed": [b.model_dump() for b in cv.removed],
         "unmatched_keywords": cv.unmatched_keywords,
+        "match": match.model_dump() if match else None,   # how much of the job's requirements this CV covers
         "headline": headline,   # title/summary used at the top, and whether it came from a variant or the application
         "warnings": warnings,
     }

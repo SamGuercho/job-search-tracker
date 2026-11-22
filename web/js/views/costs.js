@@ -5,7 +5,7 @@ import { h, mount, usd } from "../ui.js";
 
 const FEATURES = {
   "chat.send": "Assistant messages", "chat.resolve": "Assistant (after an approval)", "cv.import.parse": "CV import",
-  "cv.keywords.match_job": "Job description matching", "workflow.new_application": "New application", "cv.summary.review": "CV summary review",
+  "cv.keywords.match_job": "Job description matching", "cv.match_score": "CV match score", "workflow.new_application": "New application", "cv.summary.review": "CV summary review",
   "cv.variant.draft": "Wording drafts", "recording.transcribe": "Recording transcription", "recording.analyze": "Recording debrief",
   "recording.reanalyze": "Recording debrief (again)", "prep.start": "Interview prep (Codex)", "other": "Other",
 };

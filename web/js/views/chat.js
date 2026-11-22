@@ -9,7 +9,7 @@ const LABELS = {
   "process.add_step": "Added a process step", "process.add_branch": "Added a branch", "process.update_step": "Updated a step",
   "process.set_state": "Updated a step", "process.close": "Closed the application", "process.reopen": "Reopened the application",
   "process.delete_step": "Delete a process step", "process.reset": "Reset the process",
-  "cv.master.get": "Read your master CV", "cv.keywords.match_job": "Matched the job description with your CV",
+  "cv.master.get": "Read your master CV", "cv.keywords.match_job": "Matched the job description with your CV", "cv.match_score": "Scored the CV against the job",
   "cv.generate": "Generated a CV", "cv.preview": "Previewed CV bullets", "job.fetch_url": "Read the job posting",
   "workflow.new_application": "Created the application", "cv.bullet.add": "Add an achievement", "cv.bullet.update": "Update an achievement",
   "cv.variant.add": "Add a wording", "cv.variant.update": "Update a wording", "cv.variant.delete": "Delete a wording",

@@ -130,6 +130,11 @@ requirements your CV doesn't cover listed as gaps. The preview shows which achie
 that best fits the job, so a short job description still gets a full CV; only when it exceeds one page are
 bullets cut, those matching no keyword first, then those repeating covered keywords.
 
+Each generated CV gets a **match score**: the share of the job's requirements written in the Word file
+(required ones count double), next to the most your master CV could reach. The application page lists the
+requirements in this CV, those cut to fit one page, and those your CV doesn't have. **Check again** after
+editing the file or the job description.
+
 ### Master CV
 Your whole career, as **achievements** (one fact each) with keywords. An achievement can have several
 **wordings** (same facts, different keywords); a CV uses at most one wording per achievement, so nothing

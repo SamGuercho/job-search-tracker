@@ -1,6 +1,6 @@
 // Company page: details, follow-up counter, process graph, generated CVs.
 import { call, fileUrl, upload } from "../api.js";
-import { attempt, chatHref, chips, companyLogo, confirmSheet, daysBadge, field, formatDate, h, joinList, mapsUrl, markdown, modal, mount, readForm, toast } from "../ui.js";
+import { attempt, chatHref, chips, companyLogo, confirmSheet, daysBadge, field, formatDate, h, joinList, mapsUrl, markdown, matchPanel, modal, mount, readForm, toast } from "../ui.js";
 import { processCard } from "./process-graph.js";
 import { recordingsCard } from "./recordings.js";
 
@@ -128,7 +128,7 @@ export async function renderCompany(root, id) {
     const text = root.querySelector("[name=job_description]").value;
     if (!text.trim()) return toast("Paste the job description first", true);
     toast("Matching the job description with your CV…");
-    const r = await attempt(() => call("cv.keywords.match_job", { text }));
+    const r = await attempt(() => call("cv.keywords.match_job", { text, company: text === company.job_description ? id : undefined }));
     if (!r) return;
     const found = r.keywords;
     const input = root.querySelector("[name=keywords]");
@@ -247,6 +247,31 @@ export async function renderCompany(root, id) {
       h("span", { class: "small muted" }, company.address || company.location), h("span", { class: "spacer" }),
       h("a", { href: mapsUrl(company), target: "_blank", class: "small" }, "Open in Google Maps ↗")));
 
+  // ------------------------------------------------------------ match score
+  // How much of the job's requirements the latest CV covers; computed when a CV is generated.
+  const matchCard = () => {
+    const doc = company.documents.find((d) => d.kind === "cv" && d.docx);
+    if (!doc || !company.job_description) return null;
+    const rescore = (useAi) => async (e) => {
+      e.target.disabled = true;
+      e.target.textContent = "Checking…";
+      const r = await attempt(() => call("cv.match_score", { company: id, use_ai: useAi }));
+      if (r) Object.assign(company, await call("company.get", { id }));
+      render();
+    };
+    const m = doc.match;
+    return h("div", { class: "card" },
+      h("div", { class: "row" }, h("h2", { style: "margin:0" }, "CV match"), h("span", { class: "spacer" }),
+        h("span", { class: "small muted" }, `CV of ${formatDate(doc.created_at.slice(0, 10))}`)),
+      h("p", { class: "small muted" }, "How much of the job's requirements your latest CV covers, as written in the Word file. Required ones count double."),
+      m ? matchPanel(m) : h("p", { class: "muted" }, "Not scored yet."),
+      h("div", { class: "row", style: "margin-top:8px" },
+        h("button", { class: "small", onclick: rescore(false) }, m ? "Check again" : "Score this CV"),
+        info.llm_available && !m?.ai_used && h("button", { class: "small", title: "Reads the job's requirements with AI: more complete (one AI call, then kept)", onclick: rescore(true) }, "✨ Read requirements with AI"),
+        h("span", { class: "spacer" }),
+        h("a", { class: "btn small", href: `#/cv?company=${id}` }, "Regenerate CV")));
+  };
+
   // -------------------------------------------------------------- documents
   const documents = () => h("div", { class: "card" },
     h("h2", {}, "Generated CVs"),
@@ -254,6 +279,7 @@ export async function renderCompany(root, id) {
       ? company.documents.map((d) => h("div", { class: "row", style: "padding:6px 0; border-top:1px solid var(--border)" },
         h("span", { class: "small muted" }, d.created_at.replace("T", " ")),
         h("span", { class: "spacer" }),
+        d.match && h("span", { class: "chip", title: "Match score when it was last checked" }, `${d.match.score}%`),
         d.docx && h("a", { class: "btn", href: fileUrl(d.docx) }, "Word"),
         d.pdf && h("a", { class: "btn", href: fileUrl(d.pdf), target: "_blank" }, "PDF")))
       : h("p", { class: "muted" }, "No CV generated yet."));
@@ -359,7 +385,7 @@ export async function renderCompany(root, id) {
         recordings,
         h("div", { class: "grid cols-main" },
           h("div", { class: "stack" }, summaryCard(), details()),
-          h("div", { class: "stack" }, followUp(), jobDescription(), documents(), map()))));
+          h("div", { class: "stack" }, followUp(), matchCard(), jobDescription(), documents(), map()))));
   }
   render();
   if ((prep?.run || prep)?.status === "running") poll();

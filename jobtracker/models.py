@@ -26,12 +26,38 @@ class Contact(BaseModel):
     linkedin: str = ""
 
 
+class Requirement(BaseModel):
+    """One requirement of a job description and the terms written in your CV that cover it."""
+    term: str
+    keywords: list[str] = []   # empty = nothing in your master CV covers it
+    required: bool = False
+
+
+class JobMatch(BaseModel):
+    """The job description's requirements, kept so scoring a CV again costs nothing."""
+    text_hash: str              # of the job description they were read from
+    ai_used: bool = False
+    requirements: list[Requirement] = []
+
+
+class MatchScore(BaseModel):
+    """How well a generated CV covers the job's requirements (required ones weigh double)."""
+    score: int                  # % covered by this CV
+    best: int                   # % your master CV could cover (the most a tailored CV can reach)
+    covered: list[Requirement] = []   # written in this CV
+    cut: list[Requirement] = []       # in your master CV, not in this CV (left out to fit one page)
+    missing: list[Requirement] = []   # nothing in your master CV covers it
+    ai_used: bool = False
+    checked_at: str = Field(default_factory=lambda: datetime.now().isoformat(timespec="seconds"))
+
+
 class GeneratedDocument(BaseModel):
     kind: str = "cv"
     created_at: str = Field(default_factory=lambda: datetime.now().isoformat(timespec="seconds"))
     keywords: list[str] = []
     docx: str | None = None
     pdf: str | None = None
+    match: MatchScore | None = None
 
 
 class Company(BaseModel):
@@ -60,6 +86,7 @@ class Company(BaseModel):
     job_description_file: str | None = None   # saved copy in the company folder (relative to the output folder)
     job_description_saved_at: str | None = None
     keywords: list[str] = []
+    job_match: JobMatch | None = None   # requirements read from job_description (see services/cv_score.py)
     cv_summary: str = ""          # tailored CV summary for this application ("" = master CV summary)
     cv_title: str = ""            # the title under your name on this application's CV ("" = its title variant's)
     cv_headline: str = ""         # the title variant pinned for this application ("" = the closest, automatically)

@@ -40,6 +40,7 @@ from .services import (
     companies,
     cv_builder,
     cv_import,
+    cv_score,
     headlines,
     jd_match,
     jobs,
@@ -797,12 +798,27 @@ def cv_keywords_list():
 
 
 @action("cv.keywords.match_job")
-def cv_keywords_match_job(text: str, use_ai: bool = True):
+def cv_keywords_match_job(text: str, use_ai: bool = True, company: Optional[str] = None):
     """Best way to pick CV keywords: match a job description against the master CV. Returns `matches`
     (job requirement -> terms written in your CV that cover it, via exact words, synonym groups and,
     if an OpenAI key is set, AI mapping), `gaps` (requirements nothing in your CV covers) and
-    `keywords` (ready to pass to cv.generate)."""
-    return jd_match.match_job_description(text, use_ai)
+    `keywords` (ready to pass to cv.generate).
+    Give `company` when `text` is that application's job description: the requirements are kept for its
+    match score (cv.match_score)."""
+    result = jd_match.match_job_description(text, use_ai)
+    if company:
+        cv_score.remember(companies.resolve(company).id, text, result)
+    return result
+
+
+@action("cv.match_score")
+def cv_match_score(company: str, use_ai: bool = False):
+    """Match score of the application's latest generated CV: `score` = % of the job's requirements written in
+    that CV (required ones weigh double), `best` = % your master CV covers (the most tailoring can reach), and
+    the requirements `covered`, `cut` (in your master CV but left out of this CV, usually to fit one page) and
+    `missing` (nothing in your CV covers them: don't claim them). use_ai=true reads the requirements with AI
+    (better, costs a call; then kept). Computed automatically each time a CV is generated."""
+    return cv_score.for_company(company, use_ai)
 
 
 @action("cv.keywords.suggest")
@@ -921,6 +937,8 @@ def workflow_new_application(name: str, job_description: str = "", position: str
         company = companies.update_company(company.id, **given)
     else:
         company = companies.create_company(name=name, **{**details, "contact": contact or Contact()})
+    if match:
+        cv_score.remember(company.id, job_description, match)
     result = {"company": company.view(), "keywords": merged}
     if match:
         result["covered"] = [{"requirement": m.jd_term, "cv_terms": m.keywords} for m in match["matches"]]

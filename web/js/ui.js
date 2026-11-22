@@ -136,6 +136,25 @@ export function chips(items, cls = "") {
   return h("div", { class: "chips" }, (items || []).map((i) => h("span", { class: `chip ${cls}`, title: i }, i)));
 }
 
+// Match score of a generated CV (see services/cv_score.py): the score, the most tailoring can reach, and
+// the job's requirements this CV covers, left out (in the master CV, cut to fit one page) or doesn't have.
+export function matchPanel(m) {
+  if (!m) return null;
+  const level = m.score >= 70 ? "offer" : m.score >= 45 ? "in-process" : "rejected";
+  const terms = (rs) => rs.map((r) => (r.required ? `${r.term} (required)` : r.term));
+  return h("div", { class: "match stack-tight" },
+    h("div", { class: "row" },
+      h("span", { class: `pill match-score ${level}` }, `${m.score}% match`),
+      h("span", { class: "small muted" }, m.best > m.score
+        ? `Your master CV could reach ${m.best}%`
+        : m.best < 100 ? "As high as your master CV allows" : "Covers every requirement found"),
+      h("span", { class: "spacer" }),
+      h("span", { class: "small muted", title: "Requirements read with AI are more complete" }, m.ai_used ? "Requirements read with AI" : "Requirements from your keywords")),
+    m.covered.length > 0 && h("div", {}, h("div", { class: "small muted" }, `In this CV (${m.covered.length})`), chips(terms(m.covered), "ok")),
+    m.cut.length > 0 && h("div", {}, h("div", { class: "small muted" }, `In your master CV, not in this one (${m.cut.length}): pin or shorten bullets to bring them back`), chips(terms(m.cut), "warn")),
+    m.missing.length > 0 && h("div", {}, h("div", { class: "small muted" }, `Not in your CV (${m.missing.length}): don't claim it`), chips(terms(m.missing), "bad")));
+}
+
 export function statusPill(status, stage) {
   const pill = h("span", { class: `pill ${status.toLowerCase().replace(/[^a-z]+/g, "-")}` }, status);
   return stage && stage !== status ? h("span", { class: "stack-tight" }, pill, h("div", { class: "small muted" }, stage)) : pill;
