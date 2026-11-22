@@ -544,3 +544,14 @@ body.is-offline main { padding-top: 8px; }
 .age.red { background: var(--red-soft); color: var(--red); }
 .today-row .today-actions { margin-top: 4px; }
 .today-card h2 .small { font-weight: 400; }
+
+/* Today: referrals on "To apply" */
+.group-label { padding: 10px 0 2px; border-top: 1px solid var(--border); text-transform: uppercase; letter-spacing: .04em; font-size: 11px; }
+.today-card h2 + .group-label { border-top: 0; padding-top: 0; }
+.group-label + .today-row { border-top: 0; }
+.referral.remind b, .referral.to_ask b { color: var(--accent); }
+
+/* Header: profile next to the bell */
+.topbar .profile-link { margin-left: auto; order: 3; font-size: 17px; text-decoration: none; padding: 6px 8px; border-radius: 8px; line-height: 1; }
+.topbar .profile-link + .bell { margin-left: -20px; }
+.topbar .profile-link.active { background: var(--accent-soft); }

@@ -47,6 +47,7 @@ from .services import (
     master_cv,
     practice,
     prep,
+    profile,
     push,
     recordings,
     rules,
@@ -68,7 +69,7 @@ def partial(model: type[BaseModel], exclude: set[str] = frozenset()) -> type[Bas
 CompanyPatch = partial(Company, exclude={"id", "status", "process", "documents", "created_at", "cv_summary", "cv_title",
                                          "cv_headline",
                                          "job_description_file", "job_description_saved_at", "logo_file", "logo_source",
-                                         "logo_checked_at"})
+                                         "logo_checked_at", "referral_asked_at"})
 StepPatch = partial(Node, exclude={"id"})
 ProfilePatch = partial(Profile)
 ExperiencePatch = partial(Experience, exclude={"id", "bullets"})
@@ -603,6 +604,34 @@ def cv_headline_for_application(company: str):
 def company_set_cv_headline(company: str, headline_id: str = ""):
     """Use this title variant for this application's CVs ("" = the closest one, picked automatically)."""
     return headlines.pin(company, headline_id)
+
+
+@action("profile.get")
+def profile_get():
+    """The user: name, the first name Today greets them with, LinkedIn profile URL, email."""
+    return profile.get()
+
+
+@action("profile.update")
+def profile_update(name: Optional[str] = None, preferred_name: Optional[str] = None, linkedin: Optional[str] = None):
+    """Change the user's name or LinkedIn URL (the master CV header's) or the first name used for greetings."""
+    return profile.update(name, preferred_name, linkedin)
+
+
+@action("company.referral")
+def company_referral(company: str, referee: Optional[str] = None, asked: bool = True):
+    """Referral tracking for an application: set who refers you (`referee`), and/or record that you asked or
+    reminded them today (asked=true; Today suggests a reminder 3 days later while you haven't applied).
+    asked=false clears it."""
+    c = companies.resolve(company)
+    fields = {"referee": " ".join(referee.split())} if referee is not None else {}
+    if asked and not (fields.get("referee") or c.referee):
+        raise ValueError("Add the referee's name first")
+    fields["referral_asked_at"] = companies.today() if asked else None
+    c = companies.update_company(c.id, **fields)
+    if asked:
+        companies.log_update(c.id, by="me", note=f"Asked {c.referee} for a referral")
+    return companies.get_company(c.id).view()
 
 
 @action("cv.profile.update", confirm=True)

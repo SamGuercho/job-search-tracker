@@ -1,7 +1,9 @@
 """The coaching rules behind Today (and the follow-up notification).
 
 - To apply: every application not applied yet, oldest first. Open positions fill fast: the age turns amber
-  after APPLY_AMBER days and red after APPLY_RED; after APPLY_STALE days, "still interested?".
+  after APPLY_AMBER days and red after APPLY_RED; after APPLY_STALE days, "still interested?". A referral
+  multiplies the chances: with a referee, ask them (then remind them after REFERRAL_REMIND days); without one,
+  look for one on LinkedIn before applying.
 - Silence depends on the stage (usual hiring timing):
     Applied, no reply: follow up after APPLIED_FOLLOW_UP days when there's someone to write to (a contact or a
     referee); "probably no answer" APPLIED_NO_ANSWER days after applying (most replies come within 2 weeks).
@@ -25,6 +27,7 @@ APPLY_AMBER, APPLY_RED, APPLY_STALE = 3, 7, 21
 APPLIED_FOLLOW_UP, APPLIED_NO_ANSWER = 7, 30
 INTERVIEW_FOLLOW_UP, INTERVIEW_NO_ANSWER = 7, 21
 SNOOZE_DAYS = 14
+REFERRAL_REMIND = 3            # days after asking the referee, while you haven't applied
 READY = 80                     # readiness from which an interview no longer needs "train first"
 GOOD_SCORE = 7
 INTERVIEW_TYPES = {"hr", "technical", "interview"}
@@ -78,7 +81,10 @@ def to_apply(apps: list[Company], today: date | None = None) -> list[dict]:
             continue
         age = _since(c.created_at, today) or 0
         step = applied_step(c)
-        out.append({**_base(c), "age": age,
+        asked = _since(c.referral_asked_at, today) if c.referral_asked_at else None
+        referral = ("none" if not c.referee.strip() else "to_ask" if asked is None
+                    else "remind" if asked >= REFERRAL_REMIND else "asked")
+        out.append({**_base(c), "age": age, "referee": c.referee.strip(), "referral": referral, "asked_days": asked,
                     "level": "red" if age >= APPLY_RED else "amber" if age >= APPLY_AMBER else "new",
                     "stale": age >= APPLY_STALE and not snoozed(c, today),
                     "cv_ready": bool(c.documents), "applied_step_id": step.id if step else None,

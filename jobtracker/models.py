@@ -65,6 +65,7 @@ class Company(BaseModel):
     cv_headline: str = ""         # the title variant pinned for this application ("" = the closest, automatically)
     last_update: str = Field(default_factory=today)
     last_update_by: UpdateSide = "me"
+    referral_asked_at: str | None = None   # when you last asked the referee to refer you (Today reminds you after 3 days)
     snooze_until: str | None = None   # Today's nudges (follow-up, no answer, still interested?) hidden until this date
     process: Process = Field(default_factory=default_process)
     documents: list[GeneratedDocument] = []
@@ -152,6 +153,11 @@ class SkillGroup(BaseModel):
     id: str = Field(default_factory=new_id)
     name: str
     items: list[str] = []
+
+
+class UserProfile(BaseModel):
+    """Settings about the person (services/profile.py); name and LinkedIn stay on the master CV profile."""
+    preferred_name: str = ""     # how Today greets you ("" = the first word of your name)
 
 
 class Profile(BaseModel):

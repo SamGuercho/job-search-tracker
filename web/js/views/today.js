@@ -2,7 +2,7 @@
 // interviews (with readiness), interviews to debrief, applications to send (positions fill fast), follow-ups and
 // "probably no answer", then what's waiting, what came back and what to review. The rules are in services/rules.py.
 import { call } from "../api.js";
-import { addToCalendar, attempt, chatHref, companyLogo, h, mount } from "../ui.js";
+import { addToCalendar, attempt, chatHref, companyLogo, h, mount, promptSheet } from "../ui.js";
 
 const chat = (q) => chatHref(q);
 const DISMISSED_KEY = "today-dismissed";  // debrief prompts closed on this device (they expire after 3 days anyway)
@@ -102,10 +102,39 @@ export async function renderToday(root) {
         ? h("div", { class: "row today-actions" }, h("span", { class: "small" }, `Added ${a.age} days ago. Still interested?`),
           h("button", { class: "small", onclick: () => drop(a) }, "Drop it"),
           h("button", { class: "small", onclick: () => snooze(a, "Kept: asked again in 2 weeks") }, "Keep"))
-        : h("div", { class: "row today-actions" },
+        : [referral(a), h("div", { class: "row today-actions" },
           !a.cv_ready && h("a", { class: "btn small", href: chat(`Make my CV for ${a.company}${a.position ? ` (${a.position})` : ""}.`) }, "Make CV"),
-          a.applied_step_id && h("button", { class: `small ${a.cv_ready ? "primary" : ""}`, onclick: () => markApplied(a) }, "✓ Applied"))),
+          a.applied_step_id && h("button", { class: `small ${a.cv_ready ? "primary" : ""}`, onclick: () => markApplied(a) }, "✓ Applied"))]),
     h("span", { class: `age ${a.level}`, title: "Days since you added it: positions fill fast" }, `${a.age}d`));
+
+  // A referral multiplies the chances: ask the referee (then remind them), or find one on LinkedIn first
+  const myLinkedin = t.me?.linkedin ? ` My LinkedIn: ${t.me.linkedin}.` : "";
+  const role = (a) => `the ${a.position || "open"} role at ${a.company}${a.job_url ? ` (${a.job_url})` : ""}`;
+  const peopleSearch = (a) => `https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent(a.company)}&network=%5B%22F%22%2C%22S%22%5D`;
+  const referral = (a) => {
+    if (a.referral === "none") {
+      return h("div", { class: "row today-actions referral none" },
+        h("span", { class: "small muted" }, "No referee yet"),
+        h("a", { class: "btn small", href: peopleSearch(a), target: "_blank", rel: "noopener", title: "Your 1st and 2nd-degree connections there" }, "Find one on LinkedIn ↗"),
+        h("button", { class: "small", onclick: () => setReferee(a) }, "+ Referee"));
+    }
+    const ask = chat(`Draft a short, warm LinkedIn message to ${a.referee} asking if they'd refer me for ${role(a)}. Say in one line why I fit, from my CV.${myLinkedin}`);
+    const remind = chat(`Draft a short, friendly reminder to ${a.referee} about the referral I asked ${a.asked_days} days ago for ${role(a)}.${myLinkedin}`);
+    return h("div", { class: `row today-actions referral ${a.referral}` },
+      h("span", { class: "small" }, "🤝 ", h("b", { dir: "auto" }, a.referee),
+        a.referral === "to_ask" ? " · not asked yet" : ` · asked ${a.asked_days === 0 ? "today" : `${a.asked_days}d ago`}${a.referral === "remind" ? ": remind them" : ""}`),
+      a.referral === "to_ask" && h("a", { class: "btn small primary", href: ask }, `Message ${a.referee.split(" ")[0]}`),
+      a.referral === "to_ask" && h("button", { class: "small", onclick: () => asked(a, `Asked ${a.referee}: reminder in 3 days`) }, "✓ Asked"),
+      a.referral === "remind" && h("a", { class: "btn small primary", href: remind }, "Remind"),
+      a.referral === "remind" && h("button", { class: "small", onclick: () => asked(a, `Reminded ${a.referee}`) }, "✓ Reminded"));
+  };
+  const setReferee = async (a) => {
+    const name = await promptSheet("Who can refer you there? Today will remind you to ask them.", "", { title: `Referee at ${a.company}`, ok: "Save", placeholder: "e.g. Dana Levi" });
+    if (name?.trim() && await attempt(() => call("company.referral", { company: a.company_id, referee: name, asked: false }), `${name.trim()} added`)) reload();
+  };
+  const asked = async (a, msg) => {
+    if (await attempt(() => call("company.referral", { company: a.company_id, asked: true }), msg)) reload();
+  };
 
   const markApplied = async (a) => {
     if (await attempt(() => call("process.set_state", { company: a.company_id, step: a.applied_step_id, state: "done" }), `${a.company}: applied`)) reload();
@@ -163,10 +192,12 @@ export async function renderToday(root) {
     && !t.waiting.length && !t.recent.length && !t.practice.to_review.length;
   const date = new Date(`${t.date}T00:00:00`).toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" });
   const urgentApply = t.to_apply.filter((a) => a.level !== "new").length;
+  const withReferee = t.to_apply.filter((a) => a.referee);
+  const noReferee = t.to_apply.filter((a) => !a.referee);
 
   mount(root,
     h("div", { class: "page-head" },
-      h("div", {}, h("h1", {}, greeting()), h("div", { class: "sub muted" }, date))),
+      h("div", {}, h("h1", { dir: "auto" }, greeting() + (t.me?.first_name ? `, ${t.me.first_name}` : "")), h("div", { class: "sub muted" }, date))),
     (t.server || []).length > 0 && h("div", { class: "card server-warning", role: "status" },
       h("b", {}, "Server"), (t.server || []).map((w) => h("p", { class: "small" }, w))),
     h("div", { class: "today-stats" },
@@ -184,7 +215,11 @@ export async function renderToday(root) {
       h("div", { class: "stack" },
         card("Next interviews", t.interviews.map(interview)),
         card("How did it go?", debriefs),
-        card("To apply", t.to_apply.map(toApply), null, "oldest first: positions fill fast")),
+        card("To apply", [
+          withReferee.length > 0 && noReferee.length > 0 && h("div", { class: "group-label small muted" }, "With a referee"),
+          withReferee.map(toApply),
+          withReferee.length > 0 && noReferee.length > 0 && h("div", { class: "group-label small muted" }, "No referee yet: find one before applying"),
+          noReferee.map(toApply)].flat(), null, "oldest first: positions fill fast")),
       h("div", { class: "stack" },
         card("Follow-ups due", t.follow_ups.map(followUp)),
         card("Probably no answer", t.no_answer.map(noAnswer), null, "nothing closes by itself"),

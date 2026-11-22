@@ -12,7 +12,7 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta
 
 from .. import maintenance
-from . import calendar, companies, practice, prep, recordings, rules
+from . import calendar, companies, practice, prep, profile, recordings, rules
 
 RECENT_DAYS = 3
 
@@ -31,7 +31,7 @@ def summary(days_ahead: int = 14) -> dict:
     horizon = (today + timedelta(days=days_ahead)).isoformat()
     apps = companies.list_companies()
     attempts = practice.store.load().attempts
-    profile = practice.profile()
+    training = practice.profile()
 
     interviews = []
     for c, n in calendar.upcoming(days_back=0):
@@ -46,7 +46,7 @@ def summary(days_ahead: int = 14) -> dict:
             "date": n.date[:10], "time": n.time, "duration_min": n.duration_min, "location": n.location,
             "days": (date.fromisoformat(n.date[:10]) - today).days, "prep": _prep_state(c.id),
             "practice_answers": len(scores), "practice_average": round(sum(scores) / len(scores), 1) if scores else None,
-            "type": n.type(), "readiness": rules.readiness(c.id, attempts, exercises, profile["needs_work"]),
+            "type": n.type(), "readiness": rules.readiness(c.id, attempts, exercises, training["needs_work"]),
         })
     silence = rules.nudges(apps, today)
 
@@ -78,6 +78,7 @@ def summary(days_ahead: int = 14) -> dict:
                             if n.state == "done" and n.type() == "applied" and (n.date or "")[:10] >= week_start)
     return {
         "date": today.isoformat(),
+        "me": {k: v for k, v in profile.get().items() if k in ("first_name", "linkedin")},
         "server": maintenance.warnings(),   # owner only: backup missing/failed/old, unreadable data
         "interviews": interviews,
         "train_first": rules.train_first(interviews),
@@ -88,8 +89,8 @@ def summary(days_ahead: int = 14) -> dict:
         "waiting": waiting,
         "recent": recent[:6],
         "practice": {
-            "to_review": profile["to_review"][:3],
-            "needs_work": profile["needs_work"],
+            "to_review": training["to_review"][:3],
+            "needs_work": training["needs_work"],
             "answers_this_week": sum(1 for a in attempts if a.at[:10] >= week_start),
         },
         "week": {"applied": applied_this_week, "interviews_next_7_days": sum(1 for i in interviews if i["days"] <= 7),

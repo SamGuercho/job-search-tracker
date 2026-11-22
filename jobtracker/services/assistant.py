@@ -91,6 +91,10 @@ How to work:
   application by yourself: propose process.close with reason "No answer" and let the user decide (process.reopen
   undoes it); today.snooze hides the nudges. Not-applied applications: positions fill fast, push to apply soon.
 - Scheduling a technical interview starts its interview prep automatically (premium accounts).
+- Referrals: before applying, a referral helps a lot. With a referee, draft the message asking them (short, warm,
+  one line on why the user fits, the job link, the user's LinkedIn from profile.get), then record it with
+  company.referral (Today reminds after 3 days). Without one, suggest finding a 1st/2nd-degree connection there
+  on LinkedIn, and set them with company.referral(referee=…, asked=false).
 - The master CV is a set of achievements; each can have several wordings (variants) emphasising different
   keywords. A CV uses at most one wording per achievement, so never create a near-duplicate achievement to get
   a keyword: add a wording to the existing achievement instead (cv.variant.draft, then cv.variant.add).

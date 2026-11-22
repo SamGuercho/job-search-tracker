@@ -8,6 +8,7 @@ import { renderAnalytics } from "./views/analytics.js";
 import { renderPractice } from "./views/practice.js";
 import { renderCosts } from "./views/costs.js";
 import { renderToday } from "./views/today.js";
+import { renderProfile } from "./views/profile.js";
 import { bookmarklet, renderClip } from "./views/clip.js";
 import { call, lastOfflineSave, saveForOffline } from "./api.js";
 import { attempt, h, modal, mount, toast } from "./ui.js";
@@ -23,6 +24,7 @@ const routes = [
   { pattern: /^\/analytics$/, nav: "analytics", view: () => renderAnalytics },
   { pattern: /^\/practice$/, nav: "practice", view: () => renderPractice },
   { pattern: /^\/costs$/, nav: "costs", view: () => renderCosts },
+  { pattern: /^\/profile$/, nav: "profile", view: () => renderProfile },
 ];
 
 async function route() {
@@ -56,7 +58,8 @@ const versionLine = () => {
 // Phones: "More" in the tab bar lists the pages that have no tab
 document.querySelector(".tab-more")?.addEventListener("click", () => {
   const pages = [["#/cv", "CV builder", "A tailored CV for an application"], ["#/cv/master", "Master CV", "Your achievements and their wordings"],
-    ["#/analytics", "Analytics", "How your search is going"], ["#/costs", "Costs", "What the AI features cost"]];
+    ["#/analytics", "Analytics", "How your search is going"], ["#/costs", "Costs", "What the AI features cost"],
+    ["#/profile", "Profile", "Your name and LinkedIn"]];
   const close = modal("More", h("div", {}, h("div", { class: "more-list" }, pages.map(([href, label, note]) =>
     h("a", { href, onclick: () => close() }, h("b", {}, label), h("span", { class: "small muted" }, note))),
     h("a", { href: `webcal://${location.host}/api/calendar/interviews.ics`, onclick: () => close() },
