@@ -12,6 +12,7 @@ export async function renderCompany(root, id) {
   let prepLanguage = (await call("profile.get").catch(() => null))?.interview_language || "English";
   const recordings = recordingsCard(company, info);
   let review = null;   // last AI review of the summary, kept across re-renders
+  let network = await call("linkedin.contacts", { company: id }).catch(() => null);  // LinkedIn contacts there
 
   const save = async (fields, msg = "Saved") => {
     const updated = await attempt(() => call("company.update", { id, fields }), msg);
@@ -247,6 +248,42 @@ export async function renderCompany(root, id) {
       h("span", { class: "small muted" }, company.address || company.location), h("span", { class: "spacer" }),
       h("a", { href: mapsUrl(company), target: "_blank", class: "small" }, "Open in Google Maps ↗")));
 
+  // ---------------------------------------------------------------- network
+  // People you know there (LinkedIn export, see services/linkedin.py): who could refer you, or introduce you.
+  const networkCard = () => {
+    if (!network) return null;
+    const role = `the ${company.position || "open"} role at ${company.name}${company.job_url ? ` (${company.job_url})` : ""}`;
+    const makeReferee = async (person) => {
+      const r = await attempt(() => call("company.referral", { company: id, referee: person.name, asked: false }), `${person.name} is your referee here`);
+      if (r) { Object.assign(company, r); render(); }
+    };
+    const shown = network.contacts.slice(0, 8);
+    const person = (p) => h("div", { class: "contact-row stack-tight" },
+      h("div", { class: "row" },
+        h("a", { href: p.url, target: "_blank", rel: "noopener", dir: "auto" }, h("b", {}, p.name), " ↗"),
+        p.recruiter && h("span", { class: "chip on" }, "Recruiting"),
+        p.close_role && !p.recruiter && h("span", { class: "chip ok" }, "Close role"),
+        company.referee === p.name && h("span", { class: "chip ok" }, "Your referee")),
+      h("div", { class: "small muted", dir: "auto" }, [p.position, p.connected_on && `connected ${p.connected_on.slice(0, 4)}`].filter(Boolean).join(" · ")),
+      h("div", { class: "row" },
+        company.referee !== p.name && h("button", { class: "small", title: "Set as this application's referee: Today reminds you to ask, then to follow up", onclick: () => makeReferee(p) }, "Ask them"),
+        h("a", { class: "btn small", href: chatHref(`Draft a short, warm LinkedIn message to ${p.name} (${p.position || "works"} at ${company.name}) asking if they'd refer me for ${role}. Say in one line why I fit, from my CV.`) }, "Draft message")));
+    const links = h("div", { class: "row" },
+      h("a", { class: "btn small", href: network.search.second_degree, target: "_blank", rel: "noopener", title: "People there one of your contacts knows: ask that contact to introduce you" }, "2nd-degree there ↗"),
+      h("a", { class: "btn small", href: network.search.first_degree, target: "_blank", rel: "noopener", title: "Also finds contacts who joined since your last import" }, "1st-degree there ↗"),
+      h("a", { class: "btn small", href: network.search.recruiters, target: "_blank", rel: "noopener" }, "Recruiters ↗"));
+    return h("div", { class: "card" },
+      h("h2", {}, "People you know there"),
+      !network.imported
+        ? h("p", { class: "small muted" }, "Import your LinkedIn contacts to see who you know here: ", h("a", { href: "#/profile" }, "Profile → Update my LinkedIn contacts"), ".")
+        : network.contacts.length
+          ? [h("p", { class: "small muted" }, `From your LinkedIn contacts (imported ${formatDate(network.contacts_imported_at.slice(0, 10))}). A referral multiplies your chances.`),
+            h("div", { class: "stack-tight" }, shown.map(person)),
+            network.contacts.length > shown.length && h("p", { class: "small muted" }, `+${network.contacts.length - shown.length} more: ask the assistant.`)]
+          : h("p", { class: "small muted" }, "None of your LinkedIn contacts worked here at your last import. Someone you know may know someone:"),
+      h("div", { style: "margin-top:10px" }, links));
+  };
+
   // ------------------------------------------------------------ match score
   // How much of the job's requirements the latest CV covers; computed when a CV is generated.
   const matchCard = () => {
@@ -385,7 +422,7 @@ export async function renderCompany(root, id) {
         recordings,
         h("div", { class: "grid cols-main" },
           h("div", { class: "stack" }, summaryCard(), details()),
-          h("div", { class: "stack" }, followUp(), matchCard(), jobDescription(), documents(), map()))));
+          h("div", { class: "stack" }, followUp(), networkCard(), matchCard(), jobDescription(), documents(), map()))));
   }
   render();
   if ((prep?.run || prep)?.status === "running") poll();

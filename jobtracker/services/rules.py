@@ -76,11 +76,13 @@ def _base(c: Company) -> dict:
 def to_apply(apps: list[Company], today: date | None = None) -> list[dict]:
     from . import profile
     today = today or date.today()
+    from . import linkedin
     wanted = profile.settings()
     out = []
     for c in apps:
         if c.status != "Not applied":
             continue
+        known = linkedin.contacts_at(c.name, c.position) if not c.referee.strip() else []
         age = _since(c.created_at, today) or 0
         step = applied_step(c)
         asked = _since(c.referral_asked_at, today) if c.referral_asked_at else None
@@ -90,7 +92,10 @@ def to_apply(apps: list[Company], today: date | None = None) -> list[dict]:
                     "level": "red" if age >= APPLY_RED else "amber" if age >= APPLY_AMBER else "new",
                     "stale": age >= APPLY_STALE and not snoozed(c, today),
                     "cv_ready": bool(c.documents), "applied_step_id": step.id if step else None,
-                    "job_url": c.job_url, "fit": profile.fit(c, wanted)})
+                    "job_url": c.job_url, "fit": profile.fit(c, wanted),
+                    # LinkedIn contacts there (when no referee yet): who could refer you
+                    "contacts": [{k: p[k] for k in ("name", "position", "url")} for p in known[:3]],
+                    "contacts_count": len(known)})
     return sorted(out, key=lambda x: -x["age"])
 
 

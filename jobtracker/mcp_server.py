@@ -35,6 +35,7 @@ READ_ONLY = {
     "practice.profile", "practice.history", "practice.capabilities",
     "recording.list", "recording.get", "recording.transcript", "usage.report", "usage.averages",
     "calendar.event", "calendar.upcoming", "today.get",
+    "linkedin.status", "linkedin.contacts", "linkedin.find", "linkedin.profile", "linkedin.check",
 }
 OPEN_WORLD = {"job.fetch_url"}  # reaches outside the app
 

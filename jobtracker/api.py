@@ -23,7 +23,7 @@ from . import (
     registry,
     users,
 )
-from .services import calendar, llm, logos, pdf, recordings, reminders
+from .services import calendar, linkedin, llm, logos, pdf, recordings, reminders
 from .services.companies import NotFound
 from .services.cv_import import SUPPORTED
 from .services.llm import LLMUnavailable
@@ -199,6 +199,16 @@ async def import_cv_file(file: UploadFile = File(...)):
     target = uploads / name
     target.write_bytes(await file.read())
     return run_action("cv.import.parse", {"file_path": str(target)})
+
+
+@app.post("/api/linkedin/import")
+async def import_linkedin(file: UploadFile = File(...)):
+    """Upload LinkedIn's data export (zip or Connections.csv): read in memory, only the needed fields are kept."""
+    try:
+        name = Path(file.filename or "export.zip").name
+        return {"ok": True, "result": await run_in_threadpool(linkedin.import_export, name, file.file)}
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
 
 
 @app.get("/files/{path:path}")

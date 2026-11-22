@@ -129,6 +129,14 @@ export async function renderToday(root) {
   const role = (a) => `the ${a.position || "open"} role at ${a.company}${a.job_url ? ` (${a.job_url})` : ""}`;
   const peopleSearch = (a) => `https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent(a.company)}&network=%5B%22F%22%2C%22S%22%5D`;
   const referral = (a) => {
+    if (a.referral === "none" && a.contacts_count) {
+      const p = a.contacts[0];
+      return h("div", { class: "row today-actions referral none" },
+        h("span", { class: "small", dir: "auto" }, "🤝 You know ", h("a", { href: p.url, target: "_blank", rel: "noopener" }, h("b", {}, p.name)),
+          p.position ? ` (${p.position})` : "", a.contacts_count > 1 ? ` and ${a.contacts_count - 1} more` : "", " there"),
+        h("button", { class: "small primary", onclick: () => makeReferee(a, p.name) }, `Ask ${p.name.split(" ")[0]}`),
+        a.contacts_count > 1 && h("a", { class: "btn small", href: `#/company/${a.company_id}` }, "See all"));
+    }
     if (a.referral === "none") {
       return h("div", { class: "row today-actions referral none" },
         h("span", { class: "small muted" }, "No referee yet"),
@@ -148,6 +156,9 @@ export async function renderToday(root) {
   const setReferee = async (a) => {
     const name = await promptSheet("Who can refer you there? Today will remind you to ask them.", "", { title: `Referee at ${a.company}`, ok: "Save", placeholder: "e.g. Dana Levi" });
     if (name?.trim() && await attempt(() => call("company.referral", { company: a.company_id, referee: name, asked: false }), `${name.trim()} added`)) reload();
+  };
+  const makeReferee = async (a, name) => {
+    if (await attempt(() => call("company.referral", { company: a.company_id, referee: name, asked: false }), `${name} added as your referee`)) reload();
   };
   const asked = async (a, msg) => {
     if (await attempt(() => call("company.referral", { company: a.company_id, asked: true }), msg)) reload();

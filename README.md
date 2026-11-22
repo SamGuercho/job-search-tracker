@@ -166,6 +166,17 @@ The app opens on **Today**: your next interviews (time, place or call link, prep
 score, 📅), what is waiting for you (a recording to finish, a prep being written), follow-ups due (one tap to log
 them), what came back (preps, debriefs), and what to review.
 
+### LinkedIn contacts and profile
+LinkedIn gives no app access to your network, so Ezri uses your own **LinkedIn data export**. On **Profile →
+Update my LinkedIn contacts**: request your data on LinkedIn (Connections, Profile, Positions, Education,
+Skills), download the zip it emails you, and upload it. Only names, companies, positions, links and your
+profile are kept; the zip itself isn't stored. Do it again every few weeks.
+- Each application shows **the people you know there** (recruiters and close roles first): set one as your
+  referee, draft the message, or open LinkedIn searches for your 2nd-degree contacts there (someone can
+  introduce you). Today names them on applications without a referee.
+- **Check LinkedIn vs my CV** lists what differs: roles or schools on one side only, dates, job titles, CV skills
+  missing from LinkedIn, the headline. The assistant can give you the exact text to paste on LinkedIn.
+
 ### Adding a job from a link
 Ezri reads job links through the job boards' official public APIs when it can (Greenhouse, Lever, Ashby,
 SmartRecruiters, including Greenhouse jobs shown on a company's own site once Ezri knows its account), else

@@ -1,14 +1,14 @@
 // Profile: who you are for the app and what you're looking for. Name and LinkedIn are your master CV's (one place,
 // also on your CV header). The rest is used: greetings, referral messages, warnings on jobs that don't fit,
 // the default salary of new applications, the default language of preps, and weekly goals on Today.
-import { call } from "../api.js";
-import { attempt, field, h, joinList, mount, splitList } from "../ui.js";
+import { call, upload } from "../api.js";
+import { attempt, chatHref, field, formatDate, h, joinList, mount, splitList, toast } from "../ui.js";
 
 const WORK_MODELS = ["On-site", "Hybrid", "Remote"];
 const LANGUAGES = [["English", "English"], ["Hebrew", "Hebrew · עברית"], ["French", "French"]];
 
 export async function renderProfile(root) {
-  const p = await call("profile.get");
+  const [p, li] = await Promise.all([call("profile.get"), call("linkedin.status")]);
   const input = (value, attrs = {}) => h("input", { value: value ?? "", dir: "auto", ...attrs });
 
   const name = input(p.name, { autocomplete: "name" });
@@ -51,6 +51,7 @@ export async function renderProfile(root) {
       h("div", { class: "form-grid" }, field("Your name", name), field("First name for greetings", first), field("LinkedIn profile", linkedin, "wide")),
       h("p", { class: "small muted" }, "Your LinkedIn goes into the referral messages the assistant drafts. ",
         p.linkedin && h("a", { href: p.linkedin, target: "_blank", rel: "noopener" }, "Open your profile ↗"))),
+      linkedinSection(li, section, () => renderProfile(root)),
       section("What you're looking for", "Jobs outside it get a warning on Today, and the assistant points it out. Separate several with commas.",
         h("div", { class: "form-grid" },
           field("Target roles", roles, "wide"), field("Seniority", seniority), field("Max commute (min)", commute),
@@ -63,4 +64,51 @@ export async function renderProfile(root) {
       section("Weekly goals", "Shown on Today as this week's progress (weeks start on Monday).",
         h("div", { class: "form-grid" }, field("Applications per week", goalApps), field("Practice answers per week", goalPractice))),
       h("div", { class: "row" }, h("span", { class: "spacer" }), h("button", { class: "primary", onclick: save }, "Save"))));
+}
+
+// LinkedIn: no API gives your network, so the contacts come from LinkedIn's own data export, uploaded here.
+function linkedinSection(li, section, refresh) {
+  const when = (iso) => (iso ? formatDate(iso.slice(0, 10)) : "");
+  const fileInput = h("input", { type: "file", accept: ".zip,.csv", style: "display:none" });
+  const button = h("button", { class: "primary", onclick: () => fileInput.click() }, li.contacts ? "Update my LinkedIn contacts" : "Import my LinkedIn contacts");
+  fileInput.addEventListener("change", async () => {
+    const file = fileInput.files[0];
+    if (!file) return;
+    button.disabled = true;
+    button.textContent = "Importing…";
+    const r = await attempt(() => upload("/api/linkedin/import", file));
+    if (r) { toast(`${r.contacts} contacts${r.profile ? " and your profile" : ""} imported`); refresh(); }
+    else { button.disabled = false; button.textContent = "Update my LinkedIn contacts"; }
+  });
+  const result = h("div");
+  const check = async (e) => {
+    e.target.disabled = true;
+    const r = await attempt(() => call("linkedin.check"));
+    e.target.disabled = false;
+    if (!r) return;
+    const row = (i) => h("div", { class: "issue" },
+      h("div", { class: "small" }, h("b", { style: `color:var(${i.severity === "fix" ? "--amber" : "--muted"})` }, i.severity === "fix" ? "To fix · " : "Info · "), i.message),
+      (i.cv || i.linkedin) && h("div", { class: "vs small" },
+        i.cv && [h("span", { class: "muted" }, "CV"), h("span", { dir: "auto" }, i.cv)],
+        i.linkedin && [h("span", { class: "muted" }, "LinkedIn"), h("span", { dir: "auto" }, i.linkedin)]));
+    mount(result, h("div", { class: "stack-tight" },
+      h("div", { class: "row" },
+        h("b", {}, r.issues.length ? `${r.fix} to fix, ${r.issues.length - r.fix} to look at` : "Your LinkedIn and your CV agree ✓"),
+        h("span", { class: "spacer" }),
+        r.issues.length > 0 && h("a", { class: "btn small", href: chatHref("Run linkedin.check and help me fix the differences between my LinkedIn and my master CV: for each one, tell me which side looks right and give me the exact text to paste on LinkedIn.") }, "Fix with the assistant")),
+      r.issues.map(row)));
+  };
+  return section("LinkedIn",
+    "LinkedIn gives no app access to your network, so Ezri uses your own LinkedIn data export. Only names, companies, positions, links and your profile are kept; the zip itself isn't stored.",
+    h("div", { class: "small" }, li.contacts
+      ? `${li.contacts} contacts, imported ${when(li.contacts_imported_at)}${li.profile ? ` · profile imported ${when(li.profile_imported_at)}` : " · no profile yet"}.`
+      : "Not imported yet: applications will then show who you know there, to ask for a referral."),
+    h("ol", { class: "small muted", style: "margin:0; padding-left:18px" },
+      h("li", {}, h("a", { href: li.export_url, target: "_blank", rel: "noopener" }, "Request your data on LinkedIn ↗"),
+        ": pick ", h("b", {}, "Connections"), ", ", h("b", {}, "Profile"), ", ", h("b", {}, "Positions"), ", ", h("b", {}, "Education"), " and ", h("b", {}, "Skills"), "."),
+      h("li", {}, "LinkedIn emails you a link within about 10 minutes: download the zip."),
+      h("li", {}, "Upload it here. Do it again every few weeks to keep your contacts current.")),
+    h("div", { class: "row" }, button, fileInput, h("span", { class: "spacer" }),
+      h("button", { disabled: !li.profile, title: li.profile ? "" : "Import an export that includes your profile first", onclick: check }, "Check LinkedIn vs my CV")),
+    result);
 }

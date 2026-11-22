@@ -44,6 +44,7 @@ from .services import (
     headlines,
     jd_match,
     jobs,
+    linkedin,
     llm,
     logos,
     master_cv,
@@ -907,6 +908,51 @@ def job_fetch_url(url: str):
     job from their own browser (select the text → Share → Ezri on a phone, the “Send to Ezri” bookmark on a
     computer) or to paste the text."""
     return jobs.read(url)
+
+
+# ================================================================= linkedin
+# From LinkedIn's own data export (no API exists for your network): the user uploads the zip in the app.
+
+@action("linkedin.status")
+def linkedin_status():
+    """Whether a LinkedIn export was imported: number of contacts, profile, when, and `export_url` (the LinkedIn
+    page where the user requests a new export: Connections + Profile, it arrives by email in ~10 minutes, then
+    they upload the zip on the Profile page with "Update my LinkedIn contacts")."""
+    return linkedin.status()
+
+
+@action("linkedin.contacts")
+def linkedin_contacts(company: str):
+    """For an application: your 1st-degree LinkedIn contacts at that company (recruiters first, then those in a
+    role close to the job, then the most recent), and LinkedIn `search` links for people there: `second_degree`
+    (a contact of yours can introduce you: ask them), `first_degree` (also catches people who joined since the
+    export) and `recruiters`. Use it to suggest a referee (then company.referral) and draft the message."""
+    return linkedin.for_application(company)
+
+
+@action("linkedin.find")
+def linkedin_find(query: str):
+    """Search your LinkedIn contacts by name, company or position words (e.g. "Dana", "Northwind", "recruiter")."""
+    return linkedin.find(query)
+
+
+@action("linkedin.profile")
+def linkedin_profile():
+    """Your LinkedIn profile from the last import (headline, summary, positions with descriptions, education,
+    skills): e.g. to compare its wording with the master CV or suggest a better headline/summary."""
+    p = linkedin.get_profile()
+    if p is None:
+        raise ValueError("No LinkedIn profile imported yet: ask the user to import their LinkedIn data export.")
+    return p
+
+
+@action("linkedin.check")
+def linkedin_check():
+    """Differences between the LinkedIn profile and the master CV: experiences or schools on one side only,
+    dates and job titles that differ, CV skills missing from LinkedIn, headline vs CV titles. severity "fix"
+    = recruiters will notice; "info" = may be on purpose. LinkedIn can't be edited from here: suggest the
+    exact text to paste on LinkedIn, or (with the user's OK) fix the master CV."""
+    return linkedin.check()
 
 
 # ================================================================ workflows

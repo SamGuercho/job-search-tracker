@@ -568,3 +568,9 @@ body.is-offline main { padding-top: 8px; }
 .fit-warning { color: var(--amber); margin-top: 2px; }
 .check { display: inline-flex; align-items: center; gap: 4px; margin-right: 14px; font-weight: 400; }
 @media (max-width: 520px) { .goal-grid { grid-template-columns: 1fr; gap: 10px; } }
+
+/* LinkedIn contacts (company page) */
+.contact-row { padding: 8px 0; border-top: 1px solid var(--border); }
+.contact-row:first-child { border-top: 0; }
+.issue { padding: 8px 0; border-top: 1px solid var(--border); }
+.issue .vs { display: grid; grid-template-columns: auto 1fr; gap: 2px 8px; margin-top: 4px; }

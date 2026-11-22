@@ -204,6 +204,54 @@ class UserProfile(BaseModel):
     goals: WeeklyGoals = Field(default_factory=WeeklyGoals)
 
 
+# ----------------------------------------------------------------- LinkedIn
+# From LinkedIn's own data export (services/linkedin.py): your 1st-degree connections and your profile.
+
+class LinkedInContact(BaseModel):
+    first_name: str = ""
+    last_name: str = ""
+    url: str = ""
+    email: str = ""           # usually empty: people choose whether to share it
+    company: str = ""         # where they worked when you downloaded the export
+    position: str = ""
+    connected_on: str = ""    # YYYY-MM-DD
+
+    @property
+    def name(self) -> str:
+        return f"{self.first_name} {self.last_name}".strip()
+
+
+class LinkedInPosition(BaseModel):
+    company: str
+    title: str = ""
+    description: str = ""
+    location: str = ""
+    start: str = ""           # YYYY-MM or YYYY
+    end: str = ""             # "" = current
+
+
+class LinkedInEducation(BaseModel):
+    school: str
+    degree: str = ""
+    start: str = ""
+    end: str = ""
+
+
+class LinkedInProfile(BaseModel):
+    headline: str = ""
+    summary: str = ""
+    positions: list[LinkedInPosition] = []
+    education: list[LinkedInEducation] = []
+    skills: list[str] = []
+
+
+class LinkedInBook(BaseModel):
+    contacts: list[LinkedInContact] = []
+    contacts_imported_at: str | None = None
+    profile: LinkedInProfile | None = None
+    profile_imported_at: str | None = None
+
+
 class Profile(BaseModel):
     name: str = ""
     title: str = ""
