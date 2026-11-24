@@ -18,6 +18,7 @@ os.environ.update({
     "OPENAI_API_KEY": "",
     "JOBTRACKER_PASSWORD": "",
     "JOBTRACKER_REMINDERS": "0",
+    "JOBTRACKER_TELEMETRY": "0",          # off, except in test_telemetry (which points it at its own file)
     "JOBTRACKER_LOGOS": "0",              # no background logo search on the web (tests call it with fakes)          # no background reminder thread (tests call it directly)
 })
 

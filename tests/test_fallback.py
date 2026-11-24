@@ -45,9 +45,15 @@ class FakeClaude:
     script, sent = [], []
 
     @staticmethod
-    def chat(system, tools, messages):
+    def chat(system, tools, messages, sink=None):
         FakeClaude.sent.append({"system": system, "tools": tools, "messages": json.loads(json.dumps(messages, default=vars))})
         content, stop = FakeClaude.script.pop(0)
+        for i, block in enumerate(content):  # what the real stream tells the sink
+            if sink and block.type == "text":
+                sink.delta("text", i, block.text)
+                sink.block_done("text", i, block.text)
+            elif sink and block.type == "tool_use":
+                sink.tool_call(block.id, block.name, json.dumps(block.input))
         return NS(content=content, stop_reason=stop)
 
 
@@ -185,6 +191,29 @@ class StructuredFallbackTests(unittest.TestCase):
             registry.run = original_run
 
 
+def anthropic_sse(model):
+    """A streamed Messages API answer: a thinking block, a text block in two deltas, a tool call."""
+    events = [
+        {"type": "message_start", "message": {"id": "msg_1", "type": "message", "role": "assistant", "model": model,
+                                              "content": [], "stop_reason": None, "stop_sequence": None,
+                                              "usage": {"input_tokens": 5, "output_tokens": 0}}},
+        {"type": "content_block_start", "index": 0, "content_block": {"type": "thinking", "thinking": "", "signature": ""}},
+        {"type": "content_block_delta", "index": 0, "delta": {"type": "thinking_delta", "thinking": "Greeting."}},
+        {"type": "content_block_delta", "index": 0, "delta": {"type": "signature_delta", "signature": "sig"}},
+        {"type": "content_block_stop", "index": 0},
+        {"type": "content_block_start", "index": 1, "content_block": {"type": "text", "text": ""}},
+        {"type": "content_block_delta", "index": 1, "delta": {"type": "text_delta", "text": "Hi"}},
+        {"type": "content_block_delta", "index": 1, "delta": {"type": "text_delta", "text": " there"}},
+        {"type": "content_block_stop", "index": 1},
+        {"type": "content_block_start", "index": 2, "content_block": {"type": "tool_use", "id": "tu1", "name": "company-get", "input": {}}},
+        {"type": "content_block_delta", "index": 2, "delta": {"type": "input_json_delta", "partial_json": '{"id": "x"}'}},
+        {"type": "content_block_stop", "index": 2},
+        {"type": "message_delta", "delta": {"stop_reason": "tool_use", "stop_sequence": None}, "usage": {"output_tokens": 9}},
+        {"type": "message_stop"},
+    ]
+    return "".join(f"event: {e['type']}\ndata: {json.dumps(e)}\n\n" for e in events)
+
+
 class RequestShapeTests(unittest.TestCase):
     """The real Anthropic SDK builds the requests (fake HTTP transport)."""
 
@@ -194,6 +223,9 @@ class RequestShapeTests(unittest.TestCase):
         def handler(request):
             self.requests.append(request)
             body = json.loads(request.content)
+            if body.get("stream"):
+                return httpx2.Response(200, headers={"content-type": "text/event-stream"},
+                                       content=anthropic_sse(body["model"]).encode())
             reply = '{"answer": "ok"}' if "output_config" in body and "format" in body["output_config"] else "Hi"
             return httpx2.Response(200, json={
                 "id": "msg_1", "type": "message", "role": "assistant", "model": body["model"],
@@ -208,11 +240,21 @@ class RequestShapeTests(unittest.TestCase):
         claude.client = self._client
 
     def test_chat_request(self):
+        seen = []
+        sink = NS(delta=lambda kind, key, t: seen.append(("delta", kind, t)),
+                  block_done=lambda kind, key, t: seen.append(("done", kind, t)),
+                  tool_call=lambda *a: seen.append(("tool", *a)))
         response = claude.chat("sys", [{"name": "company-get", "description": "d",
                                         "input_schema": {"type": "object", "properties": {}}}],
-                               [{"role": "user", "content": "Hi"}])
-        self.assertEqual(response.content[0].text, "Hi")
+                               [{"role": "user", "content": "Hi"}], sink)
+        self.assertEqual([b.type for b in response.content], ["thinking", "text", "tool_use"])
+        self.assertEqual(response.content[1].text, "Hi there")
+        self.assertEqual(seen, [("delta", "thinking", "Greeting."), ("done", "thinking", "Greeting."),
+                                ("delta", "text", "Hi"), ("delta", "text", " there"), ("done", "text", "Hi there"),
+                                ("tool", "tu1", "company-get", '{"id": "x"}')])
         body = json.loads(self.requests[0].content)
+        self.assertTrue(body["stream"])
+        self.assertEqual(body["thinking"], {"type": "adaptive", "display": "summarized"})
         self.assertEqual(body["model"], claude.model())
         self.assertEqual(body["fallbacks"], "default")
         self.assertEqual(body["output_config"]["effort"], "medium")

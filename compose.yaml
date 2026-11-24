@@ -22,4 +22,29 @@ services:
         # Generated CVs: ./output by default, or any folder (e.g. iCloud/Google Drive) via HOST_OUTPUT_DIR in .env
         source: ${HOST_OUTPUT_DIR:-./output}
         target: /output
+      - telemetry:/telemetry   # chat telemetry (SQLite), read by the monitor
     restart: unless-stopped
+
+  # Dashboard and traces of the assistant's turns: http://127.0.0.1:8100
+  monitor:
+    image: job-search-tracker:local
+    command: ["python", "-m", "jobtracker", "monitor", "--port", "8100"]
+    ports:
+      - "127.0.0.1:${MONITOR_PORT:-8100}:8100"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      JOBTRACKER_DATA_DIR: /data
+    volumes:
+      - type: bind
+        source: ./data
+        target: /data
+      - telemetry:/telemetry
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8100/health"]
+    depends_on: [app]
+    restart: unless-stopped
+
+volumes:
+  telemetry:

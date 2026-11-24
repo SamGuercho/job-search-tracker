@@ -178,14 +178,13 @@ class UsageTests(unittest.TestCase):
         os.environ["OPENAI_API_KEY"] = "test"
         orig, openai.OpenAI = openai.OpenAI, FakeOpenAI
         FakeOpenAI.sent = []
-        original_create = FakeOpenAI.create
-        FakeOpenAI.create = lambda self, **kw: NS(**{**vars(original_create(self, **kw)), "usage": self_usage, "model": "gpt-5.4-mini"})
-        self_usage = NS(input_tokens=2000, output_tokens=100, input_tokens_details=NS(cached_tokens=0))
+        FakeOpenAI.extra = {"model": "gpt-5.4-mini",
+                            "usage": NS(input_tokens=2000, output_tokens=100, input_tokens_details=NS(cached_tokens=0))}
         try:
             FakeOpenAI.script = [([], "Hello.")]
             chat = registry.run("chat.send", {"message": "Hi"})
         finally:
-            openai.OpenAI, FakeOpenAI.create = orig, original_create
+            openai.OpenAI, FakeOpenAI.extra = orig, {}
             os.environ["OPENAI_API_KEY"] = ""
         self.assertAlmostEqual(chat["messages"][-1]["cost_usd"], (2000 * 0.75 + 100 * 4.5) / 1e6)
         self.assertEqual(usage.average_cost("chat.send")["uses"], 1)

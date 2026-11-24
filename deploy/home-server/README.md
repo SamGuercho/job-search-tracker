@@ -211,6 +211,18 @@ Your own devices keep full access; people you shared with reach only the https a
   any copy a visitor tries to send; the app only listens on `127.0.0.1`, so requests can't bypass Tailscale.
   This is turned on in `compose.yaml` (`JOBTRACKER_TAILSCALE_USERS`), which publishes the app on 127.0.0.1 only.
 
+## 12. The monitor (assistant telemetry)
+
+The `monitor` service (in `compose.yaml`, started and updated with the app) shows how the assistant behaves:
+a dashboard (latency, tokens, cost, tools, errors per person) and the trace of every turn. **Only you** (the owner)
+can open it; it shows everyone's conversations, so tell the people who use your server. Publish it once:
+```powershell
+tailscale serve --bg --https=8443 8100
+```
+Then open `https://<pc-name>.<tailnet>.ts.net:8443`. The data is in the Docker volume `jobsearch_telemetry`
+(SQLite works reliably there, not in a Windows folder); a copy, `data\telemetry-snapshot.db`, is refreshed every day
+and is included in `backup.ps1`. The new service arrives with the deployment files: run `update-now.ps1` once.
+
 ---
 
 ## Phone features

@@ -34,6 +34,12 @@ TAILSCALE_USERS = os.environ.get("JOBTRACKER_TAILSCALE_USERS", "").lower() in ("
 OWNER = os.environ.get("JOBTRACKER_OWNER", "").strip().lower()  # rarely needed: see users.owner()
 USERS_DIR = Path(os.environ.get("JOBTRACKER_USERS_DIR", DATA_DIR / "users")).expanduser()
 
+# Chat telemetry (jobtracker/telemetry): one SQLite file for everyone's events, read by the monitor app.
+# In Docker it lives on a named volume (SQLite locking is unreliable on Windows bind mounts); 0 turns it off.
+TELEMETRY = os.environ.get("JOBTRACKER_TELEMETRY", "1").lower() not in ("0", "false", "no")
+TELEMETRY_DB = Path(os.environ.get("JOBTRACKER_TELEMETRY_DB", DATA_DIR / "telemetry.db")).expanduser()
+MONITOR_PORT = int(os.environ.get("MONITOR_PORT", "8100"))
+
 # Generated CV file name, without extension. {name} = your name with underscores.
 CV_FILENAME = os.environ.get("JOBTRACKER_CV_FILENAME", "{name}_CV")
 

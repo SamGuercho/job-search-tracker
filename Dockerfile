@@ -34,13 +34,14 @@ RUN pip install -r requirements.txt
 
 COPY jobtracker ./jobtracker
 COPY web ./web
+COPY monitor ./monitor
 COPY data/seed ./data/seed
 COPY mcp_server.py ./
 
 # Unprivileged user; data and generated files live in volumes
 RUN useradd --create-home --uid 10001 app \
- && mkdir -p /data /output /codex \
- && chown -R app:app /data /output /codex
+ && mkdir -p /data /output /codex /telemetry \
+ && chown -R app:app /data /output /codex /telemetry
 USER app
 
 ENV JOBTRACKER_HOST=0.0.0.0 \
@@ -49,8 +50,10 @@ ENV JOBTRACKER_HOST=0.0.0.0 \
     JOBTRACKER_OUTPUT_DIR=/output \
     JOBTRACKER_PDF_ENGINE=libreoffice \
     CODEX_HOME=/codex \
+    JOBTRACKER_TELEMETRY_DB=/telemetry/telemetry.db \
     LOG_FORMAT=json
-VOLUME ["/data", "/output", "/codex"]
+# /telemetry: chat telemetry (SQLite), shared with the monitor container on a named volume
+VOLUME ["/data", "/output", "/codex", "/telemetry"]
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD curl -fsS "http://127.0.0.1:${PORT}/health" || exit 1

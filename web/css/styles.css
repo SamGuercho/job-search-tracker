@@ -195,6 +195,11 @@ button.chip.suggest { border-style: dashed; color: var(--accent); background: tr
 .tool { align-self: flex-start; font-size: 12px; color: var(--muted); padding: 2px 4px; }
 .tool.error { color: var(--amber); }
 .tool.pending { color: var(--text); background: var(--amber-soft); border: 1px solid var(--amber); border-radius: 10px; padding: 10px 12px; font-size: 13px; max-width: 80%; }
+.live-answer { display: flex; flex-direction: column; gap: 10px; }
+.live-answer:empty { display: none; }
+.tool.running { font-style: italic; }
+.live-thinking { align-self: flex-start; max-width: 80%; color: var(--muted); }
+.live-thinking > div { white-space: pre-wrap; padding: 6px 0 0 12px; border-left: 2px solid var(--border); }
 .tool.pending pre { font-size: 11px; max-height: 140px; overflow: auto; background: var(--surface); padding: 6px; border-radius: 6px; }
 .chat-mobile-bar, .chat-list-close { display: none; }
 @media (max-width: 800px) {

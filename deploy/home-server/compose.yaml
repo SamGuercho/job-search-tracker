@@ -23,9 +23,42 @@ services:
       - ${HOST_OUTPUT_DIR:-./companies}:/output
       # Codex's sign-in (your ChatGPT account) for the "Prepare interview" button: keep it out of backups you share
       - ${HOST_CODEX_DIR:-./codex}:/codex
+      # Chat telemetry (SQLite), shared with the monitor. A Docker volume, not a Windows folder: SQLite's locking
+      # is only reliable on the Linux side. A daily copy (telemetry-snapshot.db) goes to the data folder for backups.
+      - telemetry:/telemetry
     restart: unless-stopped
     logging:
       driver: json-file
       options:
         max-size: "10m"
         max-file: "3"
+
+  # The monitor: dashboard and traces of the assistant's turns (owner only). Same image, its own port.
+  # Publish it with `tailscale serve --bg --https=8443 8100` → https://<pc-name>.<tailnet>.ts.net:8443
+  monitor:
+    image: ghcr.io/samguercho/job-search-tracker:${IMAGE_TAG:-latest}
+    command: ["python", "-m", "jobtracker", "monitor", "--port", "8100"]
+    ports:
+      - "127.0.0.1:${MONITOR_PORT:-8100}:8100"
+    env_file:
+      - .env
+    environment:
+      JOBTRACKER_DATA_DIR: /data          # only to know who the owner is (owner.txt, master CV email)
+      JOBTRACKER_TAILSCALE_USERS: "1"
+    volumes:
+      - ${HOST_DATA_DIR:-./data}:/data
+      - telemetry:/telemetry
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8100/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  telemetry:

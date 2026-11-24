@@ -50,6 +50,42 @@ def client():
     return OpenAI(api_key=api_key())
 
 
+class StreamFailed(RuntimeError):
+    """The stream reported an error or ended without a final response."""
+
+
+def reasoning_summary(model: str) -> dict:
+    """Reasoning models can send a summary of their reasoning (shown live and recorded)."""
+    return {"reasoning": {"summary": "auto"}} if model.startswith(("gpt-5", "o1", "o3", "o4")) else {}
+
+
+def stream_response(sink=None, **kwargs):
+    """A streamed Responses API call; returns the final response (like responses.create would).
+
+    `sink` (optional, same contract as claude.chat): delta(kind, key, text), block_done(kind, key, text),
+    tool_call(call_id, name, arguments_json). OpenAI errors raised when the call starts propagate (fallback)."""
+    final = None
+    for event in client().responses.create(stream=True, **kwargs):
+        kind = event.type
+        if kind == "response.output_text.delta":
+            sink and sink.delta("text", ("text", event.output_index, event.content_index), event.delta)
+        elif kind == "response.output_text.done":
+            sink and sink.block_done("text", ("text", event.output_index, event.content_index), event.text)
+        elif kind == "response.reasoning_summary_text.delta":
+            sink and sink.delta("thinking", ("reasoning", event.output_index, event.summary_index), event.delta)
+        elif kind == "response.reasoning_summary_text.done":
+            sink and sink.block_done("thinking", ("reasoning", event.output_index, event.summary_index), event.text)
+        elif kind == "response.output_item.done" and getattr(event.item, "type", "") == "function_call":
+            sink and sink.tool_call(event.item.call_id, event.item.name, event.item.arguments)
+        elif kind in ("response.completed", "response.incomplete", "response.failed"):
+            final = event.response
+        elif kind == "error":
+            raise StreamFailed(f"OpenAI stream error: {getattr(event, 'message', event)}")
+    if final is None:
+        raise StreamFailed("The OpenAI stream ended without a response.")
+    return final
+
+
 def fallback_reason(error: Exception) -> str | None:
     """Why this OpenAI error should switch to Claude, or None if it shouldn't (bad request, outage…).
     Rate limits arrive here only after the OpenAI SDK's own retries."""

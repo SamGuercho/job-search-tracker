@@ -1,11 +1,14 @@
 """HTTP layer: a thin wrapper over the action registry + static files."""
 from __future__ import annotations
 
+import asyncio
+import contextvars
+import json
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import Body, FastAPI, File, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, RedirectResponse, Response
+from fastapi.responses import FileResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from mcp.server.streamable_http_manager import StreamableHTTPASGIApp
 from pydantic import ValidationError
@@ -23,7 +26,7 @@ from . import (
     registry,
     users,
 )
-from .services import calendar, linkedin, llm, logos, pdf, recordings, reminders
+from .services import assistant, calendar, linkedin, llm, logos, pdf, recordings, reminders, usage
 from .services.companies import NotFound
 from .services.cv_import import SUPPORTED
 from .services.llm import LLMUnavailable
@@ -120,6 +123,79 @@ def run_action(name: str, payload: dict = Body(default={})):
         raise HTTPException(422, e.errors(include_url=False, include_context=False)) from e
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
+
+
+# ------------------------------------------------------------------ chat, live
+# The same turn as the chat.send / chat.resolve actions, streamed to the browser as server-sent events while it runs:
+# text and thinking deltas, tools starting and ending, then the whole chat (or an error) at the end.
+
+def _for_ui(event: dict) -> dict | None:
+    """What the chat page needs from a telemetry event (small: no tool results, no stored text)."""
+    kind = event.get("type", "")
+    if kind == "live.delta":
+        return {"type": "delta", "kind": event["kind"], "text": event["text"]}
+    if kind == "live.block_done":
+        return {"type": "block_done", "kind": event["kind"]}
+    if kind in ("tool.started", "tool.ended"):
+        p = event.get("payload") or {}
+        return {"type": kind, "span_id": event["span_id"], "status": event.get("status", ""),
+                **({"action": p.get("action"), "args": p.get("args")} if kind == "tool.started" else {})}
+    if kind == "llm_call.started":
+        return {"type": "step"}
+    return None
+
+
+def _error_status(e: Exception) -> int:
+    for types, status in ((NotFound, 404), ((LLMUnavailable,), 503), ((PermissionError,), 403), ((ValueError,), 400)):
+        if isinstance(e, types):
+            return status
+    return 500
+
+
+@app.post("/api/chat/stream")
+async def chat_stream(payload: dict = Body(default={})):
+    """{message, chat_id?} sends a message; {chat_id, event_id, approve} answers an approval."""
+    resolving = bool(payload.get("event_id"))
+    if not (payload.get("message") or "").strip() and not (resolving and payload.get("chat_id")):
+        raise HTTPException(422, "Send a message, or chat_id + event_id + approve")
+    loop = asyncio.get_running_loop()
+    queue: asyncio.Queue = asyncio.Queue()
+
+    def listener(event: dict) -> None:
+        if (item := _for_ui(event)) is not None:
+            loop.call_soon_threadsafe(queue.put_nowait, item)
+
+    def turn():
+        llm.reset_notices()
+        with usage.feature("chat.resolve" if resolving else "chat.send"):  # same billing as the actions
+            if resolving:
+                chat = assistant.resolve(payload["chat_id"], payload["event_id"], bool(payload.get("approve")), listener)
+            else:
+                chat = assistant.send(payload["message"], payload.get("chat_id"), listener)
+        return registry.to_jsonable(chat), llm.pop_notice()
+
+    context = contextvars.copy_context()  # the request's user (set by the auth middleware) runs the turn
+
+    async def work():
+        try:
+            chat, notice = await loop.run_in_executor(None, context.run, turn)
+            queue.put_nowait({"type": "chat", "chat": chat, **({"notice": notice} if notice else {})})
+        except Exception as e:  # the browser shows it like a failed action
+            if _error_status(e) == 500:
+                logs.log.exception("Chat stream failed")
+            queue.put_nowait({"type": "error", "status": _error_status(e), "detail": str(e)})
+        finally:
+            queue.put_nowait(None)
+
+    task = asyncio.create_task(work())
+
+    async def events():
+        while (item := await queue.get()) is not None:
+            yield f"data: {json.dumps(item, default=str, ensure_ascii=False)}\n\n"
+        await task
+
+    return StreamingResponse(events(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 @app.get("/api/calendar/step.ics")

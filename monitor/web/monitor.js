@@ -1,0 +1,351 @@
+// Ezri monitor: dashboard, conversations, and the trace of one turn (waterfall + metrics).
+const root = document.getElementById("root");
+const tip = document.getElementById("tooltip");
+const USER_COLORS = ["var(--series-1)", "var(--series-2)", "var(--series-3)", "var(--series-4)"];
+const KIND_COLORS = { turn: "var(--neutral)", llm_call: "var(--series-1)", tool: "var(--series-2)", history: "var(--series-3)" };
+const KIND_NAMES = { turn: "Turn", llm_call: "LLM call", tool: "Tool", history: "History" };
+let filters = { days: 30, user: "*" };
+let users = [];
+let timer = null;
+
+// ------------------------------------------------------------------ helpers
+function h(tag, attrs = {}, ...children) {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (v === null || v === undefined || v === false) continue;
+    if (k.startsWith("on")) el.addEventListener(k.slice(2), v);
+    else if (k === "style" && typeof v === "object") Object.assign(el.style, v);
+    else el.setAttribute(k, v === true ? "" : v);
+  }
+  for (const c of children.flat(Infinity)) if (c !== null && c !== undefined && c !== false) el.append(c instanceof Node ? c : String(c));
+  return el;
+}
+// Replace an element's children; nested arrays are flattened, empty values skipped.
+function mount(el, ...children) {
+  el.replaceChildren(...children.flat(Infinity).filter((c) => c !== null && c !== undefined && c !== false)
+    .map((c) => (c instanceof Node ? c : document.createTextNode(String(c)))));
+}
+function svg(tag, attrs = {}, ...children) {
+  const el = document.createElementNS("http://www.w3.org/2000/svg", tag);
+  for (const [k, v] of Object.entries(attrs)) if (v !== null && v !== undefined) el.setAttribute(k, v);
+  for (const c of children.flat(Infinity)) if (c) el.append(c instanceof Node ? c : document.createTextNode(String(c)));
+  return el;
+}
+async function get(path) {
+  const res = await fetch(path);
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.detail || `${path}: ${res.status}`);
+  return body;
+}
+const ms = (v) => (v === null || v === undefined ? "–" : v >= 10000 ? `${(v / 1000).toFixed(1)} s` : v >= 1000 ? `${(v / 1000).toFixed(2)} s` : `${Math.round(v)} ms`);
+const usd = (v) => (v === null || v === undefined ? "–" : v === 0 ? "$0" : v < 0.01 ? `$${v.toFixed(4)}` : `$${v.toFixed(2)}`);
+const num = (v) => (v === null || v === undefined ? "–" : Number(v).toLocaleString());
+const when = (ns) => new Date(ns / 1e6).toLocaleString(undefined, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+const who = (u) => u || "(local)";
+const STATUS = { completed: "good", ok: "good", done: "good", waiting_approval: "warning", pending_approval: "warning",
+  running: "warning", max_steps: "warning", max_tokens: "warning", incomplete: "warning", refusal: "critical", error: "critical" };
+const STATUS_ICON = { good: "✓", warning: "◐", critical: "✕" };
+const chip = (status) => { const s = STATUS[status] || ""; return h("span", { class: `chip ${s}` }, `${STATUS_ICON[s] || ""} ${status || "?"}`.trim()); };
+const qs = () => `days=${filters.days}&user=${encodeURIComponent(filters.user)}`;
+
+function showTip(e, content) {
+  mount(tip, content);
+  tip.hidden = false;
+  const x = Math.min(e.clientX + 14, innerWidth - tip.offsetWidth - 8);
+  const y = Math.min(e.clientY + 14, innerHeight - tip.offsetHeight - 8);
+  tip.style.left = `${x}px`;
+  tip.style.top = `${y}px`;
+}
+const hideTip = () => { tip.hidden = true; };
+
+function filterBar(onChange) {
+  const days = h("select", { "aria-label": "Period", onchange: (e) => { filters.days = Number(e.target.value); onChange(); } },
+    [7, 30, 90, 365].map((d) => h("option", { value: d, selected: d === filters.days }, `Last ${d} days`)));
+  const user = h("select", { "aria-label": "User", onchange: (e) => { filters.user = e.target.value; onChange(); } },
+    h("option", { value: "*" }, "Everyone"), users.map((u) => h("option", { value: u, selected: u === filters.user }, who(u))));
+  return h("div", { class: "filters" }, days, user);
+}
+
+// ------------------------------------------------------------------ dashboard
+async function dashboard() {
+  const data = await get(`/api/overview?${qs()}`);
+  users = data.users;
+  const t = data.totals;
+  const L = data.latency;
+  const tile = (label, value, sub, cls = "") => h("div", { class: `tile ${cls}` }, h("div", { class: "label" }, label), h("div", { class: "value" }, value), sub && h("div", { class: "sub" }, sub));
+  mount(root, 
+    h("h1", {}, "Dashboard"),
+    h("div", { class: "muted small" }, "Every number is computed from the raw start/end timestamps of each turn's events."),
+    filterBar(route),
+    !t.turns ? h("div", { class: "card empty" }, "No turns in this period yet. Send a message in the app's chat.") : [
+      h("div", { class: "tiles" },
+        tile("Turns", num(t.turns), `${num(t.conversations)} conversations`),
+        tile("Turn time · p50", ms(L.turn_wall_ms.p50), `p95 ${ms(L.turn_wall_ms.p95)}`),
+        tile("First token · p50", ms(L.ttft_ms.p50), `p95 ${ms(L.ttft_ms.p95)}`),
+        tile("Cost", usd(t.cost_usd), `${usd(t.cost_usd / t.turns)} per turn`),
+        tile("Tokens", num(t.input_tokens + t.output_tokens), `${num(t.output_tokens)} generated`),
+        tile("LLM calls", num(t.llm_calls), `${(t.llm_calls / t.turns).toFixed(1)} per turn`),
+        tile("Tool calls", num(t.tool_calls), `${num(t.tool_errors)} failed`, t.tool_errors ? "warn" : ""),
+        tile("Approvals", `${num(t.approved)} / ${num(t.approved + t.rejected)}`, "approved / answered"),
+        tile("Errors", num(t.errors), `${num(t.fallbacks)} switches to Claude`, t.errors ? "bad" : ""),
+        tile("Timing checks", t.inconsistent_turns ? `${num(t.inconsistent_turns)} ✕` : "✓ all", "turns whose totals don't match their timestamps", t.inconsistent_turns ? "bad" : "")),
+      h("div", { class: "grid2" },
+        h("div", { class: "card" }, h("h2", {}, "Turns per day"), perDayChart(data.per_day)),
+        h("div", { class: "card" }, h("h2", {}, "Latency"), latencyTable(L),
+          h("div", { class: "small muted", style: { marginTop: "8px" } },
+            "Tools · wall = time the turn waited for tools (parallel tools counted once). Tools · work = their durations added up. Work above wall means tools ran in parallel."))),
+      h("div", { class: "grid2" },
+        h("div", { class: "card" }, h("h2", {}, "By person"), table(["Person", "Turns", "Turn p50", "Turn p95", "Tokens out", "Cost"],
+          data.by_user.map((u) => [who(u.user), num(u.turns), ms(u.wall.p50), ms(u.wall.p95), num(u.output_tokens), usd(u.cost_usd)]), [1, 2, 3, 4, 5])),
+        h("div", { class: "card" }, h("h2", {}, "How turns ended"), table(["Status", "Turns", "Share"],
+          Object.entries(data.statuses).sort((a, b) => b[1] - a[1]).map(([s, n]) => [chip(s), num(n), `${Math.round((100 * n) / t.turns)}%`]), [1, 2]))),
+      h("div", { class: "card" }, h("h2", {}, "By model"), table(["Model", "Calls", "p50", "p95", "Input", "Cached", "Output", "Cost"],
+        data.by_model.map((m) => [m.model, num(m.calls), ms(m.latency.p50), ms(m.latency.p95), num(m.input_tokens), num(m.cached_tokens), num(m.output_tokens), usd(m.cost_usd)]), [1, 2, 3, 4, 5, 6, 7])),
+      h("div", { class: "card" }, h("h2", {}, "By tool"), table(["Tool", "Calls", "Failed", "Waited approval", "p50", "p95", "Result tokens p50 (est.)"],
+        data.by_tool.map((r) => [r.action, num(r.calls), num(r.errors), num(r.pending), ms(r.latency.p50), ms(r.latency.p95), num(r.result_tokens.p50 && Math.round(r.result_tokens.p50))]), [1, 2, 3, 4, 5, 6])),
+    ]);
+}
+
+function table(headers, rows, numeric = [], onRow = null) {
+  return h("div", { class: "table-wrap" }, h("table", {},
+    h("thead", {}, h("tr", {}, headers.map((x, i) => h("th", { class: numeric.includes(i) ? "num" : "" }, x)))),
+    h("tbody", {}, rows.length ? rows.map((r, j) => h("tr", { class: onRow ? "link" : "", onclick: onRow ? () => onRow(j) : null },
+      r.map((c, i) => h("td", { class: numeric.includes(i) ? "num" : "" }, c)))) : h("tr", {}, h("td", { colspan: headers.length, class: "muted" }, "Nothing yet")))));
+}
+
+function latencyTable(L) {
+  const rows = [["Turn (wall)", L.turn_wall_ms], ["Time to first token", L.ttft_ms], ["One LLM call", L.llm_call_ms],
+    ["One tool call", L.tool_ms], ["Tools · wall, per turn", L.tools_wall_per_turn_ms], ["Tools · work, per turn", L.tools_sum_per_turn_ms]];
+  return table(["", "n", "p50", "p95", "max"], rows.map(([n, d]) => [n, num(d.n), ms(d.p50), ms(d.p95), ms(d.max)]), [1, 2, 3, 4]);
+}
+
+function perDayChart(days) {
+  const names = [...new Set(days.flatMap((d) => Object.keys(d.by_user)))].sort();
+  const color = (u) => USER_COLORS[users.indexOf(u === "(local)" ? "" : u) % USER_COLORS.length] || USER_COLORS[names.indexOf(u) % USER_COLORS.length];
+  const W = 640, H = 220, L = 32, B = 22, T = 8;
+  const max = Math.max(1, ...days.map((d) => Object.values(d.by_user).reduce((a, b) => a + b, 0)));
+  const step = max <= 5 ? 1 : Math.ceil(max / 4);
+  const top = Math.ceil(max / step) * step;
+  const y = (v) => T + (H - T - B) * (1 - v / top);
+  const bw = (W - L) / days.length;
+  const g = svg("svg", { viewBox: `0 0 ${W} ${H}`, width: "100%", role: "img", "aria-label": "Turns per day, stacked by person" });
+  for (let v = 0; v <= top; v += step) {
+    g.append(svg("line", { x1: L, x2: W, y1: y(v), y2: y(v), class: "gridline" }), svg("text", { x: L - 6, y: y(v) + 4, "text-anchor": "end" }, v));
+  }
+  days.forEach((d, i) => {
+    let acc = 0;
+    const x = L + i * bw + 1;
+    const w = Math.max(1, bw - 2);
+    const segs = names.filter((u) => d.by_user[u]);
+    segs.forEach((u, k) => {
+      const v = d.by_user[u];
+      const y0 = y(acc), y1 = y(acc + v);
+      acc += v;
+      const topSeg = k === segs.length - 1;
+      const r = topSeg ? Math.min(4, w / 2) : 0;
+      const hgt = y0 - y1 - (k > 0 ? 2 : 0);  // 2px surface gap between stacked segments
+      g.append(svg("path", { d: roundedTop(x, y1, w, Math.max(1, hgt), r), fill: color(u) }));
+    });
+    if ((days.length - 1 - i) % Math.ceil(days.length / 8) === 0) {  // counted from today: the last day always has its label
+      const last = i === days.length - 1;
+      g.append(svg("text", { x: last ? W : x + w / 2, y: H - 6, "text-anchor": last ? "end" : "middle" }, new Date(d.date).toLocaleDateString(undefined, { day: "numeric", month: "short" })));
+    }
+    const hit = svg("rect", { x: L + i * bw, y: T, width: bw, height: H - T - B, fill: "transparent" });
+    hit.addEventListener("mousemove", (e) => showTip(e, [h("b", {}, new Date(d.date).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" })),
+      ...(names.length ? names.map((u) => h("div", {}, h("i", { style: { display: "inline-block", width: "8px", height: "8px", background: color(u), marginRight: "6px", borderRadius: "2px" } }), `${u}: ${d.by_user[u] || 0}`)) : [h("div", {}, "0")])]));
+    hit.addEventListener("mouseleave", hideTip);
+    g.append(hit);
+  });
+  return [names.length > 1 && h("div", { class: "legend" }, names.map((u) => h("span", {}, h("i", { style: { background: color(u) } }), u))), g];
+}
+function roundedTop(x, y, w, hgt, r) {
+  return `M${x},${y + hgt} V${y + r} Q${x},${y} ${x + r},${y} H${x + w - r} Q${x + w},${y} ${x + w},${y + r} V${y + hgt} Z`;
+}
+
+// ------------------------------------------------------------------ conversations
+async function conversationList() {
+  const [list, data] = await Promise.all([get(`/api/conversations?${qs()}`), users.length ? null : get(`/api/overview?${qs()}`)]);
+  if (data) users = data.users;
+  mount(root, h("h1", {}, "Conversations"), filterBar(route),
+    h("div", { class: "card" }, table(["Conversation", "Person", "Turns", "Tools", "Cost", "Problems", "Last activity"],
+      list.map((c) => [h("a", { href: `#/c/${c.conversation_id}` }, c.title), who(c.user_id), num(c.turns), num(c.tool_calls), usd(c.cost_usd),
+        c.running ? chip("running") : c.problems ? h("span", { class: "chip critical" }, `✕ ${c.problems}`) : "", when(c.last_ns)]),
+      [2, 3, 4], (i) => { location.hash = `#/c/${list[i].conversation_id}`; })));
+}
+
+async function conversationPage(id) {
+  const c = await get(`/api/conversations/${encodeURIComponent(id)}`);
+  mount(root, 
+    h("div", { class: "crumbs small" }, h("a", { href: "#/conversations" }, "← Conversations")),
+    h("h1", {}, c.title), h("div", { class: "muted small" }, `${who(c.user_id)} · ${c.turns.length} turns`),
+    h("div", { class: "card", style: { marginTop: "14px" } }, table(["#", "Message", "Status", "Turn", "First token", "LLM calls", "Tools", "Tokens out", "Cost", "Timing"],
+      c.turns.map((t) => [t.turn_index, h("span", { title: t.user_text }, (t.user_text || "").slice(0, 90) || h("span", { class: "muted" }, t.trigger)),
+        chip(t.status), ms(t.wall_ms), ms(t.ttft_ms), num(t.llm_calls), num(t.tool_calls), num(t.output_tokens), usd(t.cost_usd),
+        t.consistent ? h("span", { class: "chip good" }, "✓") : h("span", { class: "chip critical" }, "✕ check")]),
+      [3, 4, 5, 6, 7, 8], (i) => { location.hash = `#/t/${c.turns[i].turn_id}`; })));
+}
+
+// ------------------------------------------------------------------ one turn
+let selected = null;
+
+async function turnPage(turnId) {
+  const data = await get(`/api/turns/${encodeURIComponent(turnId)}`);
+  const s = data.summary || {};
+  const total = Math.max(1, ...data.spans.map((x) => x.end_ms ?? x.start_ms), data.running ? (Date.now() * 1e6 - data.origin_ns) / 1e6 : 0);
+  const byId = Object.fromEntries(data.spans.map((x) => [x.span_id, x]));
+  if (!selected || !byId[selected]) selected = data.spans[0]?.span_id;
+  const idx = data.turn_indexes.indexOf(data.turn_index);
+  const nav = (i) => data.turn_indexes[i] !== undefined && h("a", { href: `#/t/${data.conversation_id}:${data.turn_indexes[i]}` }, i < idx ? "← previous turn" : "next turn →");
+
+  const detail = h("div", { class: "detail" });
+  const drawDetail = () => mount(detail, spanDetail(byId[selected], data));
+  const rows = data.spans.map((x) => waterfallRow(x, byId, total, () => {
+    selected = x.span_id;
+    for (const r of root.querySelectorAll(".wf-row")) r.classList.toggle("selected", r.dataset.span === selected);
+    drawDetail();
+  }));
+  drawDetail();
+  mount(root, 
+    h("div", { class: "crumbs small" }, h("a", { href: "#/conversations" }, "Conversations"), "›", h("a", { href: `#/c/${data.conversation_id}` }, data.title), "›", `Turn ${data.turn_index}`,
+      h("span", { style: { flex: 1 } }), nav(idx - 1), nav(idx + 1)),
+    h("h1", {}, data.running && h("span", { class: "live-dot", title: "Running: updates live" }), `Turn ${data.turn_index} · `, chip(s.status)),
+    h("div", { class: "muted small" }, `${who(s.user_id)} · ${s.trigger === "approval" ? "after an approval" : "user message"} · ${new Date(data.origin_ns / 1e6).toLocaleString()}`),
+    h("div", { class: "turn-layout", style: { marginTop: "14px" } },
+      h("div", {},
+        h("div", { class: "card" },
+          h("div", { class: "legend" }, Object.entries(KIND_NAMES).map(([k, n]) => h("span", {}, h("i", { style: { background: KIND_COLORS[k] } }), n)),
+            h("span", {}, h("i", { style: { background: "var(--text)", width: "2px", opacity: ".55" } }), "event (first token, text, tool requested)")),
+          h("div", { class: "waterfall" }, axis(total), rows)),
+        h("div", { class: "card" }, detail)),
+      metricsPanel(data)));
+  for (const r of root.querySelectorAll(".wf-row")) r.classList.toggle("selected", r.dataset.span === selected);
+  if (data.running) timer = setTimeout(() => route(true), 1500);
+}
+
+function spanLabel(x) {
+  if (x.kind === "llm_call") return `${x.start.provider} · ${x.start.model} · step ${x.start.step}`;
+  if (x.kind === "tool") return x.start.action + (x.start.approved ? " (approved)" : "");
+  if (x.kind === "history") return x.start.source;
+  if (x.kind === "turn") return x.start.trigger === "approval" ? "approval" : "user message";
+  return x.kind;
+}
+
+function depth(x, byId) {
+  let d = 0, p = byId[x.parent_span_id];
+  while (p) { d++; p = byId[p.parent_span_id]; }
+  return d;
+}
+
+function axis(total) {
+  const step = niceStep(total / (innerWidth < 600 ? 2.5 : 6));  // fewer labels on a phone
+  const marks = [];
+  for (let v = 0; v <= total + 1e-9; v += step) marks.push(v);
+  return h("div", { class: "wf-axis" }, h("div", {}),
+    h("div", { class: "wf-axis-track" }, h("div", { class: "wf-inner" }, marks.map((v) => h("span", { style: { left: `${(100 * v) / total}%` } }, ms(v))))));
+}
+function niceStep(raw) {
+  const p = 10 ** Math.floor(Math.log10(Math.max(raw, 1e-3)));
+  return [1, 2, 5, 10].map((m) => m * p).find((s) => s >= raw) || raw;
+}
+
+function waterfallRow(x, byId, total, onSelect) {
+  const end = x.end_ms ?? total;
+  const left = (100 * x.start_ms) / total;
+  const width = (100 * (end - x.start_ms)) / total;
+  const ticks = (x.events || []).filter((e) => ["llm_call.first_token", "llm.text", "llm.thinking", "tool_call.requested", "approval.requested"].includes(e.type));
+  const bar = h("div", { class: `wf-bar ${x.end_ms === null ? "running" : ""} ${x.status === "error" ? "error" : ""}`, style: { left: `${left}%`, width: `${width}%`, background: KIND_COLORS[x.kind] || "var(--neutral)" } });
+  const row = h("div", { class: "wf-row", "data-span": x.span_id, onclick: onSelect },
+    h("div", { class: "wf-label", style: { paddingLeft: `${depth(x, byId) * 14}px` }, title: spanLabel(x) },
+      h("span", { class: "kind" }, `${KIND_NAMES[x.kind] || x.kind} `), spanLabel(x)),
+    h("div", { class: "wf-track" }, h("div", { class: "wf-inner" }, bar,
+      ticks.map((e) => h("div", { class: "wf-tick", style: { left: `${(100 * (e.at_ms || 0)) / total}%` } })),
+      h("span", { class: "wf-dur", style: { left: `calc(${left + width}% + 6px)` } }, x.end_ms === null ? "running…" : ms(x.duration_ms)))));
+  row.addEventListener("mousemove", (e) => showTip(e, [h("b", {}, `${KIND_NAMES[x.kind] || x.kind}: ${spanLabel(x)}`),
+    h("div", {}, `starts at ${ms(x.start_ms)} · ${x.end_ms === null ? "running" : `lasts ${ms(x.duration_ms)}`}`),
+    x.status && h("div", {}, `status: ${x.status}`),
+    x.end?.usage && h("div", {}, `tokens: ${num((x.end.usage.input_tokens || 0) + (x.end.usage.cached_tokens || 0))} in · ${num(x.end.usage.output_tokens)} out`),
+    x.end?.result_tokens !== undefined && h("div", {}, `result: ~${num(x.end.result_tokens)} tokens (est.)`)]));
+  row.addEventListener("mouseleave", hideTip);
+  return row;
+}
+
+function spanDetail(x, data) {
+  if (!x) return h("div", { class: "muted" }, "Select a row.");
+  const evs = data.events.filter((e) => e.span_id === x.span_id && !e.type.endsWith(".started") && !e.type.endsWith(".ended"));
+  const json = (v) => h("pre", {}, JSON.stringify(v, null, 2));
+  const body = [];
+  if (x.kind === "llm_call") {
+    const u = x.end.usage || {};
+    body.push(h("dl", { class: "kv" },
+      h("dt", {}, "Status"), h("dd", {}, chip(x.status)), h("dt", {}, "Stop reason"), h("dd", {}, x.end.stop_reason || "–"),
+      h("dt", {}, "Duration"), h("dd", {}, ms(x.duration_ms)),
+      h("dt", {}, "First token after"), h("dd", {}, ms(evs.find((e) => e.type === "llm_call.first_token") ? evs.find((e) => e.type === "llm_call.first_token").at_ms - x.start_ms : null)),
+      h("dt", {}, "Input (uncached)"), h("dd", {}, num(u.input_tokens)), h("dt", {}, "Input (cached)"), h("dd", {}, num(u.cached_tokens)),
+      h("dt", {}, "Written to cache"), h("dd", {}, num(u.cache_write_tokens)), h("dt", {}, "Output"), h("dd", {}, num(u.output_tokens)),
+      x.end.reasoning_tokens !== undefined && x.end.reasoning_tokens !== null && [h("dt", {}, "of which reasoning"), h("dd", {}, num(x.end.reasoning_tokens))],
+      h("dt", {}, "Cost"), h("dd", {}, usd(x.end.cost_usd)), h("dt", {}, "LLM call id"), h("dd", { class: "small" }, x.llm_call_id)));
+    for (const e of evs) {
+      if (e.type === "llm.thinking") body.push(h("h2", { style: { marginTop: "14px" } }, `Thinking · ${num(e.payload.chars)} chars, ${e.payload.deltas} chunks`), h("div", { class: "text" }, e.payload.text || "(not shown by the provider)"));
+      if (e.type === "llm.text") body.push(h("h2", { style: { marginTop: "14px" } }, `Text · ${num(e.payload.chars)} chars, ~${num(e.payload.tokens_estimate)} tokens, streamed in ${e.payload.deltas} chunks over ${ms((e.payload.last_delta_ns - e.payload.first_delta_ns) / 1e6)}`), h("div", { class: "text", dir: "auto" }, e.payload.text));
+      if (e.type === "tool_call.requested") body.push(h("h2", { style: { marginTop: "14px" } }, `Tool requested · ${e.payload.action}`), json(e.payload.args));
+    }
+  } else if (x.kind === "tool") {
+    body.push(h("dl", { class: "kv" },
+      h("dt", {}, "Status"), h("dd", {}, chip(x.status)), h("dt", {}, "Duration"), h("dd", {}, ms(x.duration_ms)),
+      h("dt", {}, "Result size"), h("dd", {}, `${num(x.end.result_chars)} chars · ~${num(x.end.result_tokens)} tokens`),
+      x.end.truncated && [h("dt", {}, "Truncated"), h("dd", {}, "yes (the model saw the start)")]),
+      x.end.error && h("div", { class: "chip critical", style: { margin: "10px 0" } }, `✕ ${x.end.error}`),
+      h("h2", { style: { marginTop: "14px" } }, "Arguments"), json(x.start.args),
+      h("h2", {}, "Result (what the model got)"), h("pre", {}, prettyJson(x.end.result)));
+    for (const e of evs) if (e.type === "approval.requested") body.push(h("div", { class: "chip warning" }, "◐ waited for the user's approval"));
+  } else {
+    const turnEvents = x.kind === "turn" ? data.events.filter((e) => e.span_id === x.span_id && !e.type.startsWith("turn.")) : evs;
+    body.push(h("dl", { class: "kv" }, h("dt", {}, "Status"), h("dd", {}, chip(x.status || (x.end_ms === null ? "running" : ""))), h("dt", {}, "Duration"), h("dd", {}, ms(x.duration_ms))),
+      x.start.text && [h("h2", { style: { marginTop: "14px" } }, "User message"), h("div", { class: "text", dir: "auto" }, x.start.text)],
+      h("h2", { style: { marginTop: "14px" } }, "Started with"), json(x.start), h("h2", {}, "Ended with"), json(x.end),
+      turnEvents.length > 0 && [h("h2", {}, "Events"), table(["At", "Event", ""], turnEvents.map((e) => [ms(e.at_ms), e.type, h("code", { class: "small" }, JSON.stringify(e.payload).slice(0, 140))]), [0])]);
+  }
+  return [h("h2", {}, `${KIND_NAMES[x.kind] || x.kind}: ${spanLabel(x)}`), body];
+}
+function prettyJson(text) {
+  try { return JSON.stringify(JSON.parse(text), null, 2); } catch { return text || ""; }
+}
+
+function metricsPanel(data) {
+  const s = data.summary || {};
+  const kv = (pairs) => h("dl", { class: "kv" }, pairs.filter(Boolean).map(([k, v]) => [h("dt", {}, k), h("dd", {}, v)]));
+  return h("div", {},
+    h("div", { class: "card" }, h("h2", {}, "This turn"), kv([
+      ["Wall time", ms(s.wall_ms)], ["First token", ms(s.ttft_ms)], ["LLM calls", `${num(s.llm_calls)} · ${ms(s.llm_ms)}`],
+      ["Tools · wall", ms(s.tool_wall_ms)], ["Tools · work", ms(s.tool_sum_ms)], ["Tool calls", `${num(s.tool_calls)} (${num(s.tool_errors)} failed)`],
+      ["Input tokens", `${num(s.input_tokens)} + ${num(s.cached_tokens)} cached`], ["Output tokens", num(s.output_tokens)], ["Cost", usd(s.cost_usd)],
+      ["Model", s.model ? `${s.provider}/${s.model}` : "–"]])),
+    h("div", { class: "card" }, h("h2", {}, "Steps"), table(["#", "LLM", "Tools", "Wall", "Work", "×"],
+      (s.steps || []).map((st) => [st.step, ms(st.llm_ms), num(st.tools), ms(st.tool_wall_ms), ms(st.tool_sum_ms), st.parallelism ? `${st.parallelism}×` : "–"]), [1, 2, 3, 4, 5]),
+    h("div", { class: "small muted", style: { marginTop: "6px" } }, "× = tool work ÷ tool wall: above 1, tools ran in parallel.")),
+    h("div", { class: "card" }, h("h2", {}, "Timing checks"),
+      (s.checks || []).map((c) => h("div", { class: "check" }, h("span", { class: c.ok ? "ok" : "ko" }, c.ok ? "✓" : "✕"), h("div", {}, c.check, h("div", { class: "small muted" }, c.detail))))),
+    h("div", { class: "card" }, h("h2", {}, "Evaluations"),
+      data.scores.length ? table(["Evaluator", "Metric", "Value", ""], data.scores.map((x) => [x.evaluator, x.metric, x.value ?? x.label ?? "–", x.label && x.value !== null ? x.label : ""]), [2])
+        : h("div", { class: "small muted" }, "No evaluations yet. Scores from LLM-as-a-judge or smaller models will show here (turn_scores table).")));
+}
+
+// ------------------------------------------------------------------ routing
+async function route(refresh = false) {
+  clearTimeout(timer);
+  hideTip();
+  const hash = location.hash.slice(1) || "/";
+  for (const a of document.querySelectorAll("nav a")) a.classList.toggle("active", (a.dataset.nav === "dashboard" && hash === "/") || (a.dataset.nav === "conversations" && hash !== "/"));
+  const y = scrollY;
+  try {
+    if (hash.startsWith("/t/")) await turnPage(decodeURIComponent(hash.slice(3)));
+    else if (hash.startsWith("/c/")) await conversationPage(decodeURIComponent(hash.slice(3)));
+    else if (hash.startsWith("/conversations")) await conversationList();
+    else await dashboard();
+    if (refresh) scrollTo(0, y);
+  } catch (e) {
+    mount(root, h("div", { class: "card empty" }, e.message));
+  }
+}
+addEventListener("hashchange", () => { selected = null; route(); });
+route();

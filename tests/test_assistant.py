@@ -16,8 +16,9 @@ def call(name, args, call_id="c1"):
 
 
 class FakeOpenAI:
-    """Returns the scripted responses in order and records what it was sent."""
-    script, sent = [], []
+    """Returns the scripted responses in order (streamed when asked) and records what it was sent.
+    `extra`: more attributes for every response (usage, model…)."""
+    script, sent, extra = [], [], {}
 
     def __init__(self, *a, **k):
         self.responses = self
@@ -25,7 +26,20 @@ class FakeOpenAI:
     def create(self, **kwargs):
         FakeOpenAI.sent.append(kwargs)
         output, text = FakeOpenAI.script.pop(0)
-        return NS(id=f"resp{len(FakeOpenAI.sent)}", output=output, output_text=text)
+        response = NS(id=f"resp{len(FakeOpenAI.sent)}", output=output, output_text=text, **FakeOpenAI.extra)
+        return openai_stream(response) if kwargs.get("stream") else response
+
+
+def openai_stream(response):
+    """The Responses API stream events for a scripted response: text in small deltas, one event per tool call."""
+    text = response.output_text
+    for i in range(0, len(text), 4):
+        yield NS(type="response.output_text.delta", output_index=0, content_index=0, delta=text[i:i + 4])
+    if text:
+        yield NS(type="response.output_text.done", output_index=0, content_index=0, text=text)
+    for item in response.output:
+        yield NS(type="response.output_item.done", item=item)
+    yield NS(type="response.completed", response=response)
 
 
 class CompactTests(unittest.TestCase):

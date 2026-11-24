@@ -59,6 +59,50 @@ export async function call(action, payload = {}) {
   return body.result;
 }
 
+// A chat turn streamed while it runs (server-sent events): `onEvent` gets each {type: "delta" | "block_done" |
+// "tool.started" | "tool.ended" | "step"}; resolves with the whole chat at the end, like call("chat.send").
+// A server without the stream endpoint (older version) answers 404: then the plain action is used.
+export async function streamChat(payload, onEvent) {
+  let res;
+  try {
+    res = await fetch("/api/chat/stream", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+    });
+  } catch {
+    throw new Error("You're offline: the assistant needs the server. Try again when it's back.");
+  }
+  if (res.status === 404) return call(payload.event_id ? "chat.resolve" : "chat.send", payload);
+  if (res.status === 401) { location.href = "/login"; throw new Error("Login required"); }
+  if (!res.ok || !res.body) {
+    const body = await res.json().catch(() => ({}));
+    if (SERVER_DOWN.has(res.status)) throw new Error("The server is not reachable: try again in a moment.");
+    throw new Error((typeof body.detail === "string" && body.detail) || `The assistant failed (${res.status})`);
+  }
+  hideOffline();
+  const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+  let buffer = "";
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += value;
+    let end;
+    while ((end = buffer.indexOf("\n\n")) >= 0) {
+      const raw = buffer.slice(0, end);
+      buffer = buffer.slice(end + 2);
+      const data = raw.split("\n").filter((l) => l.startsWith("data: ")).map((l) => l.slice(6)).join("\n");
+      if (!data) continue;
+      const event = JSON.parse(data);
+      if (event.type === "chat") {
+        if (event.notice) toast(event.notice);
+        return event.chat;
+      }
+      if (event.type === "error") throw new Error(event.detail || `The assistant failed (${event.status})`);
+      try { onEvent?.(event); } catch { /* a drawing problem never stops the stream */ }
+    }
+  }
+  throw new Error("The connection closed before the answer was complete: reload the conversation.");
+}
+
 // ------------------------------------------------------------------ offline banner
 let banner = null;
 function showOffline(at) {

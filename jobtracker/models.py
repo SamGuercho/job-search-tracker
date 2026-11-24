@@ -347,6 +347,7 @@ class ToolEvent(BaseModel):
     status: ToolStatus = "done"
     result: object = None   # kept only when small (for links in the UI)
     error: str = ""
+    turn_id: str = ""       # telemetry: the turn that requested it (links an approval to its request)
 
 
 class ChatMessage(BaseModel):
@@ -375,6 +376,7 @@ class Chat(BaseModel):
     summary: str = ""
     history_from: int = 0
     context_tokens: int = 0
+    turn_count: int = 0   # telemetry: turns so far (a user message or an approval each); the next turn's index
 
     @computed_field
     @property

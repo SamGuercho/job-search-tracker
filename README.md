@@ -235,7 +235,27 @@ A chat that uses the app's features for you: add a job from a link or pasted tex
 description, tailored CV, gaps), update process steps ("I got an HR call for Monday 10am"), list follow-ups,
 review your summary, interview you to grow your master CV, show analytics. Anything that **deletes or
 overwrites data, or adds text to your CV, waits for your Approve / Reject**. Conversations are titled
-"Company · stage" automatically.
+"Company · stage" automatically. Answers stream in as they are written; the tools it uses show as they run
+(several at once when it asks for several).
+
+### Monitor (the assistant's telemetry)
+Every assistant turn is recorded as a stream of events: the turn and its trigger (your message or an approval),
+the history it worked from, each AI call (model, time to first token, thinking, text, tokens in/out/cached,
+cost, how it ended), each tool call and its result (status, size, estimated tokens), approvals, title changes,
+switches to Claude and errors. All carry a timestamp, the conversation, the turn (`<conversation id>:<n>`), the
+person and the AI call they belong to. They are written live to `telemetry.db` (SQLite).
+
+The **monitor** is a separate small app that reads them (owner only):
+```bash
+.venv/bin/python -m jobtracker monitor        # http://127.0.0.1:8100
+```
+- **Dashboard**: turns per day and person, latency (turn, first token, AI call, tool; p50/p95), tokens and cost
+  per person, model and tool, how turns ended, approvals, errors.
+- **Conversations → turns → trace**: a waterfall of the turn on one time axis (tools that ran in parallel overlap),
+  with every span's content, the turn's metrics and timing checks (the totals must match the raw start/end
+  timestamps), and a place for evaluations (LLM-as-a-judge scores, to come; `turn_scores` table).
+Parallel work is never added up as wall time: "tools · wall" counts overlapping tools once, "tools · work" adds
+their durations. Telemetry never slows or breaks the chat; `JOBTRACKER_TELEMETRY=0` turns it off.
 
 ---
 
@@ -283,12 +303,15 @@ drafts, reviews, import) use the `OPENAI_API_KEY` from `.env` (and Claude as fal
 | Backups made by the app, uploaded CVs | `data/backups/`, `data/uploads/` | **No** |
 | Generated CVs, saved job descriptions | `output/<Company>/` (or `JOBTRACKER_OUTPUT_DIR`) | **No** |
 | OpenAI key, local paths | `.env` | **No** |
+| Assistant telemetry (messages, answers, tool results, timings) | `data/telemetry.db` (or `JOBTRACKER_TELEMETRY_DB`) | **No** |
 | Example data for new users | `data/seed/` | Yes (fictional) |
 
 - Files are never overwritten silently: a regenerated CV or changed job description moves the previous one
   to `archive/`.
 - **Sent to OpenAI** (only with a key, only when you use an AI feature): the text of the CV you import, your
   master CV and the job description when matching/reviewing/drafting, and your chat messages. Nothing else.
+- The **telemetry** keeps the full content of assistant turns (yours and, on a shared server, your friends'), so
+  that turns can be reviewed and evaluated. Only the owner can open the monitor.
 - To back up your data, copy the `data/` folder (or point `JOBTRACKER_DATA_DIR` to a synced folder).
 
 ---
@@ -322,6 +345,9 @@ All settings live in `.env` (created from `.env.example` on first run). Restart 
 | `JOBTRACKER_USERS_DIR` | `<data>/users` | Where the other users' data lives. |
 | `JOBTRACKER_SESSION_DAYS` | `30` | How long a sign-in lasts. Changing the password signs everyone out. |
 | `JOBTRACKER_HOST` / `PORT` | `127.0.0.1` / `8000` | Where the server listens (`0.0.0.0` to reach it from other devices: set a password). |
+| `JOBTRACKER_TELEMETRY` | on | `0` stops recording the assistant's telemetry. |
+| `JOBTRACKER_TELEMETRY_DB` | `<data>/telemetry.db` | The telemetry database (in Docker: `/telemetry/telemetry.db` on its own volume). |
+| `MONITOR_PORT` | `8100` | Port of the monitor (`python -m jobtracker monitor`). |
 | `LOG_FORMAT` / `LOG_LEVEL` | `text` / `INFO` | `json` writes one JSON object per request (method, path, status, duration). |
 
 The CV font is **STIX Two Text** (included in macOS). On Windows/Linux, install it from
@@ -375,6 +401,8 @@ jobtracker/
   actions.py              every operation of the app, as named actions
   services/               business logic (no HTTP): companies, master_cv, cv_builder, jd_match, wording,
                           summary, analytics, cv_import, assistant, llm, pdf, files, web
+  telemetry/              assistant events: schema (envelope + payload), emit (turn/span context), store
+                          (SQLite, one row per event, written live by one thread), metrics (latency math)
   cv_templates/           Word templates (elegant.py); add one and register it in __init__.py
   api.py                  FastAPI: POST /api/actions/<name>, GET /api/actions, /files/…, /health, the web UI
   users.py, auth.py       who is visiting (Tailscale identity, per-user folders), optional password
@@ -382,6 +410,7 @@ jobtracker/
   __main__.py             CLI
   mcp_server.py           MCP server: one tool per action, generated from the registry
 web/                      vanilla JavaScript UI, no build step (js/views/<page>.js)
+monitor/                  the monitor app (FastAPI + vanilla JS): dashboard and turn traces over telemetry.db
 skills/job-search/        SKILL.md: instructions for AI agents (e.g. Claude Code)
 tests/                    unit tests (no network; OpenAI is stubbed)
 ```
@@ -420,8 +449,8 @@ then publish it to the GitHub Container Registry as `ghcr.io/<owner>/job-search-
 
 ### Docker image
 `Dockerfile`: Python 3.13 slim + LibreOffice (PDF export) + STIX Two Text (pinned release) · non-root user ·
-`/data` and `/output` volumes · health check on `/health` · JSON logs. `compose.yaml` runs it locally on the same
-`./data` folder as `./run.sh`.
+`/data`, `/output` and `/telemetry` volumes · health check on `/health` · JSON logs. `compose.yaml` runs it locally on the same
+`./data` folder as `./run.sh`, with the monitor on http://127.0.0.1:8100.
 
 ---
 

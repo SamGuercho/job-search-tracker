@@ -1,5 +1,5 @@
 // Assistant: conversations with the LLM agent that drives the app's actions.
-import { call, fileUrl } from "../api.js";
+import { call, fileUrl, streamChat } from "../api.js";
 import { attempt, chatRequest, confirmSheet, h, markdown, mount, promptSheet, toast, usd } from "../ui.js";
 
 const LABELS = {
@@ -25,6 +25,7 @@ export async function renderChat(root, chatId, params) {
   let chats = await call("chat.list");
   let chat = chatId ? await call("chat.get", { id: chatId }) : null;
   let busy = false;
+  let live = null;  // the answer being streamed: {text, thinking, tools: [{span_id, action, status}]}
 
   const list = h("div", { class: "chat-list" });
   const head = h("div", { class: "chat-head" });
@@ -120,9 +121,39 @@ export async function renderChat(root, chatId, params) {
       msgs.map((m, i) => [message(m), i === lastCompaction && h("details", { class: "compact-summary" },
         h("summary", { class: "small muted" }, "What the assistant remembers"), h("div", { dir: "auto" }, markdown(chat.summary)))]),
       pendingText && bubble("user", pendingText),
-      (pendingText || busy) && h("div", { class: "msg assistant thinking" }, working));
+      (pendingText || busy) && liveBox);
+    drawLive(working);
     drawTip();  // before scrolling: the tip changes the thread's height
     thread.scrollTop = thread.scrollHeight;
+  };
+
+  // The answer as it streams in: tools as they run, the model's thinking (folded), then its text.
+  const liveBox = h("div", { class: "live-answer" });
+  let liveWorking = "Working on it…";
+  let liveFrame = 0;
+  const drawLive = (working = liveWorking) => {
+    liveWorking = working;
+    const nearBottom = thread.scrollHeight - thread.scrollTop - thread.clientHeight < 80;
+    mount(liveBox,
+      live?.tools.map((t) => h("div", { class: `tool ${t.status}` },
+        `${{ running: "…", done: "✓", error: "⚠", pending_approval: "?" }[t.status] || "✓"} ${label(t.action)}`)),
+      live?.thinking && h("details", { class: "live-thinking" },
+        h("summary", { class: "small muted" }, live.text ? "Thought" : "Thinking…"), h("div", { class: "small", dir: "auto" }, live.thinking)),
+      live?.text ? h("div", { class: "msg assistant", dir: "auto" }, markdown(live.text))
+        : h("div", { class: "msg assistant thinking" }, working));
+    if (nearBottom) thread.scrollTop = thread.scrollHeight;
+  };
+  const onLive = (e) => {
+    if (!live) return;
+    if (e.type === "delta") live[e.kind === "thinking" ? "thinking" : "text"] += e.text;
+    else if (e.type === "block_done" && e.kind === "text") live.text += "\n\n";
+    else if (e.type === "block_done") live.thinking += "\n\n";
+    else if (e.type === "tool.started") live.tools.push({ span_id: e.span_id, action: e.action, status: "running" });
+    else if (e.type === "tool.ended") {
+      const tool = live.tools.find((t) => t.span_id === e.span_id);
+      if (tool) tool.status = e.status;
+    }
+    if (!liveFrame) liveFrame = requestAnimationFrame(() => { liveFrame = 0; drawLive(); });
   };
 
   const bubble = (role, text) => h("div", { class: `msg ${role}`, dir: "auto" }, role === "assistant" ? markdown(text) : text);
@@ -165,9 +196,11 @@ export async function renderChat(root, chatId, params) {
     if (busy) return;
     busy = true;
     sendBtn.disabled = true;
+    live = { text: "", thinking: "", tools: [] };
     drawThread(pendingText, working);
     const result = await attempt(fn);
     busy = false;
+    live = null;
     sendBtn.disabled = false;
     if (result) {
       const isNew = !chat;
@@ -194,9 +227,9 @@ export async function renderChat(root, chatId, params) {
       return;
     }
     input.value = "";
-    run(() => call("chat.send", { message: text, ...(chat ? { chat_id: chat.id } : {}) }), text);
+    run(() => streamChat({ message: text, ...(chat ? { chat_id: chat.id } : {}) }, onLive), text);
   };
-  const resolve = (eventId, approve) => run(() => call("chat.resolve", { chat_id: chat.id, event_id: eventId, approve }));
+  const resolve = (eventId, approve) => run(() => streamChat({ chat_id: chat.id, event_id: eventId, approve }, onLive));
 
   mount(layout,
     h("aside", {}, list),

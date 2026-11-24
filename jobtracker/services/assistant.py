@@ -7,14 +7,18 @@ user approves or rejects them in the chat.
 """
 from __future__ import annotations
 
+import contextvars
 import json
 import re
-from datetime import date
+import time
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
+from datetime import date, datetime
 from urllib.parse import quote, unquote
 
 from pydantic import BaseModel
 
-from .. import config, registry, users
+from .. import config, registry, telemetry, users
 from ..models import Chat, ChatBook, ChatMessage, ToolEvent
 from ..storage import UserDocument
 from . import claude, companies, llm, master_cv, profile, usage
@@ -23,6 +27,7 @@ from .companies import NotFound
 store = UserDocument("chats.json", ChatBook)
 
 MAX_STEPS = 12               # model round-trips per user message
+MAX_PARALLEL_TOOLS = 8       # tool calls of one model response run at the same time (up to this many)
 MAX_TOOL_OUTPUT = 30_000     # characters sent back to the model per tool call
 KEEP_RESULT = 4_000          # results smaller than this are kept for UI links
 HIDDEN = ("chat.",)          # actions the assistant can't call (itself)
@@ -166,8 +171,9 @@ def delete_chat(chat_id: str) -> None:
 def rename_chat(chat_id: str, title: str) -> Chat:
     """Rename by the user: the title is then kept (no automatic titles)."""
     chat = get_chat(chat_id)
-    chat.title = _clean_title(title) or chat.title
+    old, chat.title = chat.title, _clean_title(title) or chat.title
     chat.title_locked = True
+    telemetry.emit("title.set", conversation_id=chat.id, by="user", old=old, new=chat.title)
     return _save(chat)
 
 
@@ -196,7 +202,9 @@ def _auto_title(chat: Chat) -> None:
         return
     company = _chat_company(chat)
     if company:
-        chat.title = _clean_title(f"{company.name} · {companies.current_stage(company)}")
+        old, chat.title = chat.title, _clean_title(f"{company.name} · {companies.current_stage(company)}")
+        if chat.title != old:
+            telemetry.emit("title.set", by="auto", old=old, new=chat.title)
 
 
 def _clean_title(title: str) -> str:
@@ -238,35 +246,84 @@ def _action_for(name: str):
     return next((a for a in registry.ACTIONS.values() if tool_name(a.name) == name and not a.name.startswith(HIDDEN)), None)
 
 
-def _run_tool(chat: Chat, name: str, arguments: str) -> dict:
-    """Run (or park for approval) one tool call; record it in the chat; return what the model sees."""
+@dataclass
+class _ToolOutcome:
+    message: ChatMessage | None   # what the chat records (None: nothing to show)
+    output: dict                  # what the model sees
+    title: str | None = None      # chat-set_title: the new title
+
+
+def _tool_outcome(name: str, action, args: dict) -> _ToolOutcome:
+    if name == "chat-set_title":
+        title = _clean_title(str(args.get("title", "")))
+        if not title:
+            return _ToolOutcome(None, {"error": "Empty title"})
+        return _ToolOutcome(ChatMessage(role="tool", tool=ToolEvent(action="chat.set_title", args={"title": title})),
+                            {"title": title}, title)
+    if action is None:
+        return _ToolOutcome(None, {"error": f"Unknown tool {name}"})
+    event = ToolEvent(action=action.name, args=args, turn_id=telemetry.current_turn_id())
+    message = ChatMessage(role="tool", tool=event)
+    if action.confirm:
+        event.status = "pending"
+        return _ToolOutcome(message, {"status": "waiting_for_user_approval",
+                                      "note": "Approve/Reject buttons are shown to the user. Do not call it again; "
+                                              "explain and wait."})
+    try:
+        result = registry.run(action.name, args)
+    except Exception as e:  # report the failure to the model so it can recover
+        event.status, event.error = "error", f"{type(e).__name__}: {e}"
+        return _ToolOutcome(message, {"error": event.error})
+    _keep(event, result)
+    return _ToolOutcome(message, {"result": result})
+
+
+def _result_payload(output) -> dict:
+    """Telemetry of a tool result: what the model got (capped), its size in characters and estimated tokens."""
+    text = json.dumps(output, default=str)
+    return {"result": text[:MAX_TOOL_OUTPUT], "result_chars": len(text),
+            "result_tokens": usage.estimate_tokens(text), "tokens_estimated": True,
+            "truncated": len(text) > MAX_TOOL_OUTPUT}
+
+
+def _execute_tool(name: str, arguments: str, call_id: str = "", llm_call_id: str = "") -> _ToolOutcome:
+    """Run (or park for approval) one tool call, in a telemetry span. Doesn't touch the chat: safe in a thread."""
     action = _action_for(name)
     try:
         args = json.loads(arguments or "{}")
     except json.JSONDecodeError:
         args = {}
-    if name == "chat-set_title":
-        title = _clean_title(str(args.get("title", "")))
-        if not title:
-            return {"error": "Empty title"}
-        chat.messages.append(ChatMessage(role="tool", tool=ToolEvent(action="chat.set_title", args={"title": title})))
-        chat.title = title
-        return {"title": title}
-    if action is None:
-        return {"error": f"Unknown tool {name}"}
-    event = ToolEvent(action=action.name, args=args)
-    chat.messages.append(ChatMessage(role="tool", tool=event))
-    if action.confirm:
-        event.status = "pending"
-        return {"status": "waiting_for_user_approval",
-                "note": "Approve/Reject buttons are shown to the user. Do not call it again; explain and wait."}
-    try:
-        result = registry.run(action.name, args)
-    except Exception as e:  # report the failure to the model so it can recover
-        event.status, event.error = "error", f"{type(e).__name__}: {e}"
-        return {"error": event.error}
-    _keep(event, result)
-    return {"result": result}
+    label = "chat.set_title" if name == "chat-set_title" else (action.name if action else name)
+    with telemetry.span("tool", llm_call_id=llm_call_id, tool_call_id=call_id, action=label, args=args) as span:
+        outcome = _tool_outcome(name, action, args)
+        event = outcome.message.tool if outcome.message else None
+        status = event.status if event else ("error" if "error" in outcome.output else "done")
+        span.status = {"pending": "pending_approval"}.get(status, status)
+        span.set(event_id=event.id if event else "", error=(event.error if event else outcome.output.get("error", "")),
+                 **_result_payload(outcome.output))
+        if status == "pending":
+            telemetry.emit("approval.requested", tool_call_id=call_id, event_id=event.id, action=label, args=args)
+    return outcome
+
+
+def _run_tools(chat: Chat, calls: list[tuple[str, str, str]], llm_call_id: str = "") -> list[str]:
+    """Run one model response's tool calls (name, arguments, call id): at the same time when there are several.
+    They are recorded in the chat in the order the model asked for them; returns what the model sees for each."""
+    if len(calls) > 1:  # each thread gets a copy of the context: the user, the billed feature, the telemetry turn
+        with ThreadPoolExecutor(max_workers=min(MAX_PARALLEL_TOOLS, len(calls))) as pool:
+            futures = [pool.submit(contextvars.copy_context().run, _execute_tool, *c, llm_call_id) for c in calls]
+            outcomes = [f.result() for f in futures]
+    else:
+        outcomes = [_execute_tool(*c, llm_call_id) for c in calls]
+    outputs = []
+    for outcome in outcomes:
+        if outcome.message:
+            chat.messages.append(outcome.message)
+        if outcome.title is not None:
+            old, chat.title = chat.title, outcome.title
+            telemetry.emit("title.set", by="model", old=old, new=chat.title)
+        outputs.append(json.dumps(outcome.output, default=str)[:MAX_TOOL_OUTPUT])
+    return outputs
 
 
 def _keep(event: ToolEvent, result) -> None:
@@ -344,6 +401,50 @@ def fix_links(text: str) -> str:
                           if (url := _file_link(m.group(1))) else m.group(0), text)
 
 
+class _Sink:
+    """Receives a streamed LLM call as it happens: token deltas go to the live listener (the chat UI), and each
+    finished thinking/text block and each tool call becomes a telemetry event of the current LLM call."""
+
+    def __init__(self):
+        self.first = False
+        self.blocks: dict = {}   # key -> [first delta ns, last delta ns, deltas]
+
+    def delta(self, kind: str, key, text: str) -> None:
+        now = time.time_ns()
+        if not self.first:
+            self.first = True
+            telemetry.emit("llm_call.first_token", kind=kind)
+        block = self.blocks.setdefault(key, [now, now, 0])
+        block[1], block[2] = now, block[2] + 1
+        telemetry.live("delta", kind=kind, text=text)
+
+    def block_done(self, kind: str, key, text: str) -> None:
+        first, last, deltas = self.blocks.pop(key, [None, None, 0])
+        if not text and not deltas:
+            return
+        telemetry.emit("llm.thinking" if kind == "thinking" else "llm.text", text=text, chars=len(text),
+                       tokens_estimate=usage.estimate_tokens(text) if text else 0, tokens_estimated=True,
+                       first_delta_ns=first, last_delta_ns=last, deltas=deltas)
+        telemetry.live("block_done", kind=kind)
+
+    def tool_call(self, call_id: str, name: str, arguments: str) -> None:
+        try:
+            args = json.loads(arguments or "{}")
+        except json.JSONDecodeError:
+            args = {"_unparsed": arguments}
+        action = _action_for(name)
+        telemetry.emit("tool_call.requested", tool_call_id=call_id, name=name,
+                       action=action.name if action else name.replace("-", "."), args=args)
+
+
+def _usage_payload(spent) -> dict:
+    """Tokens and cost of one LLM call, from what usage.py recorded (same meaning for both providers:
+    input_tokens = uncached input, cached_tokens = read from cache, cache_write_tokens = written to it)."""
+    return {"usage": {k: sum(getattr(e, k) or 0 for e in spent)
+                      for k in ("input_tokens", "cached_tokens", "cache_write_tokens", "output_tokens")},
+            "cost_usd": usage.sum_cost(spent)}
+
+
 def _converse(chat: Chat, input_items: list, note: str | None = None) -> Chat:
     """Answer the latest user message (or `note`, a system note not stored in the chat).
 
@@ -354,57 +455,88 @@ def _converse(chat: Chat, input_items: list, note: str | None = None) -> Chat:
         raise llm.LLMUnavailable(llm.NO_KEY)
     first_new = len(chat.messages)
     with usage.tally() as spent:
-        _converse_with_fallback(chat, input_items, note)
+        status = _converse_with_fallback(chat, input_items, note)
     replies = [m for m in chat.messages[first_new:] if m.role == "assistant"]
     if replies and spent:
         replies[-1].cost_usd = usage.sum_cost(spent)  # what this answer cost (all the AI calls behind it)
+    if status == "completed" and any(m.tool and m.tool.status == "pending" for m in chat.messages[first_new:]):
+        status = "waiting_approval"
     _auto_title(chat)
+    telemetry.set_turn(status, title=chat.title, provider=chat.provider, cost_usd=usage.sum_cost(spent),
+                       messages_added=len(chat.messages) - first_new)
     return _save(chat)
 
 
-def _converse_with_fallback(chat: Chat, input_items: list, note: str | None) -> None:
+def _converse_with_fallback(chat: Chat, input_items: list, note: str | None) -> str:
+    """Returns the turn's status: completed, max_steps, refusal, max_tokens or error."""
     use_claude = claude.available() and (chat.provider == "claude" or not llm.openai_available())
     if use_claude:
         chat.provider = "claude"
-        _converse_claude(chat, note)
-    else:
-        from openai import OpenAIError
-        try:
-            _converse_openai(chat, input_items)
-        except OpenAIError as e:
-            reason = llm.fallback_reason(e)
-            if reason and claude.available():
-                llm.log.warning("%s: chat %s switches to Claude", reason, chat.id)
-                chat.provider, chat.previous_response_id = "claude", None
-                notice = llm.switch_notice(reason, " for the rest of this chat")
-                chat.messages.append(ChatMessage(role="notice", text=notice))
-                _save(chat)
-                _converse_claude(chat, note)
-            else:
-                chat.messages.append(ChatMessage(role="assistant", text=f"⚠ OpenAI error: {e}"))
+        return _converse_claude(chat, note)
+    from openai import OpenAIError
+    try:
+        return _converse_openai(chat, input_items)
+    except OpenAIError as e:
+        reason = llm.fallback_reason(e)
+        if reason and claude.available():
+            llm.log.warning("%s: chat %s switches to Claude", reason, chat.id)
+            telemetry.emit("provider.fallback", reason=reason, from_provider="openai", to_provider="claude",
+                           to_model=claude.model())
+            chat.provider, chat.previous_response_id = "claude", None
+            notice = llm.switch_notice(reason, " for the rest of this chat")
+            chat.messages.append(ChatMessage(role="notice", text=notice))
+            _save(chat)
+            return _converse_claude(chat, note)
+        chat.messages.append(ChatMessage(role="assistant", text=f"⚠ OpenAI error: {e}"))
+        return "error"
+    except llm.StreamFailed as e:
+        chat.messages.append(ChatMessage(role="assistant", text=f"⚠ {e}"))
+        return "error"
 
 
-def _converse_openai(chat: Chat, input_items: list) -> None:
+def _openai_end(response) -> tuple[str, dict]:
+    """Status and details of a finished OpenAI response."""
+    state = getattr(response, "status", None) or "completed"
+    reason = getattr(getattr(response, "incomplete_details", None), "reason", None)
+    details = getattr(getattr(response, "usage", None), "output_tokens_details", None)
+    status = {"incomplete": "max_tokens" if reason == "max_output_tokens" else "incomplete",
+              "failed": "error"}.get(state, "completed")
+    return status, {"stop_reason": reason or state, "response_id": getattr(response, "id", ""),
+                    "reasoning_tokens": getattr(details, "reasoning_tokens", None)}
+
+
+def _converse_openai(chat: Chat, input_items: list) -> str:
     """The OpenAI loop; OpenAI errors propagate so the caller can fall back."""
-    client = llm.client()
-    for _ in range(MAX_STEPS):
-        response = client.responses.create(
-            model=config.OPENAI_CHAT_MODEL, instructions=_instructions(chat), input=input_items,
-            tools=tools(), previous_response_id=chat.previous_response_id)
-        usage.record_openai(response, config.OPENAI_CHAT_MODEL)
+    model = config.OPENAI_CHAT_MODEL
+    with telemetry.span("history", source="openai_previous_response", previous_response_id=chat.previous_response_id,
+                        summary_used=bool(chat.summary)) as h:  # OpenAI keeps the history: nothing to rebuild
+        h.set(messages=len(chat.messages) - chat.history_from)
+    for step in range(MAX_STEPS):
+        llm_call_id = telemetry.new_id()
+        with telemetry.span("llm_call", llm_call_id=llm_call_id, provider="openai", model=model, step=step,
+                            input_items=len(input_items)) as span, usage.tally() as spent:
+            response = llm.stream_response(
+                _Sink(), model=model, instructions=_instructions(chat), input=input_items,
+                tools=tools(), previous_response_id=chat.previous_response_id, **llm.reasoning_summary(model))
+            usage.record_openai(response, model)
+            span.status, details = _openai_end(response)
+            span.set(**details, **_usage_payload(spent))
         chat.previous_response_id = response.id
         chat.context_tokens = getattr(getattr(response, "usage", None), "input_tokens", 0) or 0  # includes cached
         calls = [o for o in response.output if o.type == "function_call"]
         if response.output_text:
             chat.messages.append(ChatMessage(role="assistant", text=fix_links(response.output_text)))
+        if span.status == "error":
+            chat.messages.append(ChatMessage(role="assistant", text="⚠ OpenAI could not finish this answer."))
+            return "error"
         if not calls:
-            break
-        input_items = [{"type": "function_call_output", "call_id": c.call_id,
-                        "output": json.dumps(_run_tool(chat, c.name, c.arguments), default=str)[:MAX_TOOL_OUTPUT]}
-                       for c in calls]
+            return span.status
+        outputs = _run_tools(chat, [(c.name, c.arguments, c.call_id) for c in calls], llm_call_id)
+        input_items = [{"type": "function_call_output", "call_id": c.call_id, "output": out}
+                       for c, out in zip(calls, outputs, strict=True)]
         _save(chat)  # keep progress even if a later step fails
-    else:
-        chat.messages.append(ChatMessage(role="assistant", text="(Stopped: too many steps. Ask me to continue.)"))
+    chat.messages.append(ChatMessage(role="assistant", text="(Stopped: too many steps. Ask me to continue.)"))
+    return "max_steps"
 
 
 def _claude_tools() -> list[dict]:
@@ -447,13 +579,26 @@ def _claude_history(chat: Chat, note: str | None) -> list[dict]:
     return messages
 
 
-def _converse_claude(chat: Chat, note: str | None = None) -> None:
+_CLAUDE_STATUS = {"max_tokens": "max_tokens", "refusal": "refusal"}
+
+
+def _converse_claude(chat: Chat, note: str | None = None) -> str:
     import anthropic
 
-    messages, tool_defs = _claude_history(chat, note), _claude_tools()
+    with telemetry.span("history", source="claude_rebuilt", summary_used=bool(chat.summary)) as h:
+        messages = _claude_history(chat, note)
+        chars = sum(len(m["content"]) for m in messages)
+        h.set(messages=len(messages), chars=chars, tokens_estimate=max(1, chars // 3), tokens_estimated=True)
+    tool_defs = _claude_tools()
     try:
-        for _ in range(MAX_STEPS):
-            response = claude.chat(_instructions(chat), tool_defs, messages)
+        for step in range(MAX_STEPS):
+            llm_call_id = telemetry.new_id()
+            with telemetry.span("llm_call", llm_call_id=llm_call_id, provider="anthropic", model=claude.model(),
+                                step=step, messages=len(messages)) as span, usage.tally() as spent:
+                response = claude.chat(_instructions(chat), tool_defs, messages, _Sink())
+                span.status = _CLAUDE_STATUS.get(response.stop_reason, "completed")
+                span.set(stop_reason=response.stop_reason, response_id=getattr(response, "id", ""),
+                         **_usage_payload(spent))
             u = getattr(response, "usage", None)
             chat.context_tokens = sum(getattr(u, k, 0) or 0 for k in
                                       ("input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens"))
@@ -462,25 +607,26 @@ def _converse_claude(chat: Chat, note: str | None = None) -> None:
                 chat.messages.append(ChatMessage(role="assistant", text=fix_links(text)))
             if response.stop_reason == "refusal":
                 chat.messages.append(ChatMessage(role="assistant", text="(Claude declined this request.)"))
-                break
+                return "refusal"
             if response.stop_reason == "max_tokens":
                 chat.messages.append(ChatMessage(role="assistant", text="(Reply cut off: too long. Ask me to continue.)"))
-                break
+                return "max_tokens"
             messages.append({"role": "assistant", "content": response.content})
             if response.stop_reason == "pause_turn":
                 continue
             calls = [b for b in response.content if b.type == "tool_use"]
             if not calls:
-                break
+                return "completed"
+            outputs = _run_tools(chat, [(c.name, json.dumps(c.input), c.id) for c in calls], llm_call_id)
             messages.append({"role": "user", "content": [
-                {"type": "tool_result", "tool_use_id": c.id,
-                 "content": json.dumps(_run_tool(chat, c.name, json.dumps(c.input)), default=str)[:MAX_TOOL_OUTPUT]}
-                for c in calls]})
+                {"type": "tool_result", "tool_use_id": c.id, "content": out}
+                for c, out in zip(calls, outputs, strict=True)]})
             _save(chat)  # keep progress even if a later step fails
-        else:
-            chat.messages.append(ChatMessage(role="assistant", text="(Stopped: too many steps. Ask me to continue.)"))
+        chat.messages.append(ChatMessage(role="assistant", text="(Stopped: too many steps. Ask me to continue.)"))
+        return "max_steps"
     except anthropic.AnthropicError as e:
         chat.messages.append(ChatMessage(role="assistant", text=f"⚠ Claude error: {e}"))
+        return "error"
 
 
 # ---------------------------------------------------------------- compacting
@@ -528,35 +674,65 @@ def compact(chat_id: str) -> Chat:
         "Conversation compacted: the assistant continues from a summary of the messages above "
         f"(they stay here for you). Cost: ${usage.sum_cost(spent):.4f}.")))
     chat.history_from = len(chat.messages)
+    telemetry.emit("compaction", conversation_id=chat.id, cost_usd=usage.sum_cost(spent),
+                   summary_chars=len(chat.summary), messages_summarized=len(recent))
     return _save(chat)
 
 
-def send(message: str, chat_id: str | None = None) -> Chat:
+def _turn(chat: Chat, trigger: str, listener=None, **payload):
+    """A telemetry turn: a user message or an approval, and everything the assistant did for it."""
+    index, chat.turn_count = chat.turn_count, chat.turn_count + 1
+    return telemetry.turn(chat.id, index, trigger, listener, **payload)
+
+
+def send(message: str, chat_id: str | None = None, listener=None) -> Chat:
+    """`listener` (optional) gets every telemetry event and token delta of this turn as it happens (live chat UI)."""
     chat = get_chat(chat_id) if chat_id else Chat(title=message.strip().splitlines()[0][:70] or "New chat")
-    chat.archived = False  # writing in an archived conversation brings it back
-    chat.messages.append(ChatMessage(role="user", text=message))
-    _save(chat)
-    return _converse(chat, [{"role": "user", "content": message}])
+    with _turn(chat, "user_message", listener, text=message, chars=len(message)):
+        if not chat_id:
+            telemetry.emit("conversation.started", title=chat.title, provider=chat.provider)
+        chat.archived = False  # writing in an archived conversation brings it back
+        chat.messages.append(ChatMessage(role="user", text=message))
+        _save(chat)
+        return _converse(chat, [{"role": "user", "content": message}])
 
 
-def resolve(chat_id: str, event_id: str, approve: bool) -> Chat:
+def _waited_s(chat: Chat, event: ToolEvent) -> float | None:
+    """How long the approval waited for the user (from when the assistant proposed it)."""
+    m = next((m for m in chat.messages if m.tool is event), None)
+    try:
+        return round((datetime.now() - datetime.fromisoformat(m.at)).total_seconds(), 1) if m else None
+    except ValueError:
+        return None
+
+
+def resolve(chat_id: str, event_id: str, approve: bool, listener=None) -> Chat:
     """The user approved or rejected a pending action; run it if approved, then let the assistant continue."""
     chat = get_chat(chat_id)
     event = next((m.tool for m in chat.messages if m.tool and m.tool.id == event_id), None)
     if event is None or event.status != "pending":
         raise ValueError("No pending action with this id")
-    if approve:
-        try:
-            result = registry.run(event.action, event.args)
-            event.status = "approved"
-            _keep(event, result)
-            note = f"The user APPROVED {event.action}. It ran. Result: {json.dumps(result, default=str)[:MAX_TOOL_OUTPUT]}"
-        except Exception as e:
-            event.status, event.error = "error", f"{type(e).__name__}: {e}"
-            note = f"The user approved {event.action} but it failed: {event.error}"
-    else:
-        event.status = "rejected"
-        note = f"The user REJECTED {event.action}. It did not run."
-    _save(chat)
-    note = f"{note} Briefly confirm and continue."
-    return _converse(chat, [{"role": "user", "content": f"[system note] {note}"}], note=note)
+    with _turn(chat, "approval", listener, event_id=event.id, action=event.action, approve=approve):
+        telemetry.emit("approval.resolved", event_id=event.id, action=event.action, approved=approve,
+                       requested_turn_id=event.turn_id, waited_s=_waited_s(chat, event))
+        if approve:
+            with telemetry.span("tool", event_id=event.id, action=event.action, args=event.args, approved=True) as span:
+                try:
+                    result = registry.run(event.action, event.args)
+                    event.status = "approved"
+                    _keep(event, result)
+                    span.status = "done"
+                    span.set(**_result_payload({"result": result}))
+                    shown = json.dumps(result, default=str)[:MAX_TOOL_OUTPUT]
+                    note = f"The user APPROVED {event.action}. It ran. Result: {shown}"
+                except Exception as e:
+                    event.status, event.error = "error", f"{type(e).__name__}: {e}"
+                    span.status = "error"
+                    span.set(error=event.error)
+                    note = f"The user approved {event.action} but it failed: {event.error}"
+        else:
+            event.status = "rejected"
+            note = f"The user REJECTED {event.action}. It did not run."
+        _save(chat)
+        note = f"{note} Briefly confirm and continue."
+        return _converse(chat, [{"role": "user", "content": f"[system note] {note}"}], note=note)
