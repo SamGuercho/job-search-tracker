@@ -1,4 +1,4 @@
-"""The monitor: a separate web app over the chat telemetry (read only).
+"""The monitor: a separate web app over the chat telemetry (reads it; writes only flags).
 
 Run it next to the app: `python -m jobtracker monitor [--port 8100]`. Owner only: behind `tailscale serve`
 (JOBTRACKER_TAILSCALE_USERS=1) the Tailscale login must be the owner's; with a password, the app's login cookie
@@ -13,27 +13,43 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
 from jobtracker import __version__, auth, config, users
+from jobtracker.telemetry import flags, review
 
 from . import queries
 
 WEB = Path(__file__).parent / "web"
 app = FastAPI(title="Ezri monitor", version=__version__)
 _db: dict = {"path": None, "conn": None}
+_rw: dict = {"path": None, "conn": None}
 _lock = threading.Lock()
+_write_lock = threading.Lock()
+
+
+def _connection(slot: dict, readonly: bool):
+    path = str(config.TELEMETRY_DB)
+    if slot["path"] != path:
+        from jobtracker.telemetry import store
+        if slot["conn"] is not None:
+            slot["conn"].close()
+        if readonly:
+            store.connect(config.TELEMETRY_DB).close()  # creates the tables an older database doesn't have yet
+        slot["conn"], slot["path"] = store.connect(config.TELEMETRY_DB, readonly=readonly), path
+    return slot["conn"]
 
 
 def query(fn, *args):
-    """Run a query on the shared read-only connection (the app is the only writer; queries are short)."""
+    """Run a query on the shared read-only connection (queries are short)."""
     with _lock:
-        path = str(config.TELEMETRY_DB)
-        if _db["path"] != path:
-            from jobtracker.telemetry import store
-            if _db["conn"] is not None:
-                _db["conn"].close()
-            _db["conn"], _db["path"] = store.connect(config.TELEMETRY_DB, readonly=True), path
-        return fn(_db["conn"], *args)
+        return fn(_connection(_db, True), *args)
+
+
+def write(fn, *args, **kwargs):
+    """Flags only: the owner's flags and status changes (the app writes everything else)."""
+    with _write_lock:
+        return fn(_connection(_rw, False), *args, **kwargs)
 
 
 def _denied(request: Request, message: str, status: int = 403):
@@ -95,6 +111,62 @@ def turn(turn_id: str):
     if not out:
         raise HTTPException(404, "No telemetry for this turn")
     return out
+
+
+# ------------------------------------------------------------------ flags and the review queue
+
+class NewFlag(BaseModel):
+    turn_id: str
+    category: str
+    note: str = ""
+    span_id: str = ""
+    llm_call_id: str = ""
+
+
+class FlagChange(BaseModel):
+    status: str | None = None
+    note: str | None = None
+    category: str | None = None
+    case_id: str | None = None
+    fixed_in: str | None = None
+
+
+@app.get("/api/flags/catalog")
+def flag_catalog():
+    return flags.catalog()
+
+
+@app.get("/api/flags")
+def flag_list(status: str = "suggested,open,in_case"):
+    statuses = [s for s in status.split(",") if s] if status != "*" else None
+    return query(queries.flag_list, statuses)
+
+
+@app.post("/api/flags")
+def flag_add(body: NewFlag):
+    if not query(queries.turn, body.turn_id):
+        raise HTTPException(404, "No telemetry for this turn")
+    try:
+        return write(review.add, body.turn_id, body.category, body.note.strip(), body.span_id, body.llm_call_id)
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from e
+
+
+@app.patch("/api/flags/{flag_id}")
+def flag_change(flag_id: int, body: FlagChange):
+    try:
+        out = write(review.update, flag_id, **body.model_dump())
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from e
+    if out is None:
+        raise HTTPException(404, "No such flag")
+    return out
+
+
+@app.get("/api/review/queue")
+def review_queue(full: bool = True):
+    """What still needs fixing, with each flagged turn's whole trace (for the fixing process)."""
+    return query(queries.review_queue, full)
 
 
 @app.get("/")

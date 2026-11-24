@@ -46,6 +46,9 @@ TELEMETRY_BACKUP_DIR = Path(_backup).expanduser() if _backup else None
 # Compressed copies of the telemetry: one every N days, only the last K kept (see telemetry/backup.py)
 TELEMETRY_BACKUP_EVERY_DAYS = float(os.environ.get("JOBTRACKER_TELEMETRY_BACKUP_EVERY_DAYS", "7"))
 TELEMETRY_BACKUP_KEEP = int(os.environ.get("JOBTRACKER_TELEMETRY_BACKUP_KEEP", "3"))
+# Detectors (telemetry/detect.py) suggest a flag for turns above these (0 = never)
+FLAG_COST_USD = float(os.environ.get("JOBTRACKER_FLAG_COST_USD", "0.10"))
+FLAG_SLOW_S = float(os.environ.get("JOBTRACKER_FLAG_SLOW_S", "60"))
 MONITOR_PORT = int(os.environ.get("MONITOR_PORT", "8100"))
 
 # Generated CV file name, without extension. {name} = your name with underscores.

@@ -149,3 +149,34 @@ svg .gridline { stroke: var(--grid); }
   .top { padding: 0 16px; gap: 12px; }
   .wf-row, .wf-axis { grid-template-columns: 110px minmax(0, 1fr); }
 }
+
+/* Flags and the review queue */
+.title-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.title-row h1, .title-row h2 { margin-right: auto; }
+.flag-btn { color: var(--critical); border-color: var(--border); background: var(--surface); }
+.flag-btn:hover { background: var(--critical-soft); }
+.flag-btn.small, button.small { padding: 3px 8px; font-size: 12px; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.flag-mark { color: var(--critical); }
+.flag { border-top: 1px solid var(--border); padding: 10px 0; display: grid; gap: 4px; }
+.flag:first-of-type { border-top: 0; }
+.flag-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.flag-note { white-space: pre-wrap; }
+.tabs { display: flex; gap: 4px; margin: 12px 0 16px; flex-wrap: wrap; }
+.tabs a { padding: 6px 12px; border-radius: 8px; border: 1px solid var(--border); color: var(--text-2); background: var(--surface); }
+.tabs a.active { border-color: var(--accent); color: var(--accent); }
+.tabs a:hover { text-decoration: none; }
+a.tile { color: inherit; display: block; }
+a.tile:hover { text-decoration: none; border-color: var(--accent); }
+.nav-count { display: inline-block; min-width: 18px; padding: 0 5px; margin-left: 2px; border-radius: 999px; font-size: 11px;
+  line-height: 18px; text-align: center; background: var(--brand-hover); color: var(--brand-text); }
+.nav-count.todo { background: var(--lime); color: #1d1a33; font-weight: 700; }
+dialog { border: 1px solid var(--border); border-radius: 12px; background: var(--surface); color: var(--text); padding: 20px;
+  width: min(480px, calc(100vw - 32px)); }
+dialog::backdrop { background: rgba(10, 10, 20, .45); }
+dialog form { display: grid; gap: 12px; }
+dialog h2 { margin: 0; }
+dialog label { display: grid; gap: 4px; font-size: 13px; color: var(--text-2); }
+dialog select, dialog textarea { font: inherit; width: 100%; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--border);
+  background: var(--surface); color: var(--text); }
+.dialog-actions { display: flex; gap: 8px; justify-content: flex-end; }

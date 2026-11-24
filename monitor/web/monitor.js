@@ -1,4 +1,4 @@
-// Ezri monitor: dashboard, conversations, and the trace of one turn (waterfall + metrics).
+// Ezri monitor: dashboard, conversations, the trace of one turn (waterfall + metrics), and the review queue of flags.
 const root = document.getElementById("root");
 const tip = document.getElementById("tooltip");
 const USER_COLORS = ["var(--series-1)", "var(--series-2)", "var(--series-3)", "var(--series-4)"];
@@ -31,12 +31,13 @@ function svg(tag, attrs = {}, ...children) {
   for (const c of children.flat(Infinity)) if (c) el.append(c instanceof Node ? c : document.createTextNode(String(c)));
   return el;
 }
-async function get(path) {
-  const res = await fetch(path);
+async function get(path, init) {
+  const res = await fetch(path, init);
   const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(body.detail || `${path}: ${res.status}`);
+  if (!res.ok) throw new Error(typeof body.detail === "string" ? body.detail : `${path}: ${res.status}`);
   return body;
 }
+const send = (method, path, data) => get(path, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
 const ms = (v) => (v === null || v === undefined ? "–" : v >= 10000 ? `${(v / 1000).toFixed(1)} s` : v >= 1000 ? `${(v / 1000).toFixed(2)} s` : `${Math.round(v)} ms`);
 const usd = (v) => (v === null || v === undefined ? "–" : v === 0 ? "$0" : v < 0.01 ? `$${v.toFixed(4)}` : `$${v.toFixed(2)}`);
 const num = (v) => (v === null || v === undefined ? "–" : Number(v).toLocaleString());
@@ -88,7 +89,8 @@ async function dashboard() {
         tile("Tool calls", num(t.tool_calls), `${num(t.tool_errors)} failed`, t.tool_errors ? "warn" : ""),
         tile("Approvals", `${num(t.approved)} / ${num(t.approved + t.rejected)}`, "approved / answered"),
         tile("Errors", num(t.errors), `${num(t.fallbacks)} switches to Claude`, t.errors ? "bad" : ""),
-        tile("Timing checks", t.inconsistent_turns ? `${num(t.inconsistent_turns)} ✕` : "✓ all", "turns whose totals don't match their timestamps", t.inconsistent_turns ? "bad" : "")),
+        tile("Timing checks", t.inconsistent_turns ? `${num(t.inconsistent_turns)} ✕` : "✓ all", "turns whose totals don't match their timestamps", t.inconsistent_turns ? "bad" : ""),
+        reviewTile(data.review), feedbackTile(data.review)),
       h("div", { class: "grid2" },
         h("div", { class: "card" }, h("h2", {}, "Turns per day"), perDayChart(data.per_day)),
         h("div", { class: "card" }, h("h2", {}, "Latency"), latencyTable(L),
@@ -104,6 +106,18 @@ async function dashboard() {
       h("div", { class: "card" }, h("h2", {}, "By tool"), table(["Tool", "Calls", "Failed", "Waited approval", "p50", "p95", "Result tokens p50 (est.)"],
         data.by_tool.map((r) => [r.action, num(r.calls), num(r.errors), num(r.pending), ms(r.latency.p50), ms(r.latency.p95), num(r.result_tokens.p50 && Math.round(r.result_tokens.p50))]), [1, 2, 3, 4, 5, 6])),
     ]);
+}
+
+function reviewTile(r) {
+  const f = r?.flags || {};
+  const todo = (f.open || 0) + (f.in_case || 0);
+  return h("a", { class: `tile link ${todo ? "warn" : ""}`, href: "#/review" }, h("div", { class: "label" }, "To review"),
+    h("div", { class: "value" }, num(todo)), h("div", { class: "sub" }, `${num(f.suggested || 0)} suggested · ${num(f.fixed || 0)} fixed`));
+}
+function feedbackTile(r) {
+  const fb = r?.feedback || { up: 0, down: 0 };
+  return h("div", { class: `tile ${fb.down ? "warn" : ""}` }, h("div", { class: "label" }, "Feedback"),
+    h("div", { class: "value" }, `👍 ${num(fb.up)} · 👎 ${num(fb.down)}`), h("div", { class: "sub" }, "replies rated in the chat"));
 }
 
 function table(headers, rows, numeric = [], onRow = null) {
@@ -178,10 +192,11 @@ async function conversationPage(id) {
   mount(root, 
     h("div", { class: "crumbs small" }, h("a", { href: "#/conversations" }, "← Conversations")),
     h("h1", {}, c.title), h("div", { class: "muted small" }, `${who(c.user_id)} · ${c.turns.length} turns`),
-    h("div", { class: "card", style: { marginTop: "14px" } }, table(["#", "Message", "Status", "Turn", "First token", "LLM calls", "Tools", "Tokens out", "Cost", "Timing"],
+    h("div", { class: "card", style: { marginTop: "14px" } }, table(["#", "Message", "Status", "Turn", "First token", "LLM calls", "Tools", "Tokens out", "Cost", "Timing", "Flags"],
       c.turns.map((t) => [t.turn_index, h("span", { title: t.user_text }, (t.user_text || "").slice(0, 90) || h("span", { class: "muted" }, t.trigger)),
         chip(t.status), ms(t.wall_ms), ms(t.ttft_ms), num(t.llm_calls), num(t.tool_calls), num(t.output_tokens), usd(t.cost_usd),
-        t.consistent ? h("span", { class: "chip good" }, "✓") : h("span", { class: "chip critical" }, "✕ check")]),
+        t.consistent ? h("span", { class: "chip good" }, "✓") : h("span", { class: "chip critical" }, "✕ check"),
+        t.flags ? h("span", { class: "chip warning" }, `⚑ ${t.flags}`) : ""]),
       [3, 4, 5, 6, 7, 8], (i) => { location.hash = `#/t/${c.turns[i].turn_id}`; })));
 }
 
@@ -189,7 +204,7 @@ async function conversationPage(id) {
 let selected = null;
 
 async function turnPage(turnId) {
-  const data = await get(`/api/turns/${encodeURIComponent(turnId)}`);
+  const [data] = await Promise.all([get(`/api/turns/${encodeURIComponent(turnId)}`), loadCatalog()]);
   const s = data.summary || {};
   const total = Math.max(1, ...data.spans.map((x) => x.end_ms ?? x.start_ms), data.running ? (Date.now() * 1e6 - data.origin_ns) / 1e6 : 0);
   const byId = Object.fromEntries(data.spans.map((x) => [x.span_id, x]));
@@ -199,7 +214,8 @@ async function turnPage(turnId) {
 
   const detail = h("div", { class: "detail" });
   const drawDetail = () => mount(detail, spanDetail(byId[selected], data));
-  const rows = data.spans.map((x) => waterfallRow(x, byId, total, () => {
+  const flagged = new Set(data.flags.filter((f) => f.span_id && !["dismissed", "archived"].includes(f.status)).map((f) => f.span_id));
+  const rows = data.spans.map((x) => waterfallRow(x, byId, total, flagged.has(x.span_id), () => {
     selected = x.span_id;
     for (const r of root.querySelectorAll(".wf-row")) r.classList.toggle("selected", r.dataset.span === selected);
     drawDetail();
@@ -208,7 +224,9 @@ async function turnPage(turnId) {
   mount(root, 
     h("div", { class: "crumbs small" }, h("a", { href: "#/conversations" }, "Conversations"), "›", h("a", { href: `#/c/${data.conversation_id}` }, data.title), "›", `Turn ${data.turn_index}`,
       h("span", { style: { flex: 1 } }), nav(idx - 1), nav(idx + 1)),
-    h("h1", {}, data.running && h("span", { class: "live-dot", title: "Running: updates live" }), `Turn ${data.turn_index} · `, chip(s.status)),
+    h("div", { class: "title-row" },
+      h("h1", {}, data.running && h("span", { class: "live-dot", title: "Running: updates live" }), `Turn ${data.turn_index} · `, chip(s.status)),
+      h("button", { class: "flag-btn", onclick: () => flagDialog({ turn_id: data.turn_id }, "turn", () => route(true)) }, "⚑ Flag this turn")),
     h("div", { class: "muted small" }, `${who(s.user_id)} · ${s.trigger === "approval" ? "after an approval" : "user message"} · ${new Date(data.origin_ns / 1e6).toLocaleString()}`),
     h("div", { class: "turn-layout", style: { marginTop: "14px" } },
       h("div", {},
@@ -248,7 +266,7 @@ function niceStep(raw) {
   return [1, 2, 5, 10].map((m) => m * p).find((s) => s >= raw) || raw;
 }
 
-function waterfallRow(x, byId, total, onSelect) {
+function waterfallRow(x, byId, total, isFlagged, onSelect) {
   const end = x.end_ms ?? total;
   const left = (100 * x.start_ms) / total;
   const width = (100 * (end - x.start_ms)) / total;
@@ -256,7 +274,7 @@ function waterfallRow(x, byId, total, onSelect) {
   const bar = h("div", { class: `wf-bar ${x.end_ms === null ? "running" : ""} ${x.status === "error" ? "error" : ""}`, style: { left: `${left}%`, width: `${width}%`, background: KIND_COLORS[x.kind] || "var(--neutral)" } });
   const row = h("div", { class: "wf-row", "data-span": x.span_id, onclick: onSelect },
     h("div", { class: "wf-label", style: { paddingLeft: `${depth(x, byId) * 14}px` }, title: spanLabel(x) },
-      h("span", { class: "kind" }, `${KIND_NAMES[x.kind] || x.kind} `), spanLabel(x)),
+      isFlagged && h("span", { class: "flag-mark", title: "Flagged" }, "⚑ "), h("span", { class: "kind" }, `${KIND_NAMES[x.kind] || x.kind} `), spanLabel(x)),
     h("div", { class: "wf-track" }, h("div", { class: "wf-inner" }, bar,
       ticks.map((e) => h("div", { class: "wf-tick", style: { left: `${(100 * (e.at_ms || 0)) / total}%` } })),
       h("span", { class: "wf-dur", style: { left: `calc(${left + width}% + 6px)` } }, x.end_ms === null ? "running…" : ms(x.duration_ms)))));
@@ -305,7 +323,10 @@ function spanDetail(x, data) {
       h("h2", { style: { marginTop: "14px" } }, "Started with"), json(x.start), h("h2", {}, "Ended with"), json(x.end),
       turnEvents.length > 0 && [h("h2", {}, "Events"), table(["At", "Event", ""], turnEvents.map((e) => [ms(e.at_ms), e.type, h("code", { class: "small" }, JSON.stringify(e.payload).slice(0, 140))]), [0])]);
   }
-  return [h("h2", {}, `${KIND_NAMES[x.kind] || x.kind}: ${spanLabel(x)}`), body];
+  const canFlag = x.kind === "llm_call" || x.kind === "tool";
+  return [h("div", { class: "title-row" }, h("h2", {}, `${KIND_NAMES[x.kind] || x.kind}: ${spanLabel(x)}`),
+    canFlag && h("button", { class: "flag-btn small", onclick: () => flagDialog({ turn_id: data.turn_id, span_id: x.span_id, llm_call_id: x.llm_call_id }, x.kind, () => route(true)) },
+      `⚑ Flag this ${x.kind === "tool" ? "tool call" : "LLM call"}`)), body];
 }
 function prettyJson(text) {
   try { return JSON.stringify(JSON.parse(text), null, 2); } catch { return text || ""; }
@@ -325,9 +346,90 @@ function metricsPanel(data) {
     h("div", { class: "small muted", style: { marginTop: "6px" } }, "× = tool work ÷ tool wall: above 1, tools ran in parallel.")),
     h("div", { class: "card" }, h("h2", {}, "Timing checks"),
       (s.checks || []).map((c) => h("div", { class: "check" }, h("span", { class: c.ok ? "ok" : "ko" }, c.ok ? "✓" : "✕"), h("div", {}, c.check, h("div", { class: "small muted" }, c.detail))))),
+    h("div", { class: "card" }, h("h2", {}, "Flags"),
+      data.flags.length ? data.flags.map((f) => flagItem(f, () => route(true), { showTurn: false }))
+        : h("div", { class: "small muted" }, "Nothing flagged. Use ⚑ on the turn, an LLM call or a tool call.")),
     h("div", { class: "card" }, h("h2", {}, "Evaluations"),
       data.scores.length ? table(["Evaluator", "Metric", "Value", ""], data.scores.map((x) => [x.evaluator, x.metric, x.value ?? x.label ?? "–", x.label && x.value !== null ? x.label : ""]), [2])
         : h("div", { class: "small muted" }, "No evaluations yet. Scores from LLM-as-a-judge or smaller models will show here (turn_scores table).")));
+}
+
+// ------------------------------------------------------------------ flags and the review queue
+let catalog = null;
+const loadCatalog = async () => (catalog ||= await get("/api/flags/catalog"));
+const SOURCE = { user: "👎 user", owner: "owner", detector: "detector" };
+const FLAG_STATUS = { suggested: "warning", open: "critical", in_case: "warning", fixed: "good", archived: "", dismissed: "" };
+const flagStatus = (s) => h("span", { class: `chip ${FLAG_STATUS[s] || ""}` }, s.replace("_", " "));
+
+async function refreshReviewCount() {
+  try {
+    const flags = await get("/api/flags?status=suggested,open,in_case");
+    const el = document.getElementById("review-count");
+    const todo = flags.filter((f) => f.status !== "suggested").length;
+    el.textContent = todo || flags.length;
+    el.className = `nav-count ${todo ? "todo" : ""}`;
+    el.hidden = !flags.length;
+  } catch { /* the badge is optional */ }
+}
+
+// The flag form: category (only those that apply to this level), and what went wrong
+async function flagDialog(target, level, onDone) {
+  const cat = await loadCatalog();
+  const dialog = document.getElementById("dialog");
+  const options = cat.categories.filter((c) => c.levels.includes(level));
+  const groups = [...new Set(options.map((c) => c.group))];
+  const select = h("select", { required: true, "aria-label": "What went wrong" }, h("option", { value: "" }, "Choose…"),
+    groups.map((g) => h("optgroup", { label: g }, options.filter((c) => c.group === g).map((c) => h("option", { value: c.id }, c.label)))));
+  const note = h("textarea", { rows: 4, placeholder: "What happened, and what should it have done?" });
+  const error = h("div", { class: "small", style: { color: "var(--critical)" } });
+  const what = { turn: "this turn", llm_call: "this LLM call", tool: "this tool call" }[level];
+  mount(dialog, h("form", { method: "dialog", onsubmit: async (e) => {
+    e.preventDefault();
+    try {
+      await send("POST", "/api/flags", { ...target, category: select.value, note: note.value });
+      dialog.close();
+      onDone?.();
+    } catch (err) { error.textContent = err.message; }
+  } },
+    h("h2", {}, `Flag ${what}`), h("label", {}, "What went wrong", select), h("label", {}, "Note", note), error,
+    h("div", { class: "dialog-actions" }, h("button", { type: "button", onclick: () => dialog.close() }, "Cancel"), h("button", { type: "submit", class: "primary" }, "Flag"))));
+  dialog.showModal();
+  select.focus();
+}
+
+async function setFlag(f, status, onDone) {
+  try { await send("PATCH", `/api/flags/${f.id}`, { status }); onDone?.(); } catch (e) { alert(e.message); }
+}
+
+function flagItem(f, onDone, { showTurn = true } = {}) {
+  const label = (catalog?.categories.find((c) => c.id === f.category) || {}).label || f.label || f.category;
+  const actions = f.status === "suggested" ? [h("button", { class: "small primary", onclick: () => setFlag(f, "open", onDone) }, "Confirm"), h("button", { class: "small", onclick: () => setFlag(f, "dismissed", onDone) }, "Dismiss")]
+    : ["open", "in_case"].includes(f.status) ? [h("button", { class: "small", onclick: () => setFlag(f, "dismissed", onDone) }, "Dismiss")]
+    : f.status === "dismissed" ? [h("button", { class: "small", onclick: () => setFlag(f, "open", onDone) }, "Reopen")] : [];
+  return h("div", { class: "flag" },
+    h("div", { class: "flag-head" }, h("b", {}, label), flagStatus(f.status), h("span", { class: "chip" }, SOURCE[f.source] || f.source),
+      f.span_label && h("span", { class: "small muted" }, `on ${f.span_label}`), h("span", { style: { flex: 1 } }), actions),
+    f.note && h("div", { class: "flag-note", dir: "auto" }, f.note),
+    showTurn && h("div", { class: "small" }, h("a", { href: `#/t/${f.turn_id}` }, f.title || f.conversation_id), " · ",
+      h("span", { class: "muted", dir: "auto" }, `“${(f.user_text || "").slice(0, 120)}”`), " · ", h("span", { class: "muted" }, `${who(f.user_id)} · ${new Date(f.created_at).toLocaleString()}`)),
+    (f.case_id || f.fixed_in) && h("div", { class: "small muted" }, [f.case_id && `case ${f.case_id}`, f.fixed_in && `fixed in ${f.fixed_in}`].filter(Boolean).join(" · ")));
+}
+
+async function reviewPage(tab) {
+  await loadCatalog();
+  const TABS = { queue: ["To fix", "open,in_case"], suggested: ["Suggested", "suggested"], done: ["Done", "fixed,archived,dismissed"] };
+  const [all, list] = await Promise.all([get("/api/flags?status=*"), get(`/api/flags?status=${TABS[tab]?.[1] || TABS.queue[1]}`)]);
+  const count = (statuses) => all.filter((f) => statuses.split(",").includes(f.status)).length;
+  const reload = () => route(true);
+  const groups = {};
+  for (const f of list) (groups[f.group] ||= {})[f.category] = [...((groups[f.group] || {})[f.category] || []), f];
+  mount(root,
+    h("h1", {}, "Review"),
+    h("div", { class: "muted small" }, "What went wrong: thumbs down from the chat, your flags, and what the detectors found (confirm or dismiss those). The fixing process works through “To fix”."),
+    h("div", { class: "tabs" }, Object.entries(TABS).map(([id, [name, statuses]]) => h("a", { href: `#/review/${id}`, class: id === (TABS[tab] ? tab : "queue") ? "active" : "" }, `${name} (${count(statuses)})`))),
+    !list.length ? h("div", { class: "card empty" }, tab === "suggested" ? "No suggestions: the detectors found nothing new." : tab === "done" ? "Nothing done yet." : "Nothing to fix. Flag a turn with ⚑, or confirm a suggestion.")
+      : Object.entries(groups).map(([group, cats]) => h("div", { class: "card" }, h("h2", {}, group),
+        Object.entries(cats).map(([, flags]) => flags.map((f) => flagItem(f, reload))))));
 }
 
 // ------------------------------------------------------------------ routing
@@ -335,12 +437,15 @@ async function route(refresh = false) {
   clearTimeout(timer);
   hideTip();
   const hash = location.hash.slice(1) || "/";
-  for (const a of document.querySelectorAll("nav a")) a.classList.toggle("active", (a.dataset.nav === "dashboard" && hash === "/") || (a.dataset.nav === "conversations" && hash !== "/"));
+  const section = hash === "/" ? "dashboard" : hash.startsWith("/review") ? "review" : "conversations";
+  for (const a of document.querySelectorAll("nav a")) a.classList.toggle("active", a.dataset.nav === section);
+  refreshReviewCount();
   const y = scrollY;
   try {
     if (hash.startsWith("/t/")) await turnPage(decodeURIComponent(hash.slice(3)));
     else if (hash.startsWith("/c/")) await conversationPage(decodeURIComponent(hash.slice(3)));
     else if (hash.startsWith("/conversations")) await conversationList();
+    else if (hash.startsWith("/review")) await reviewPage(hash.split("/")[2] || "queue");
     else await dashboard();
     if (refresh) scrollTo(0, y);
   } catch (e) {

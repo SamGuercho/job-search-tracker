@@ -8,18 +8,20 @@ user approves or rejects them in the chat.
 from __future__ import annotations
 
 import contextvars
+import hashlib
 import json
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import date, datetime
+from functools import cache
 from urllib.parse import quote, unquote
 
 from pydantic import BaseModel
 
 from .. import config, registry, telemetry, users
-from ..models import Chat, ChatBook, ChatMessage, ToolEvent
+from ..models import Chat, ChatBook, ChatMessage, Feedback, ToolEvent
 from ..storage import UserDocument
 from . import claude, companies, llm, master_cv, profile, usage
 from .companies import NotFound
@@ -177,6 +179,22 @@ def rename_chat(chat_id: str, title: str) -> Chat:
     return _save(chat)
 
 
+def give_feedback(chat_id: str, turn_id: str, rating: str | None, reasons: list[str] | None = None,
+                  comment: str = "") -> Chat:
+    """The user's 👍/👎 on the reply that ended `turn_id` (rating None removes it). Kept on the message, and sent to
+    telemetry, where a 👎 becomes a flag in the monitor's review queue."""
+    chat = get_chat(chat_id)
+    reply = next((m for m in chat.messages if m.role == "assistant" and m.turn_id == turn_id), None)
+    if reply is None:
+        raise ValueError("No reply for this turn")
+    reasons = [r for r in (reasons or []) if r in telemetry.flags.USER_REASONS] if rating == "down" else []
+    comment = comment.strip()[:2000] if rating == "down" else ""
+    reply.feedback = Feedback(rating=rating, reasons=reasons, comment=comment) if rating else None
+    telemetry.emit("feedback.given", conversation_id=chat.id, turn_id=turn_id, rating=rating or "",
+                   reasons=reasons, comment=comment)
+    return _save(chat)
+
+
 def _chat_company(chat: Chat):
     """The one tracked company this conversation is about, if exactly one is involved."""
     tracked = companies.list_companies()
@@ -240,6 +258,14 @@ def tools() -> list[dict]:
         out.append({"type": "function", "name": tool_name(a.name), "description": description,
                     "parameters": a.input_model.model_json_schema(), "strict": False})
     return out
+
+
+@cache
+def prompt_version() -> str:
+    """A short hash of what shapes the assistant's behavior (instructions + tools): changes when either changes,
+    so the monitor can tell which flags came before or after a fix."""
+    text = INSTRUCTIONS + json.dumps(tools(), sort_keys=True, default=str)
+    return hashlib.sha256(text.encode()).hexdigest()[:12]
 
 
 def _action_for(name: str):
@@ -459,6 +485,8 @@ def _converse(chat: Chat, input_items: list, note: str | None = None) -> Chat:
     replies = [m for m in chat.messages[first_new:] if m.role == "assistant"]
     if replies and spent:
         replies[-1].cost_usd = usage.sum_cost(spent)  # what this answer cost (all the AI calls behind it)
+    if replies:
+        replies[-1].turn_id = telemetry.turn_id(chat.id, chat.turn_count - 1)  # 👍/👎 on it point at this turn
     if status == "completed" and any(m.tool and m.tool.status == "pending" for m in chat.messages[first_new:]):
         status = "waiting_approval"
     _auto_title(chat)
@@ -514,7 +542,7 @@ def _converse_openai(chat: Chat, input_items: list) -> str:
     for step in range(MAX_STEPS):
         llm_call_id = telemetry.new_id()
         with telemetry.span("llm_call", llm_call_id=llm_call_id, provider="openai", model=model, step=step,
-                            input_items=len(input_items)) as span, usage.tally() as spent:
+                            input_items=len(input_items), prompt_version=prompt_version()) as span, usage.tally() as spent:
             response = llm.stream_response(
                 _Sink(), model=model, instructions=_instructions(chat), input=input_items,
                 tools=tools(), previous_response_id=chat.previous_response_id, **llm.reasoning_summary(model))
@@ -594,7 +622,8 @@ def _converse_claude(chat: Chat, note: str | None = None) -> str:
         for step in range(MAX_STEPS):
             llm_call_id = telemetry.new_id()
             with telemetry.span("llm_call", llm_call_id=llm_call_id, provider="anthropic", model=claude.model(),
-                                step=step, messages=len(messages)) as span, usage.tally() as spent:
+                                step=step, messages=len(messages), prompt_version=prompt_version()) as span, \
+                    usage.tally() as spent:
                 response = claude.chat(_instructions(chat), tool_defs, messages, _Sink())
                 span.status = _CLAUDE_STATUS.get(response.stop_reason, "completed")
                 span.set(stop_reason=response.stop_reason, response_id=getattr(response, "id", ""),

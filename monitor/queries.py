@@ -1,4 +1,4 @@
-"""Read-only queries over the telemetry database, shaped for the monitor's pages."""
+"""Queries over the telemetry database, shaped for the monitor's pages (flags: see jobtracker/telemetry/review.py)."""
 from __future__ import annotations
 
 import json
@@ -7,7 +7,8 @@ import time
 from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 
-from jobtracker.telemetry import metrics
+from jobtracker.telemetry import flags as F
+from jobtracker.telemetry import metrics, review
 from jobtracker.telemetry.store import row_to_event, turn_events
 
 DAY_NS = 86_400 * 10**9
@@ -107,6 +108,7 @@ def overview(conn: sqlite3.Connection, days: int = 30, user: str | None = None) 
             "approved": sum(1 for e in approvals if e["payload"].get("approved")),
             "rejected": sum(1 for e in approvals if not e["payload"].get("approved")),
         },
+        "review": {"flags": review.counts(conn), "feedback": review.feedback(conn, _since(days))},
         "statuses": dict(statuses),
         "latency": {
             "turn_wall_ms": dist([t["wall_ms"] for t in turns]),
@@ -184,8 +186,11 @@ def conversation(conn: sqlite3.Connection, conversation_id: str) -> dict:
         p = json.loads(row[0]) if row else {}
         texts[t["turn_id"]] = p.get("text") or (f"{'Approved' if p.get('approve') else 'Rejected'} {p.get('action')}"
                                                 if t.get("trigger") == "approval" else "")
+    open_flags = dict(conn.execute("SELECT turn_id, count(*) FROM flags WHERE conversation_id = ? AND status IN "
+                                   "('suggested', 'open', 'in_case') GROUP BY turn_id", (conversation_id,)).fetchall())
     for t in turns:
         t["user_text"] = texts.get(t["turn_id"], "")
+        t["flags"] = open_flags.get(t["turn_id"], 0)
     return {"conversation_id": conversation_id, "title": _title(conn, conversation_id),
             "user_id": first[0][0] if first else "", "turns": turns}
 
@@ -209,4 +214,55 @@ def turn(conn: sqlite3.Connection, turn_id: str) -> dict:
             "title": _title(conn, conv), "origin_ns": origin,
             "origin": datetime.fromtimestamp(origin / 1e9, UTC).isoformat(),
             "summary": summary, "spans": spans, "events": events, "scores": scores,
+            "flags": review.listing(conn, turn_id=turn_id),
             "running": bool(summary) and summary.get("ended_ns") is None}
+
+
+# ------------------------------------------------------------------ review queue
+
+def _turn_text(conn: sqlite3.Connection, turn_id: str) -> str:
+    row = conn.execute("SELECT payload FROM events WHERE turn_id = ? AND type = 'turn.started'", (turn_id,)).fetchone()
+    p = json.loads(row[0]) if row else {}
+    if p.get("text") or not p.get("action"):
+        return p.get("text") or ""
+    return f"{'Approved' if p.get('approve') else 'Rejected'} {p.get('action')}"
+
+
+def _span_label(conn: sqlite3.Connection, span_id: str) -> str:
+    if not span_id:
+        return ""
+    row = conn.execute("SELECT type, payload FROM events WHERE span_id = ? AND type LIKE '%.started'", (span_id,)).fetchone()
+    if not row:
+        return ""
+    p = json.loads(row[1] or "{}")
+    if row[0] == "tool.started":
+        return f"tool {p.get('action')}"
+    if row[0] == "llm_call.started":
+        return f"LLM call step {p.get('step')} ({p.get('model')})"
+    return row[0].rsplit(".", 1)[0]
+
+
+def flag_list(conn: sqlite3.Connection, statuses: list[str] | None = None) -> list[dict]:
+    """Flags with what's needed to read them without opening the turn: conversation, user message, span."""
+    out = review.listing(conn, statuses)
+    titles: dict[str, str] = {}
+    labels = {c[0]: (c[1], c[2]) for c in F.CATEGORIES}
+    for f in out:
+        conv = f["conversation_id"] or f["turn_id"].rpartition(":")[0]
+        if conv not in titles:
+            titles[conv] = _title(conn, conv)
+        f["title"] = titles[conv]
+        f["user_text"] = _turn_text(conn, f["turn_id"])
+        f["span_label"] = _span_label(conn, f["span_id"])
+        f["group"], f["label"] = labels.get(f["category"], ("Other", f["category"]))
+    return out
+
+
+def review_queue(conn: sqlite3.Connection, full: bool = True) -> dict:
+    """For the fixing process (Claude Code): the flags still to work on, each with its turn's whole trace."""
+    items = flag_list(conn, list(F.QUEUE))
+    traces = {}
+    if full:
+        for turn_id in {f["turn_id"] for f in items}:
+            traces[turn_id] = turn(conn, turn_id)
+    return {"catalog": F.catalog(), "flags": items, "turns": traces}

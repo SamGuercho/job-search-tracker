@@ -350,12 +350,22 @@ class ToolEvent(BaseModel):
     turn_id: str = ""       # telemetry: the turn that requested it (links an approval to its request)
 
 
+class Feedback(BaseModel):
+    """The user's 👍/👎 on a reply; reasons are ids of telemetry.flags.USER_REASONS."""
+    rating: Literal["up", "down"]
+    reasons: list[str] = []
+    comment: str = ""
+    at: str = Field(default_factory=lambda: datetime.now().isoformat(timespec="seconds"))
+
+
 class ChatMessage(BaseModel):
     role: Literal["user", "assistant", "tool", "notice"]   # notice: shown to the user, never sent to a model
     text: str = ""
     tool: ToolEvent | None = None
     cost_usd: float | None = None   # assistant replies: what the AI calls behind it cost
     at: str = Field(default_factory=lambda: datetime.now().isoformat(timespec="seconds"))
+    turn_id: str = ""               # the last reply of a turn: its telemetry turn (what 👍/👎 points at)
+    feedback: Feedback | None = None
 
 
 COMPACT_AT_TOKENS = 60_000    # what one AI call reads: tools and instructions (~20k) + the conversation

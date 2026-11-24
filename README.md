@@ -255,6 +255,14 @@ The **monitor** is a separate small app that reads them (owner only):
 - **Conversations → turns → trace**: a waterfall of the turn on one time axis (tools that ran in parallel overlap),
   with every span's content, the turn's metrics and timing checks (the totals must match the raw start/end
   timestamps), and a place for evaluations (LLM-as-a-judge scores, to come; `turn_scores` table).
+- **Review**: what went wrong. 👍/👎 under each assistant reply in the chat (a 👎 asks what went wrong); a ⚑
+  button on a turn, an LLM call or a tool call in the monitor (categories: misread intent, didn't finish, made up,
+  wrong argument, redundant call, wrong style or level, out of character, too costly…); and **detectors** that
+  suggest flags when a turn ends (a failed tool or invalid arguments, the same call twice, a rejected action, max
+  steps, a turn above `JOBTRACKER_FLAG_COST_USD` or `JOBTRACKER_FLAG_SLOW_S`), to confirm or dismiss. "To fix" is the
+  queue the fixing process works through (`GET /api/review/queue` returns it with each turn's whole trace).
+  Each AI call records a `prompt_version` (a hash of the instructions and tools), so flags can be compared before
+  and after a fix.
 Parallel work is never added up as wall time: "tools · wall" counts overlapping tools once, "tools · work" adds
 their durations. Telemetry never slows or breaks the chat; `JOBTRACKER_TELEMETRY=0` turns it off.
 
@@ -352,6 +360,8 @@ All settings live in `.env` (created from `.env.example` on first run). Restart 
 | `JOBTRACKER_TELEMETRY_BACKUP_EVERY_DAYS` | `7` | How often a copy is made. |
 | `JOBTRACKER_TELEMETRY_BACKUP_KEEP` | `3` | How many copies are kept (the oldest is deleted when a new one is made). |
 | `MONITOR_PORT` | `8100` | Port of the monitor (`python -m jobtracker monitor`). |
+| `JOBTRACKER_FLAG_COST_USD` | `0.10` | A turn costing more is suggested for review in the monitor (`0`: never). |
+| `JOBTRACKER_FLAG_SLOW_S` | `60` | A turn taking longer (seconds) is suggested for review (`0`: never). |
 | `LOG_FORMAT` / `LOG_LEVEL` | `text` / `INFO` | `json` writes one JSON object per request (method, path, status, duration). |
 
 The CV font is **STIX Two Text** (included in macOS). On Windows/Linux, install it from

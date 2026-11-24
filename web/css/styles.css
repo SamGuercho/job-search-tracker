@@ -340,7 +340,18 @@ td .chip { display: inline-block; max-width: 170px; white-space: nowrap; overflo
 
 /* Right-to-left text (Hebrew) inside left-to-right tables */
 table.data td { unicode-bidi: plaintext; }
-.msg-cost { align-self: flex-start; font-size: 11px; color: var(--muted); margin-top: -6px; }
+.msg-cost { font-size: 11px; color: var(--muted); }
+/* Under a reply: its cost and 👍 / 👎 */
+.msg-foot { align-self: flex-start; display: flex; align-items: center; gap: 4px; margin-top: -6px; flex-wrap: wrap; }
+.msg-foot .msg-cost { margin-right: 4px; }
+.thumb { border: 0; background: none; padding: 2px 5px; border-radius: 6px; font-size: 13px; line-height: 1.2; cursor: pointer;
+  filter: grayscale(1); opacity: .55; }
+.thumb:hover { opacity: 1; filter: none; background: var(--surface-2); }
+.thumb.on { opacity: 1; filter: none; background: var(--accent-soft); }
+.feedback-reasons { margin-bottom: 12px; }
+.feedback-reasons .chip { cursor: pointer; }
+.feedback-reasons .chip.on { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+.sheet-body textarea { width: 100%; margin-bottom: 12px; }
 
 /* Interview recordings */
 .recording { border-top: 1px solid var(--border); padding: 10px 0; display: flex; flex-direction: column; gap: 6px; }

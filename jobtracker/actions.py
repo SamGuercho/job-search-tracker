@@ -1094,6 +1094,14 @@ def chat_rename(id: str, title: str):
     return assistant.rename_chat(id, title)
 
 
+@action("chat.feedback")
+def chat_feedback(chat_id: str, turn_id: str, rating: Optional[Literal["up", "down"]] = None,
+                  reasons: Optional[list[str]] = None, comment: str = ""):
+    """The user's thumbs up/down on an assistant reply (the reply's turn_id); rating null removes it. A thumbs down
+    takes reasons (misunderstood, unfinished, wrong, wrong_change, tone, slow, other) and an optional comment."""
+    return assistant.give_feedback(chat_id, turn_id, rating, reasons, comment)
+
+
 @action("chat.archive")
 def chat_archive(id: str, archived: bool = True):
     """Archive a conversation (out of the main list, kept and reopenable), or bring it back with archived=false."""

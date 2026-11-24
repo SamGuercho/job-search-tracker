@@ -16,7 +16,7 @@ from pathlib import Path
 
 from .. import config
 from ..logs import log
-from . import backup, metrics
+from . import backup, detect, metrics, review
 from .schema import Event
 
 SCHEMA = """
@@ -86,13 +86,50 @@ CREATE TABLE IF NOT EXISTS turn_scores (
     created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS turn_scores_turn ON turn_scores (turn_id);
+
+-- What went wrong (see flags.py): a turn, or one of its spans; from the user, the owner or a detector.
+CREATE TABLE IF NOT EXISTS flags (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    turn_id TEXT NOT NULL,
+    span_id TEXT NOT NULL DEFAULT '',
+    llm_call_id TEXT NOT NULL DEFAULT '',
+    conversation_id TEXT,
+    user_id TEXT,
+    category TEXT NOT NULL,
+    note TEXT NOT NULL DEFAULT '',
+    source TEXT NOT NULL,
+    status TEXT NOT NULL,
+    case_id TEXT,
+    fixed_in TEXT,
+    prompt_version TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE (turn_id, span_id, category, source)
+);
+CREATE INDEX IF NOT EXISTS flags_status ON flags (status, id);
+
+-- Eval cases built from flags (frozen snapshot + checks + rubric): filled by the review process (phase 2).
+CREATE TABLE IF NOT EXISTS cases (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    flag_ids TEXT NOT NULL DEFAULT '[]',
+    snapshot TEXT NOT NULL DEFAULT '{}',
+    checks TEXT NOT NULL DEFAULT '[]',
+    rubric TEXT NOT NULL DEFAULT '[]',
+    status TEXT NOT NULL DEFAULT 'draft',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
 """
+# Columns added after a table was first created (old databases get them on the next start)
+MIGRATIONS = {"turns": {"prompt_version": "TEXT"}}
 
 COLUMNS = ("event_id", "ts", "ts_ns", "schema_version", "app_version", "user_id", "conversation_id", "turn_index",
            "turn_id", "span_id", "parent_span_id", "llm_call_id", "type", "status", "duration_ms", "payload")
 TURN_COLUMNS = ("turn_id", "conversation_id", "turn_index", "user_id", "trigger", "title", "status", "provider", "model",
                 "started_ns", "ended_ns", "wall_ms", "ttft_ms", "llm_calls", "llm_ms", "tool_calls", "tool_errors",
-                "tool_wall_ms", "tool_sum_ms", "input_tokens", "cached_tokens", "output_tokens", "cost_usd", "consistent")
+                "tool_wall_ms", "tool_sum_ms", "input_tokens", "cached_tokens", "output_tokens", "cost_usd", "consistent",
+                "prompt_version")
 BATCH_SECONDS = 0.2
 
 
@@ -107,8 +144,18 @@ def connect(path: Path | None = None, readonly: bool = False) -> sqlite3.Connect
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA synchronous=NORMAL")
         conn.executescript(SCHEMA)
+        _migrate(conn)
     conn.row_factory = sqlite3.Row
     return conn
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    for table, columns in MIGRATIONS.items():
+        have = {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
+        for name, kind in columns.items():
+            if name not in have:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {kind}")
+    conn.commit()
 
 
 def ensure_schema(path: Path) -> None:
@@ -190,8 +237,17 @@ def write(conn: sqlite3.Connection, events: list[Event]) -> None:
         try:  # the events are saved even if a summary can't be computed
             with conn:
                 upsert_turn(conn, turn_id)
+            with conn:  # what probably went wrong: suggested flags for the owner to confirm
+                review.add_suggestions(conn, detect.suggest(turn_events(conn, turn_id)))
         except Exception as e:
             log.warning("Telemetry: no summary for turn %s: %s", turn_id, e)
+    for e in events:
+        if e.type == "feedback.given":
+            try:
+                with conn:
+                    review.apply_feedback(conn, e.payload)
+            except Exception as ex:
+                log.warning("Telemetry: feedback not applied: %s", ex)
 
 
 def upsert_turn(conn: sqlite3.Connection, turn_id: str) -> None:

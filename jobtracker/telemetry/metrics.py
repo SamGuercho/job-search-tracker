@@ -150,4 +150,5 @@ def turn_summary(events: list[dict]) -> dict:
         "output_tokens": sum(u.get("output_tokens") or 0 for u in usages),
         "cost_usd": round(sum(s.end.get("cost_usd") or 0 for s in calls), 6),
         "consistent": all(c["ok"] for c in checks), "checks": checks, "steps": st,
+        "prompt_version": last_call.start.get("prompt_version") if last_call else None,
     }

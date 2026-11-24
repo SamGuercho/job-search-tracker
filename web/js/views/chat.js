@@ -1,6 +1,6 @@
 // Assistant: conversations with the LLM agent that drives the app's actions.
 import { call, fileUrl, streamChat } from "../api.js";
-import { attempt, chatRequest, confirmSheet, h, markdown, mount, promptSheet, toast, usd } from "../ui.js";
+import { attempt, chatRequest, confirmSheet, h, markdown, modal, mount, promptSheet, toast, usd } from "../ui.js";
 
 const LABELS = {
   "company.list": "Looked at your companies", "company.get": "Opened company", "company.create": "Added company",
@@ -19,6 +19,9 @@ const LABELS = {
   "learning.move": "Moved a study session", "learning.complete": "Completed a study session", "practice.record": "Logged your answer",
 };
 const label = (a) => LABELS[a] || a;
+// Thumbs-down reasons (ids: jobtracker/telemetry/flags.py USER_REASONS)
+const REASONS = [["misunderstood", "Misunderstood me"], ["unfinished", "Didn't finish"], ["wrong", "Wrong or made up"],
+  ["wrong_change", "Changed the wrong thing"], ["tone", "Tone or style"], ["slow", "Too slow"], ["other", "Something else"]];
 
 export async function renderChat(root, chatId, params) {
   const info = await call("app.info");
@@ -158,9 +161,56 @@ export async function renderChat(root, chatId, params) {
 
   const bubble = (role, text) => h("div", { class: `msg ${role}`, dir: "auto" }, role === "assistant" ? markdown(text) : text);
 
-  const message = (m) => (m.role === "tool" ? toolEvent(m.tool)
-    : [bubble(m.role, m.text), m.cost_usd !== null && m.cost_usd !== undefined
-      && h("div", { class: "msg-cost", title: "What the AI calls behind this answer cost (estimate)" }, usd(m.cost_usd))]);
+  const message = (m) => (m.role === "tool" ? toolEvent(m.tool) : [bubble(m.role, m.text), m.role === "assistant" && replyFoot(m)]);
+
+  // Under a reply: what it cost, and 👍 / 👎 (the last reply of each turn). A 👎 asks what went wrong.
+  const replyFoot = (m) => {
+    const hasCost = m.cost_usd !== null && m.cost_usd !== undefined;
+    if (!hasCost && !m.turn_id) return null;
+    const rating = m.feedback?.rating;
+    const foot = h("div", { class: "msg-foot" },
+      hasCost && h("span", { class: "msg-cost", title: "What the AI calls behind this answer cost (estimate)" }, usd(m.cost_usd)),
+      m.turn_id && [
+        h("button", { class: `thumb ${rating === "up" ? "on" : ""}`, title: "Good answer", "aria-label": "Good answer", "aria-pressed": String(rating === "up"),
+          onclick: () => rate(m, foot, rating === "up" ? null : "up") }, "👍"),
+        h("button", { class: `thumb ${rating === "down" ? "on" : ""}`, title: "Something went wrong", "aria-label": "Something went wrong", "aria-pressed": String(rating === "down"),
+          onclick: () => thumbsDown(m, foot) }, "👎"),
+        rating === "down" && m.feedback.reasons?.length > 0 && h("span", { class: "small muted" },
+          m.feedback.reasons.map((r) => (REASONS.find(([id]) => id === r) || [r, r])[1]).join(", "))]);
+    return foot;
+  };
+  async function rate(m, foot, rating, reasons = [], comment = "") {
+    const updated = await attempt(() => call("chat.feedback", { chat_id: chat.id, turn_id: m.turn_id, rating, reasons, comment }),
+      rating === "down" ? "Thanks: this goes to the review queue" : null);
+    if (!updated) return;
+    chat = updated;
+    const fresh = chat.messages.find((x) => x.role === "assistant" && x.turn_id === m.turn_id);
+    foot.replaceWith(replyFoot(fresh));  // in place: no jump to the bottom of the thread
+  }
+  const thumbsDown = (m, foot) => {
+    const current = m.feedback?.rating === "down" ? m.feedback : null;
+    const picked = new Set(current?.reasons || []);
+    const comment = h("textarea", { rows: 3, placeholder: "What did you expect? (optional)", "aria-label": "What did you expect?" }, current?.comment || "");
+    const close = modal("What went wrong?", h("form", { class: "sheet-body", onsubmit: (e) => {
+      e.preventDefault();
+      close();
+      rate(m, foot, "down", [...picked], comment.value.trim());
+    } },
+      h("div", { class: "chips feedback-reasons" }, REASONS.map(([id, text]) => h("button", {
+        type: "button", class: `chip ${picked.has(id) ? "on" : ""}`, "aria-pressed": String(picked.has(id)),
+        onclick: (e) => {
+          if (picked.has(id)) picked.delete(id); else picked.add(id);
+          e.currentTarget.classList.toggle("on", picked.has(id));
+          e.currentTarget.setAttribute("aria-pressed", String(picked.has(id)));
+        },
+      }, text))),
+      comment,
+      h("div", { class: "sheet-actions" },
+        current && h("button", { type: "button", onclick: () => { close(); rate(m, foot, null); } }, "Remove my 👎"),
+        h("span", { class: "spacer" }),
+        h("button", { type: "button", onclick: () => close() }, "Cancel"),
+        h("button", { type: "submit", class: "primary" }, "Send"))));
+  };
 
   const toolEvent = (t) => {
     const icon = { done: "✓", approved: "✓", error: "⚠", rejected: "✕", pending: "?" }[t.status];
