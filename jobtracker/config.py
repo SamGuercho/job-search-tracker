@@ -50,6 +50,8 @@ TELEMETRY_BACKUP_KEEP = int(os.environ.get("JOBTRACKER_TELEMETRY_BACKUP_KEEP", "
 FLAG_COST_USD = float(os.environ.get("JOBTRACKER_FLAG_COST_USD", "0.10"))
 FLAG_SLOW_S = float(os.environ.get("JOBTRACKER_FLAG_SLOW_S", "60"))
 MONITOR_PORT = int(os.environ.get("MONITOR_PORT", "8100"))
+# Where the fixing process (`python -m jobtracker eval`) reaches the monitor: the server's, over Tailscale
+MONITOR_URL = os.environ.get("JOBTRACKER_MONITOR_URL", f"http://127.0.0.1:{MONITOR_PORT}")
 
 # Generated CV file name, without extension. {name} = your name with underscores.
 CV_FILENAME = os.environ.get("JOBTRACKER_CV_FILENAME", "{name}_CV")

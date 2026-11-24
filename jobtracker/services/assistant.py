@@ -726,6 +726,19 @@ def send(message: str, chat_id: str | None = None, listener=None) -> Chat:
         return _converse(chat, [{"role": "user", "content": message}])
 
 
+def replay(history: list[dict], message: str) -> Chat:
+    """Eval runs (jobtracker/evals): a new chat that starts with `history` ([{role, text}] of earlier user and
+    assistant messages), then answers `message` like send() does. The whole history goes to the model."""
+    chat = Chat(title="Eval")
+    chat.messages = [ChatMessage(role=m["role"], text=m["text"]) for m in history
+                     if m.get("role") in ("user", "assistant") and m.get("text")]
+    chat.turn_count = sum(1 for m in chat.messages if m.role == "user")
+    with _turn(chat, "user_message", None, text=message, chars=len(message)):
+        chat.messages.append(ChatMessage(role="user", text=message))
+        _save(chat)
+        return _converse(chat, [{"role": m.role, "content": m.text} for m in chat.messages])
+
+
 def _waited_s(chat: Chat, event: ToolEvent) -> float | None:
     """How long the approval waited for the user (from when the assistant proposed it)."""
     m = next((m for m in chat.messages if m.tool is event), None)

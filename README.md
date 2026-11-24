@@ -263,6 +263,14 @@ The **monitor** is a separate small app that reads them (owner only):
   queue the fixing process works through (`GET /api/review/queue` returns it with each turn's whole trace).
   Each AI call records a `prompt_version` (a hash of the instructions and tools), so flags can be compared before
   and after a fix.
+- **Fixing what was flagged** (with Claude Code: type `/fix-flagged`, see `.claude/skills/fix-flagged/SKILL.md`):
+  the flags become **eval cases** (a frozen snapshot of the turn: the conversation before it, the person's data,
+  recorded web pages, plus the checks that define "fixed" and yes/no questions graded by Claude Code), a baseline
+  run proves each case reproduces the problem, the fix is made, one run after it proves the fix and that earlier
+  cases still pass (the ones that newly fail are re-run twice: noise or a real break), then the flags are marked fixed.
+  `python -m jobtracker eval --help` lists the commands. Cases are stored on the server (telemetry database, never in
+  git: they hold real conversations); runs replay them with the real model in a throwaway data folder (never your
+  data), and write their results to `evals/local/` (git-ignored). Set `JOBTRACKER_MONITOR_URL` to the server's monitor.
 Parallel work is never added up as wall time: "tools · wall" counts overlapping tools once, "tools · work" adds
 their durations. Telemetry never slows or breaks the chat; `JOBTRACKER_TELEMETRY=0` turns it off.
 
@@ -361,6 +369,7 @@ All settings live in `.env` (created from `.env.example` on first run). Restart 
 | `JOBTRACKER_TELEMETRY_BACKUP_KEEP` | `3` | How many copies are kept (the oldest is deleted when a new one is made). |
 | `MONITOR_PORT` | `8100` | Port of the monitor (`python -m jobtracker monitor`). |
 | `JOBTRACKER_FLAG_COST_USD` | `0.10` | A turn costing more is suggested for review in the monitor (`0`: never). |
+| `JOBTRACKER_MONITOR_URL` | `http://127.0.0.1:8100` | Where `python -m jobtracker eval` reaches the monitor (the server's: `https://<pc>.<tailnet>.ts.net:8443`). |
 | `JOBTRACKER_FLAG_SLOW_S` | `60` | A turn taking longer (seconds) is suggested for review (`0`: never). |
 | `LOG_FORMAT` / `LOG_LEVEL` | `text` / `INFO` | `json` writes one JSON object per request (method, path, status, duration). |
 
@@ -424,7 +433,8 @@ jobtracker/
   __main__.py             CLI
   mcp_server.py           MCP server: one tool per action, generated from the registry
 web/                      vanilla JavaScript UI, no build step (js/views/<page>.js)
-monitor/                  the monitor app (FastAPI + vanilla JS): dashboard and turn traces over telemetry.db
+monitor/                  the monitor app (FastAPI + vanilla JS): dashboard, turn traces and review queue over telemetry.db
+jobtracker/evals/         eval cases from flagged turns: drafting, replaying, checks (`python -m jobtracker eval`)
 skills/job-search/        SKILL.md: instructions for AI agents (e.g. Claude Code)
 tests/                    unit tests (no network; OpenAI is stubbed)
 ```

@@ -2,6 +2,7 @@
 
   python -m jobtracker serve [--port 8000] [--host 127.0.0.1]
   python -m jobtracker monitor [--port 8100] [--host 127.0.0.1]   # chat telemetry dashboard (owner only)
+  python -m jobtracker eval <command>               # the fixing process: flagged turns → eval cases (eval --help)
   python -m jobtracker mcp                          # MCP server over stdio (for Cursor, Claude…)
   python -m jobtracker mcp-config                   # print the MCP configuration for this machine
   python -m jobtracker actions                      # list actions + schemas
@@ -44,6 +45,9 @@ def main(argv: list[str]) -> int:
         host = argv[argv.index("--host") + 1] if "--host" in argv else config.HOST
         uvicorn.run("monitor.app:app", host=host, port=port, proxy_headers=True, forwarded_allow_ips="*")
         return 0
+    if argv[0] == "eval":
+        from .evals.runner import main as run_eval
+        return run_eval(argv[1:])
     if argv[0] == "mcp":
         from .mcp_server import main as serve_mcp
         serve_mcp()

@@ -1,4 +1,4 @@
-"""The monitor: a separate web app over the chat telemetry (reads it; writes only flags).
+"""The monitor: a separate web app over the chat telemetry (reads it; writes only flags and eval cases).
 
 Run it next to the app: `python -m jobtracker monitor [--port 8100]`. Owner only: behind `tailscale serve`
 (JOBTRACKER_TAILSCALE_USERS=1) the Tailscale login must be the owner's; with a password, the app's login cookie
@@ -16,6 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from jobtracker import __version__, auth, config, users
+from jobtracker.evals import fixture
 from jobtracker.telemetry import flags, review
 
 from . import queries
@@ -47,7 +48,7 @@ def query(fn, *args):
 
 
 def write(fn, *args, **kwargs):
-    """Flags only: the owner's flags and status changes (the app writes everything else)."""
+    """Flags and eval cases only (the app writes everything else)."""
     with _write_lock:
         return fn(_connection(_rw, False), *args, **kwargs)
 
@@ -161,6 +162,52 @@ def flag_change(flag_id: int, body: FlagChange):
     if out is None:
         raise HTTPException(404, "No such flag")
     return out
+
+
+class CaseChange(BaseModel):
+    status: str
+
+
+@app.get("/api/cases")
+def case_list(status: str = "*"):
+    return query(review.list_cases, None if status == "*" else [s for s in status.split(",") if s])
+
+
+@app.get("/api/cases/{case_id}")
+def case_get(case_id: str):
+    out = query(review.get_case, case_id)
+    if out is None:
+        raise HTTPException(404, "No such case")
+    return out
+
+
+@app.post("/api/cases")
+def case_save(case: dict):
+    try:
+        return write(review.save_case, case)
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from e
+    except PermissionError as e:
+        raise HTTPException(409, str(e)) from e
+
+
+@app.patch("/api/cases/{case_id}")
+def case_status(case_id: str, body: CaseChange):
+    try:
+        out = write(review.set_case_status, case_id, body.status)
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from e
+    except PermissionError as e:
+        raise HTTPException(409, str(e)) from e
+    if out is None:
+        raise HTTPException(404, "No such case")
+    return out
+
+
+@app.get("/api/review/data")
+def review_data(user: str = ""):
+    """A person's tracker files (applications, CV, profile…), the starting point of an eval case."""
+    return fixture.export(user)
 
 
 @app.get("/api/review/queue")

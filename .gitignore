@@ -12,7 +12,10 @@ output/
 __pycache__/
 *.pyc
 .DS_Store
-.claude/
+.claude/*
+!.claude/skills/
+# Eval cases and runs (real conversations): local only, see jobtracker/evals
+evals/local/
 ~$*
 
 # Home server deployment: local data, CVs, settings and logs

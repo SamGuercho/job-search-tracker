@@ -112,3 +112,71 @@ def feedback(conn: sqlite3.Connection, since_ns: int = 0) -> dict:
             latest[p["turn_id"]] = p.get("rating") or ""
     values = list(latest.values())
     return {"up": values.count("up"), "down": values.count("down")}
+
+
+# ------------------------------------------------------------------ eval cases (see jobtracker/evals)
+
+CASE_STATUSES = ("draft", "frozen", "archived")
+_CASE_JSON = ("flag_ids", "snapshot", "checks", "rubric")
+
+
+def _case(row: sqlite3.Row | None) -> dict | None:
+    if row is None:
+        return None
+    case = dict(row)
+    for k in _CASE_JSON:
+        case[k] = json.loads(case[k] or ("{}" if k == "snapshot" else "[]"))
+    return case
+
+
+def get_case(conn: sqlite3.Connection, case_id: str) -> dict | None:
+    return _case(conn.execute("SELECT * FROM cases WHERE id = ?", (case_id,)).fetchone())
+
+
+def list_cases(conn: sqlite3.Connection, statuses: list[str] | None = None) -> list[dict]:
+    sql, args = "SELECT * FROM cases", []
+    if statuses:
+        sql += f" WHERE status IN ({','.join('?' * len(statuses))})"
+        args = statuses
+    return [_case(r) for r in conn.execute(sql + " ORDER BY created_at, id", args)]
+
+
+def save_case(conn: sqlite3.Connection, case: dict) -> dict:
+    """Create or replace a case (only while it's a draft; a frozen case changes only its status). Its flags move to
+    in_case, pointing at it."""
+    case_id = str(case.get("id") or "").strip()
+    if not case_id or not case.get("title"):
+        raise ValueError("A case needs an id and a title")
+    status = case.get("status") or "draft"
+    if status not in CASE_STATUSES:
+        raise ValueError(f"Unknown case status {status!r}")
+    existing = get_case(conn, case_id)
+    if existing and existing["status"] != "draft":
+        raise PermissionError(f"Case {case_id} is {existing['status']}: it can't change (only its status)")
+    now = _now()
+    values = [json.dumps(case.get(k) or ({} if k == "snapshot" else []), ensure_ascii=False, default=str)
+              for k in _CASE_JSON]
+    with conn:
+        conn.execute("""INSERT INTO cases (id, title, flag_ids, snapshot, checks, rubric, status, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ON CONFLICT (id) DO UPDATE SET title = excluded.title, flag_ids = excluded.flag_ids,
+                          snapshot = excluded.snapshot, checks = excluded.checks, rubric = excluded.rubric,
+                          status = excluded.status, updated_at = excluded.updated_at""",
+                     (case_id, case["title"], *values, status, now, now))
+        for flag_id in case.get("flag_ids") or []:
+            conn.execute("UPDATE flags SET status = 'in_case', case_id = ?, updated_at = ? "
+                         "WHERE id = ? AND status IN ('open', 'suggested', 'in_case')", (case_id, now, flag_id))
+    return get_case(conn, case_id)
+
+
+def set_case_status(conn: sqlite3.Connection, case_id: str, status: str) -> dict | None:
+    if status not in CASE_STATUSES:
+        raise ValueError(f"Unknown case status {status!r}")
+    case = get_case(conn, case_id)
+    if case is None:
+        return None
+    if case["status"] == "archived" or (case["status"] == "frozen" and status == "draft"):
+        raise PermissionError(f"Case {case_id} is {case['status']}: it can't go back to {status}")
+    with conn:
+        conn.execute("UPDATE cases SET status = ?, updated_at = ? WHERE id = ?", (status, _now(), case_id))
+    return get_case(conn, case_id)
