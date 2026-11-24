@@ -24,7 +24,7 @@ services:
       # Codex's sign-in (your ChatGPT account) for the "Prepare interview" button: keep it out of backups you share
       - ${HOST_CODEX_DIR:-./codex}:/codex
       # Chat telemetry (SQLite), shared with the monitor. A Docker volume, not a Windows folder: SQLite's locking
-      # is only reliable on the Linux side. A daily copy (telemetry-snapshot.db) goes to the data folder for backups.
+      # is only reliable on the Linux side. Stays on this PC: not in data, so never in the OneDrive backups.
       - telemetry:/telemetry
     restart: unless-stopped
     logging:

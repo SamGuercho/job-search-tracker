@@ -35,9 +35,14 @@ OWNER = os.environ.get("JOBTRACKER_OWNER", "").strip().lower()  # rarely needed:
 USERS_DIR = Path(os.environ.get("JOBTRACKER_USERS_DIR", DATA_DIR / "users")).expanduser()
 
 # Chat telemetry (jobtracker/telemetry): one SQLite file for everyone's events, read by the monitor app.
-# In Docker it lives on a named volume (SQLite locking is unreliable on Windows bind mounts); 0 turns it off.
+# Deliberately NOT in JOBTRACKER_DATA_DIR, which is often a synced folder (iCloud, OneDrive): the database grows
+# fast and syncing a live SQLite file can corrupt it. Default: the app's own data/ folder (local, never in git).
+# In Docker it lives on a named volume (SQLite locking is unreliable on Windows bind mounts). 0 turns it off.
 TELEMETRY = os.environ.get("JOBTRACKER_TELEMETRY", "1").lower() not in ("0", "false", "no")
-TELEMETRY_DB = Path(os.environ.get("JOBTRACKER_TELEMETRY_DB", DATA_DIR / "telemetry.db")).expanduser()
+TELEMETRY_DB = Path(os.environ.get("JOBTRACKER_TELEMETRY_DB", ROOT / "data" / "telemetry.db")).expanduser()
+# Optional: a folder where a consistent copy of the database is written once a day (for backups). Off by default.
+_backup = os.environ.get("JOBTRACKER_TELEMETRY_BACKUP_DIR", "").strip()
+TELEMETRY_BACKUP_DIR = Path(_backup).expanduser() if _backup else None
 MONITOR_PORT = int(os.environ.get("MONITOR_PORT", "8100"))
 
 # Generated CV file name, without extension. {name} = your name with underscores.

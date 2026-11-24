@@ -3,7 +3,8 @@
 Only the app writes (this module's writer thread); the monitor app reads. Events are queued in memory and
 inserted every few hundred milliseconds, so the chat never waits on the disk, and a crash mid-turn still leaves
 everything up to the crash. When a turn ends, its summary row in `turns` is recomputed (fast dashboards).
-Once a day the database is copied with VACUUM INTO next to the JSON data, so backups never copy the live file.
+It stays out of synced folders (see config.TELEMETRY_DB). With JOBTRACKER_TELEMETRY_BACKUP_DIR set, a consistent copy
+is written there once a day (VACUUM INTO), so a backup never copies the live file.
 """
 from __future__ import annotations
 
@@ -173,7 +174,8 @@ def _run() -> None:
                     conn.close()
                 path, conn = config.TELEMETRY_DB, connect(config.TELEMETRY_DB)
             write(conn, batch)
-            _maybe_snapshot(conn, path)
+            if config.TELEMETRY_BACKUP_DIR:
+                _maybe_snapshot(conn, config.TELEMETRY_BACKUP_DIR / SNAPSHOT)
         except Exception as e:  # telemetry must never break the app: the batch is lost, the app goes on
             log.warning("Telemetry: could not write %d events: %s", len(batch), e)
             conn = None
@@ -207,8 +209,7 @@ def upsert_turn(conn: sqlite3.Connection, turn_id: str) -> None:
                  [row[k] for k in TURN_COLUMNS])
 
 
-def _maybe_snapshot(conn: sqlite3.Connection, path: Path) -> None:
-    target = config.DATA_DIR / SNAPSHOT  # in the data folder, which backup.ps1 copies
+def _maybe_snapshot(conn: sqlite3.Connection, target: Path) -> None:
     try:
         if not target.parent.is_dir() or (target.exists() and time.time() - target.stat().st_mtime < SNAPSHOT_EVERY):
             return

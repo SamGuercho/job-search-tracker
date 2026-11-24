@@ -219,9 +219,10 @@ can open it; it shows everyone's conversations, so tell the people who use your 
 ```powershell
 tailscale serve --bg --https=8443 8100
 ```
-Then open `https://<pc-name>.<tailnet>.ts.net:8443`. The data is in the Docker volume `jobsearch_telemetry`
-(SQLite works reliably there, not in a Windows folder); a copy, `data\telemetry-snapshot.db`, is refreshed every day
-and is included in `backup.ps1`. The new service arrives with the deployment files: run `update-now.ps1` once.
+Then open `https://<pc-name>.<tailnet>.ts.net:8443`. The data stays on this PC, in the Docker volume
+`jobsearch_telemetry` (SQLite works reliably there, not in a Windows folder). It is **not** in `data`, so it never
+goes to the OneDrive backups (it grows fast). To keep a daily copy somewhere, set `JOBTRACKER_TELEMETRY_BACKUP_DIR`
+to a folder mounted in the app container. The new service arrives with the deployment files: run `update-now.ps1` once.
 
 ---
 

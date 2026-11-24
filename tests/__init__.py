@@ -19,6 +19,8 @@ os.environ.update({
     "JOBTRACKER_PASSWORD": "",
     "JOBTRACKER_REMINDERS": "0",
     "JOBTRACKER_TELEMETRY": "0",          # off, except in test_telemetry (which points it at its own file)
+    "JOBTRACKER_TELEMETRY_DB": str(TMP / "telemetry.db"),
+    "JOBTRACKER_TELEMETRY_BACKUP_DIR": "",
     "JOBTRACKER_LOGOS": "0",              # no background logo search on the web (tests call it with fakes)          # no background reminder thread (tests call it directly)
 })
 
@@ -26,6 +28,6 @@ os.environ.update({
 def assert_isolated() -> None:
     """Abort before any write if the app is not pointed at the temporary folders."""
     from jobtracker import config
-    for path in (config.DATA_DIR, config.OUTPUT_DIR, config.USERS_DIR):
+    for path in (config.DATA_DIR, config.OUTPUT_DIR, config.USERS_DIR, config.TELEMETRY_DB):
         if not path.resolve().is_relative_to(TMP.resolve()):
             raise RuntimeError(f"Refusing to run tests against {path}: not a temporary test folder")

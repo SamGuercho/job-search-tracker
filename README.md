@@ -243,7 +243,8 @@ Every assistant turn is recorded as a stream of events: the turn and its trigger
 the history it worked from, each AI call (model, time to first token, thinking, text, tokens in/out/cached,
 cost, how it ended), each tool call and its result (status, size, estimated tokens), approvals, title changes,
 switches to Claude and errors. All carry a timestamp, the conversation, the turn (`<conversation id>:<n>`), the
-person and the AI call they belong to. They are written live to `telemetry.db` (SQLite).
+person and the AI call they belong to. They are written live to `telemetry.db` (SQLite), kept on this computer:
+not in your data folder, so a synced data folder (iCloud, OneDrive) never carries it.
 
 The **monitor** is a separate small app that reads them (owner only):
 ```bash
@@ -303,7 +304,7 @@ drafts, reviews, import) use the `OPENAI_API_KEY` from `.env` (and Claude as fal
 | Backups made by the app, uploaded CVs | `data/backups/`, `data/uploads/` | **No** |
 | Generated CVs, saved job descriptions | `output/<Company>/` (or `JOBTRACKER_OUTPUT_DIR`) | **No** |
 | OpenAI key, local paths | `.env` | **No** |
-| Assistant telemetry (messages, answers, tool results, timings) | `data/telemetry.db` (or `JOBTRACKER_TELEMETRY_DB`) | **No** |
+| Assistant telemetry (messages, answers, tool results, timings) | `data/telemetry.db` in the app folder, never in `JOBTRACKER_DATA_DIR` (or `JOBTRACKER_TELEMETRY_DB`) | **No** |
 | Example data for new users | `data/seed/` | Yes (fictional) |
 
 - Files are never overwritten silently: a regenerated CV or changed job description moves the previous one
@@ -346,7 +347,8 @@ All settings live in `.env` (created from `.env.example` on first run). Restart 
 | `JOBTRACKER_SESSION_DAYS` | `30` | How long a sign-in lasts. Changing the password signs everyone out. |
 | `JOBTRACKER_HOST` / `PORT` | `127.0.0.1` / `8000` | Where the server listens (`0.0.0.0` to reach it from other devices: set a password). |
 | `JOBTRACKER_TELEMETRY` | on | `0` stops recording the assistant's telemetry. |
-| `JOBTRACKER_TELEMETRY_DB` | `<data>/telemetry.db` | The telemetry database (in Docker: `/telemetry/telemetry.db` on its own volume). |
+| `JOBTRACKER_TELEMETRY_DB` | `./data/telemetry.db` | The telemetry database: keep it out of synced folders (in Docker: `/telemetry/telemetry.db` on its own volume). |
+| `JOBTRACKER_TELEMETRY_BACKUP_DIR` | empty | A folder for a daily copy of the telemetry database (none by default). |
 | `MONITOR_PORT` | `8100` | Port of the monitor (`python -m jobtracker monitor`). |
 | `LOG_FORMAT` / `LOG_LEVEL` | `text` / `INFO` | `json` writes one JSON object per request (method, path, status, duration). |
 

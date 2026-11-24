@@ -195,6 +195,21 @@ class TelemetryTests(unittest.TestCase):
         self.assertEqual(chat["messages"][-1]["text"], "Still fine.")
         self.assertTrue(store.flush())
 
+    def test_no_copy_in_the_data_folder_and_backup_only_when_asked(self):
+        FakeOpenAI.script = [([], "One."), ([], "Two.")]
+        registry.run("chat.send", {"message": "Hi"})
+        store.flush()
+        self.assertEqual(list(config.DATA_DIR.glob("telemetry*")), [])  # often a synced folder: never there
+        backup = DB_DIR / "backup"
+        original, config.TELEMETRY_BACKUP_DIR = config.TELEMETRY_BACKUP_DIR, backup
+        try:
+            backup.mkdir(exist_ok=True)
+            registry.run("chat.send", {"message": "Again"})
+            store.flush()
+        finally:
+            config.TELEMETRY_BACKUP_DIR = original
+        self.assertTrue((backup / store.SNAPSHOT).exists())
+
     def test_live_listener_gets_the_tokens(self):
         FakeOpenAI.script = [([], "Streaming works.")]
         got = []
