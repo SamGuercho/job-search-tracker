@@ -1,5 +1,7 @@
 # Backs up everything Ezri keeps on this PC, to a synced folder (OneDrive by default) for off-site copies:
 #   - data (master CV, applications, chats, practice, friends' spaces): a dated zip; the 30 most recent are kept
+#   - the assistant's telemetry: the app's weekly compressed copies (data\telemetry-backups, the last 3), mirrored
+#     to <Destination>\telemetry, so OneDrive holds the same 3 files, never more
 #   - the companies folder (generated CVs, job descriptions, logos, interview recordings): copied file by file
 #     into <Destination>\companies. Only new or changed files are copied, and nothing is ever deleted there,
 #     so a file deleted by mistake in the app is still in the backup.
@@ -44,8 +46,10 @@ function Write-Marker([bool]$ok, [string]$err) {
 }
 
 # robocopy: copies what changed, retries a file the app is writing; exit codes 0-7 mean success
-function Copy-Folder($from, $to) {
-    robocopy $from $to /E /R:3 /W:2 /XF *.tmp /NP /NFL /NDL /NJH /NJS | Out-Null
+function Copy-Folder($from, $to, [string[]]$skip = @(), [switch]$Mirror) {
+    $how = if ($Mirror) { "/MIR" } else { "/E" }
+    $exclude = if ($skip) { @("/XD") + $skip } else { @() }
+    robocopy $from $to $how /R:3 /W:2 /XF *.tmp @exclude /NP /NFL /NDL /NJH /NJS | Out-Null
     if ($LASTEXITCODE -ge 8) { throw "robocopy failed copying $from (code $LASTEXITCODE)" }
 }
 
@@ -55,7 +59,8 @@ try {
     New-Item -ItemType Directory -Force -Path $Destination | Out-Null
 
     # 1. data: copied first (a consistent snapshot, even while the app saves), then zipped
-    Copy-Folder $dataDir $stage
+    $telemetry = Join-Path $dataDir "telemetry-backups"
+    Copy-Folder $dataDir $stage -skip $telemetry   # telemetry has its own copies (step 3): not in every zip
     $zip = Join-Path $Destination ("jobsearch-data-{0}.zip" -f (Get-Date -Format "yyyy-MM-dd_HHmm"))
     Compress-Archive -Path (Join-Path $stage "*") -DestinationPath $zip -Force
     Get-ChildItem $Destination -Filter "jobsearch-data-*.zip" | Sort-Object Name -Descending | Select-Object -Skip 30 | Remove-Item
@@ -64,9 +69,12 @@ try {
     if (Test-Path $outputDir) { Copy-Folder $outputDir (Join-Path $Destination "companies") }
     else { Log "No companies folder at $outputDir (HOST_OUTPUT_DIR in .env): skipped." }
 
+    # 3. telemetry: mirrored, so the 3 copies kept by the app replace the older ones here too
+    if (Test-Path $telemetry) { Copy-Folder $telemetry (Join-Path $Destination "telemetry") -Mirror }
+
     $size = "{0:N1} MB" -f ((Get-Item $zip).Length / 1MB)
     Write-Marker $true ""
-    Log "Backup done: $zip ($size) and the companies folder, in $Destination"
+    Log "Backup done: $zip ($size), the companies folder and the telemetry copies, in $Destination"
 } catch {
     Write-Marker $false "$_"
     Log "Backup FAILED: $_"

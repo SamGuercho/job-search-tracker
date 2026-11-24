@@ -1,6 +1,8 @@
 """Chat telemetry: the events a turn produces, their links (turn, span, LLM call), and the latency math."""
 import json
+import lzma
 import os
+import sqlite3
 import tempfile
 import time
 import unittest
@@ -11,7 +13,7 @@ import openai
 
 from jobtracker import config, registry
 from jobtracker.services import assistant, claude, companies
-from jobtracker.telemetry import metrics, store
+from jobtracker.telemetry import backup, metrics, store
 from tests.test_assistant import FakeOpenAI, call
 from tests.test_core import reset  # sets the temp data/output env vars first
 from tests.test_fallback import QUOTA, FakeClaude, RaisingOpenAI, text
@@ -200,15 +202,37 @@ class TelemetryTests(unittest.TestCase):
         registry.run("chat.send", {"message": "Hi"})
         store.flush()
         self.assertEqual(list(config.DATA_DIR.glob("telemetry*")), [])  # often a synced folder: never there
-        backup = DB_DIR / "backup"
-        original, config.TELEMETRY_BACKUP_DIR = config.TELEMETRY_BACKUP_DIR, backup
+        self.assertIsNone(config.TELEMETRY_BACKUP_DIR)
+        folder = DB_DIR / f"backup-{self.id().rsplit('.', 1)[-1]}"
+        original, config.TELEMETRY_BACKUP_DIR = config.TELEMETRY_BACKUP_DIR, folder
+        backup._next_check = 0
         try:
-            backup.mkdir(exist_ok=True)
-            registry.run("chat.send", {"message": "Again"})
+            registry.run("chat.send", {"message": "Again"})  # the writer starts the first backup in the background
             store.flush()
+            backup.wait()
         finally:
             config.TELEMETRY_BACKUP_DIR = original
-        self.assertTrue((backup / store.SNAPSHOT).exists())
+        [made] = backup.backups(folder)
+        self.assertFalse(backup.due(folder))  # the next one in a week
+        self.assertTrue(backup.due(folder, now=made.stat().st_mtime + 7 * 86400))
+        self.assertEqual([p.name for p in folder.iterdir()], [made.name])  # no temporary file left
+        restored = folder / "restored.db"
+        with lzma.open(made) as src:
+            restored.write_bytes(src.read())
+        with closing(sqlite3.connect(restored)) as conn:
+            self.assertGreater(conn.execute("SELECT count(*) FROM events").fetchone()[0], 0)
+
+    def test_backups_keep_only_the_last_three(self):
+        folder = DB_DIR / "rotation"
+        folder.mkdir(exist_ok=True)
+        for day in ("2026-01-01", "2026-01-08", "2026-01-15"):
+            (folder / f"{backup.PREFIX}{day}_030000{backup.SUFFIX}").write_bytes(b"old")
+        store.flush()
+        store.connect(config.TELEMETRY_DB).close()  # an (empty) database to copy
+        newest = backup.make(folder=folder)
+        self.assertEqual([p.name for p in backup.backups(folder)],
+                         [f"{backup.PREFIX}2026-01-08_030000{backup.SUFFIX}",
+                          f"{backup.PREFIX}2026-01-15_030000{backup.SUFFIX}", newest.name])
 
     def test_live_listener_gets_the_tokens(self):
         FakeOpenAI.script = [([], "Streaming works.")]

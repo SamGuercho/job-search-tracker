@@ -43,6 +43,9 @@ TELEMETRY_DB = Path(os.environ.get("JOBTRACKER_TELEMETRY_DB", ROOT / "data" / "t
 # Optional: a folder where a consistent copy of the database is written once a day (for backups). Off by default.
 _backup = os.environ.get("JOBTRACKER_TELEMETRY_BACKUP_DIR", "").strip()
 TELEMETRY_BACKUP_DIR = Path(_backup).expanduser() if _backup else None
+# Compressed copies of the telemetry: one every N days, only the last K kept (see telemetry/backup.py)
+TELEMETRY_BACKUP_EVERY_DAYS = float(os.environ.get("JOBTRACKER_TELEMETRY_BACKUP_EVERY_DAYS", "7"))
+TELEMETRY_BACKUP_KEEP = int(os.environ.get("JOBTRACKER_TELEMETRY_BACKUP_KEEP", "3"))
 MONITOR_PORT = int(os.environ.get("MONITOR_PORT", "8100"))
 
 # Generated CV file name, without extension. {name} = your name with underscores.

@@ -348,7 +348,9 @@ All settings live in `.env` (created from `.env.example` on first run). Restart 
 | `JOBTRACKER_HOST` / `PORT` | `127.0.0.1` / `8000` | Where the server listens (`0.0.0.0` to reach it from other devices: set a password). |
 | `JOBTRACKER_TELEMETRY` | on | `0` stops recording the assistant's telemetry. |
 | `JOBTRACKER_TELEMETRY_DB` | `./data/telemetry.db` | The telemetry database: keep it out of synced folders (in Docker: `/telemetry/telemetry.db` on its own volume). |
-| `JOBTRACKER_TELEMETRY_BACKUP_DIR` | empty | A folder for a daily copy of the telemetry database (none by default). |
+| `JOBTRACKER_TELEMETRY_BACKUP_DIR` | empty | A folder for compressed copies of the telemetry (`telemetry-<date>.db.xz`); none by default. On the home server: `data/telemetry-backups`, mirrored to OneDrive. |
+| `JOBTRACKER_TELEMETRY_BACKUP_EVERY_DAYS` | `7` | How often a copy is made. |
+| `JOBTRACKER_TELEMETRY_BACKUP_KEEP` | `3` | How many copies are kept (the oldest is deleted when a new one is made). |
 | `MONITOR_PORT` | `8100` | Port of the monitor (`python -m jobtracker monitor`). |
 | `LOG_FORMAT` / `LOG_LEVEL` | `text` / `INFO` | `json` writes one JSON object per request (method, path, status, duration). |
 

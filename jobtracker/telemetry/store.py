@@ -3,13 +3,11 @@
 Only the app writes (this module's writer thread); the monitor app reads. Events are queued in memory and
 inserted every few hundred milliseconds, so the chat never waits on the disk, and a crash mid-turn still leaves
 everything up to the crash. When a turn ends, its summary row in `turns` is recomputed (fast dashboards).
-It stays out of synced folders (see config.TELEMETRY_DB). With JOBTRACKER_TELEMETRY_BACKUP_DIR set, a consistent copy
-is written there once a day (VACUUM INTO), so a backup never copies the live file.
+It stays out of synced folders (see config.TELEMETRY_DB). Backups (compressed, weekly, the last few): see backup.py.
 """
 from __future__ import annotations
 
 import json
-import os
 import queue
 import sqlite3
 import threading
@@ -18,7 +16,7 @@ from pathlib import Path
 
 from .. import config
 from ..logs import log
-from . import metrics
+from . import backup, metrics
 from .schema import Event
 
 SCHEMA = """
@@ -96,8 +94,6 @@ TURN_COLUMNS = ("turn_id", "conversation_id", "turn_index", "user_id", "trigger"
                 "started_ns", "ended_ns", "wall_ms", "ttft_ms", "llm_calls", "llm_ms", "tool_calls", "tool_errors",
                 "tool_wall_ms", "tool_sum_ms", "input_tokens", "cached_tokens", "output_tokens", "cost_usd", "consistent")
 BATCH_SECONDS = 0.2
-SNAPSHOT = "telemetry-snapshot.db"
-SNAPSHOT_EVERY = 24 * 3600
 
 
 def connect(path: Path | None = None, readonly: bool = False) -> sqlite3.Connection:
@@ -174,8 +170,7 @@ def _run() -> None:
                     conn.close()
                 path, conn = config.TELEMETRY_DB, connect(config.TELEMETRY_DB)
             write(conn, batch)
-            if config.TELEMETRY_BACKUP_DIR:
-                _maybe_snapshot(conn, config.TELEMETRY_BACKUP_DIR / SNAPSHOT)
+            backup.maybe_start()
         except Exception as e:  # telemetry must never break the app: the batch is lost, the app goes on
             log.warning("Telemetry: could not write %d events: %s", len(batch), e)
             conn = None
@@ -208,14 +203,3 @@ def upsert_turn(conn: sqlite3.Connection, turn_id: str) -> None:
     conn.execute(f"INSERT OR REPLACE INTO turns ({', '.join(TURN_COLUMNS)}) VALUES ({', '.join('?' * len(TURN_COLUMNS))})",
                  [row[k] for k in TURN_COLUMNS])
 
-
-def _maybe_snapshot(conn: sqlite3.Connection, target: Path) -> None:
-    try:
-        if not target.parent.is_dir() or (target.exists() and time.time() - target.stat().st_mtime < SNAPSHOT_EVERY):
-            return
-        tmp = target.with_suffix(".tmp")
-        tmp.unlink(missing_ok=True)
-        conn.execute("VACUUM INTO ?", (str(tmp),))
-        os.replace(tmp, target)
-    except Exception as e:
-        log.warning("Telemetry: snapshot failed: %s", e)

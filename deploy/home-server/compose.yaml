@@ -18,13 +18,15 @@ services:
       # Several users: Tailscale says who is visiting (only reachable through `tailscale serve`, see ports);
       # each Tailscale login gets its own data. Whoever you share this PC with in Tailscale can use it.
       JOBTRACKER_TAILSCALE_USERS: "1"
+      # A compressed copy of the telemetry every week, the last 3 kept; backup.ps1 mirrors them to OneDrive
+      JOBTRACKER_TELEMETRY_BACKUP_DIR: /data/telemetry-backups
     volumes:
       - ${HOST_DATA_DIR:-./data}:/data
       - ${HOST_OUTPUT_DIR:-./companies}:/output
       # Codex's sign-in (your ChatGPT account) for the "Prepare interview" button: keep it out of backups you share
       - ${HOST_CODEX_DIR:-./codex}:/codex
       # Chat telemetry (SQLite), shared with the monitor. A Docker volume, not a Windows folder: SQLite's locking
-      # is only reliable on the Linux side. Stays on this PC: not in data, so never in the OneDrive backups.
+      # is only reliable on the Linux side. Stays on this PC; only its weekly compressed copies go to OneDrive.
       - telemetry:/telemetry
     restart: unless-stopped
     logging:

@@ -220,9 +220,17 @@ can open it; it shows everyone's conversations, so tell the people who use your 
 tailscale serve --bg --https=8443 8100
 ```
 Then open `https://<pc-name>.<tailnet>.ts.net:8443`. The data stays on this PC, in the Docker volume
-`jobsearch_telemetry` (SQLite works reliably there, not in a Windows folder). It is **not** in `data`, so it never
-goes to the OneDrive backups (it grows fast). To keep a daily copy somewhere, set `JOBTRACKER_TELEMETRY_BACKUP_DIR`
-to a folder mounted in the app container. The new service arrives with the deployment files: run `update-now.ps1` once.
+`jobsearch_telemetry` (SQLite works reliably there, not in a Windows folder). Once a week the app writes a
+compressed copy (`telemetry-<date>.db.xz`) to `data\telemetry-backups` and keeps the last 3; `backup.ps1` mirrors
+that folder to `<backups>\telemetry` in OneDrive, so the cloud holds the same 3 files, never more. The live
+database itself is never in the backups. The new service arrives with the deployment files: run `update-now.ps1` once.
+
+To restore a copy (replaces the current telemetry), in this folder:
+```powershell
+docker compose stop app monitor
+docker run --rm -v jobsearch_telemetry:/t -v "${PWD}\data\telemetry-backups:/b" alpine sh -c "rm -f /t/telemetry.db*; xzcat /b/telemetry-<date>.db.xz > /t/telemetry.db"
+docker compose start app monitor
+```
 
 ---
 
