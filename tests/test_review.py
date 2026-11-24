@@ -108,6 +108,37 @@ class ReviewTests(unittest.TestCase):
         self.assertEqual(sorted(s["category"] for s in detect.suggest(events)),
                          ["incomplete_task", "too_costly", "too_slow"])
 
+    def test_a_placeholder_is_never_proposed_for_approval(self):
+        company = companies.create_company(name="Nimbus")
+        FakeOpenAI.script = [([call("company-set_cv_summary", {"company": company.id, "summary": "<REDACTED>"})], ""),
+                             ([], "Let me write it properly.")]
+        chat = registry.run("chat.send", {"message": "Fix the summary"})
+        self.assertFalse(any(m["tool"] and m["tool"]["status"] == "pending" for m in chat["messages"]))
+        self.assertIn("placeholder", FakeOpenAI.sent[-1]["input"][0]["output"])
+
+    def test_an_announced_action_without_a_call_gets_one_nudge(self):
+        company = companies.create_company(name="Nimbus")
+        FakeOpenAI.script = [([], "You're right. I’m going to fix the title now."),
+                             ([call("company-set_cv_title", {"company": company.id, "title": "Data Scientist"})], ""),
+                             ([], "Done: the title waits for your approval.")]
+        chat = registry.run("chat.send", {"message": "The title is wrong"})
+        self.assertEqual(FakeOpenAI.sent[1]["input"], [{"role": "user", "content": assistant.NUDGE}])
+        self.assertTrue(any(m["tool"] and m["tool"]["status"] == "pending" for m in chat["messages"]))
+        store.flush()
+        with closing(store.connect(config.TELEMETRY_DB)) as conn:
+            self.assertEqual(conn.execute("SELECT count(*) FROM events WHERE type = 'guard.nudge'").fetchone()[0], 1)
+
+        FakeOpenAI.sent = []  # only once per turn: a second announcement ends the turn
+        FakeOpenAI.script = [([], "I'll update it now."), ([], "I'll update it now, really.")]
+        registry.run("chat.send", {"message": "And the summary", "chat_id": chat["id"]})
+        self.assertEqual(len(FakeOpenAI.sent), 2)
+
+        FakeOpenAI.sent = []  # something waits for approval: "once you approve, I'll regenerate" is fine
+        FakeOpenAI.script = [([call("company-set_cv_title", {"company": company.id, "title": "Data Lead"})], ""),
+                             ([], "Once you approve, I’ll regenerate the CV.")]
+        registry.run("chat.send", {"message": "Use Data Lead", "chat_id": chat["id"]})
+        self.assertEqual(len(FakeOpenAI.sent), 2)
+
     # ---------------------------------------------------------------- the monitor
 
     def test_owner_flags_and_the_review_queue(self):

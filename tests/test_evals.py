@@ -41,15 +41,20 @@ class EvalTests(unittest.TestCase):
     def test_checks(self):
         result = {"status": "completed", "reply": "Nimbus is next.", "cost_usd": 0.01, "tool_calls": [
             {"action": "company.get", "args": {"id": "Nimbus"}, "status": "done"},
-            {"action": "company.get", "args": {"id": "Nimbus"}, "status": "error", "error": "boom"}]}
+            {"action": "company.get", "args": {"id": "Nimbus"}, "status": "error", "error": "boom",
+             "result": '{"title": "Staff Data Scientist"}'}]}
         got = [c["ok"] for c in checks.evaluate([
             {"type": "status"}, {"type": "called", "action": "company.get", "args": {"id": "nimbus"}, "max": 1},
             {"type": "not_called", "action": "company.delete"}, {"type": "no_duplicate_calls"}, {"type": "no_tool_errors"},
             {"type": "max_cost_usd", "value": 0.05}, {"type": "reply_contains", "text": "NIMBUS"},
             {"type": "reply_not_contains", "text": "sorry"}, {"type": "reply_matches", "pattern": r"next\.$"},
             {"type": "max_reply_chars", "value": 5}, {"type": "max_tool_calls", "value": 2}, {"type": "nope"},
-            {"type": "max_cost_usd"}], result)]
-        self.assertEqual(got, [True, False, True, False, False, True, True, True, True, False, True, False, False])
+            {"type": "max_cost_usd"},
+            {"type": "tool_result_contains", "action": "company.get", "text": "Staff"},
+            {"type": "tool_result_not_contains", "action": "company.get", "text": "Staff"},
+            {"type": "tool_result_contains", "action": "cv.generate", "text": "Staff"}], result)]
+        self.assertEqual(got, [True, False, True, False, False, True, True, True, True, False, True, False, False,
+                               True, False, False])
         graded = {"checks": [{"ok": True}], "rubric": [{"verdict": "yes"}, {"verdict": None}]}
         self.assertEqual(runner.verdict(graded), "pending")
         graded["rubric"][1]["verdict"] = "no"

@@ -12,6 +12,7 @@ import re
 
 from pydantic import BaseModel
 
+from .. import guides
 from . import llm, master_cv
 
 
@@ -33,7 +34,10 @@ Strict rules:
   than stretch the truth. Different drafts may emphasise different keywords.
 - One sentence, strong action verb, similar length (at most 20% longer). Keep the bold label (lead) as it is
   unless it contradicts the new wording; "" if there is none.
-- Each draft must differ from the original and from the other existing wordings."""
+- Each draft must differ from the original and from the other existing wordings.
+
+=== CV WRITING GUIDE (follow its achievement rules) ===
+"""
 
 _NUMBER = re.compile(r"\d+(?:[.,]\d+)?")
 
@@ -49,7 +53,7 @@ def draft_variants(bullet_id: str, keywords: list[str], count: int = 3, facts: s
               + f"\nOTHER EXISTING WORDINGS:\n{existing}"
               + f"\nTARGET KEYWORDS: {', '.join(keywords) or '(none: just vary the wording)'}"
               + f"\nUSER FACTS (true, may be used): {facts or '(none)'}")
-    result = llm.structured(INSTRUCTIONS.format(count=count), prompt, _Drafts)
+    result = llm.structured(INSTRUCTIONS.format(count=count) + guides.read("cv"), prompt, _Drafts)
 
     allowed_numbers = set(_NUMBER.findall(f"{bullet.lead} {bullet.text} {facts}"))
     seen = {f"{w.lead} {w.text}".strip().lower() for w in bullet.wordings()}

@@ -160,20 +160,22 @@ def generate_general(template: str | None = None, export_pdf: bool = True) -> di
 
 
 def use_summary(cv: TailoredCV, company, keywords: list[str] | None = None) -> dict:
-    """The top of the CV: the application's own title/summary if it has them, else those of the title variant
-    closest to the job (see headlines.py). Returns what was used, for the report."""
+    """The top of the CV: the title is the application's own, else the job's title (its position), else the
+    variant's; the summary is the application's own, else the one of the title variant closest to the job (see
+    headlines.py). Returns what was used, for the report."""
     from . import headlines
 
     pick = headlines.choose(company, keywords)
     h = pick["headline"]
-    own_title = company.cv_title.strip() if company is not None else ""
     own_summary = company.cv_summary.strip() if company is not None else ""
-    title = own_title or (h.title if h else "")
+    title, title_from = headlines.title_for(company, h)
     summary = own_summary or (h.summary if h else "")
     update = {k: v for k, v in {"title": title, "summary": summary}.items() if v}
     if update:
         cv.profile = cv.profile.model_copy(update=update)
-    return {"title": title, "variant": h.title if h else None, "how": pick["how"],
+    return {"title": title, "title_from": title_from, "variant": h.title if h else None, "how": pick["how"],
+            "summary": summary,
+            **(headlines.summary_advice(summary, title, bool(own_summary)) if company is not None else {}),
             "title_tailored": bool(company is not None and company.cv_title.strip()),
             "summary_tailored": bool(company is not None and company.cv_summary.strip())}
 

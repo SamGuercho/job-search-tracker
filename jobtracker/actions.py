@@ -108,8 +108,9 @@ def company_list(status: Optional[str] = None, query: Optional[str] = None):
 
 @action("company.get")
 def company_get(id: str):
-    """Full details of one company, including its process steps and generated CVs."""
-    return companies.get_company(id)
+    """Full details of one company, including its process steps and generated CVs. `id`: its id, or the company
+    name / position."""
+    return companies.resolve(id)
 
 
 @action("company.create")
@@ -502,8 +503,11 @@ def cv_summary_review(company: str, summary: Optional[str] = None, facts: str = 
     """Check whether the CV summary fits an application's job description: verdict + score, strengths,
     requirements the summary misses (`missing_but_in_cv`: the CV has evidence; `gaps`: it doesn't), and a
     suggested rewrite using only facts from the CV (or `facts` the user gave). Reviews the application's tailored
-    summary if it has one, else the master summary; or pass `summary` to review a draft. Saves nothing."""
-    return summary_service.review_summary(company, summary, facts)
+    summary if it has one, else the master summary; or pass `summary` to review a draft. Saves nothing: when the
+    summary doesn't fit, the rewrite comes back in `proposals` (in the chat: already shown for the user's approval,
+    for this application only)."""
+    review = summary_service.review_summary(company, summary, facts)
+    return {**review, **summary_service.proposal_from_review(review)}
 
 
 @action("company.set_cv_summary", confirm=True)
@@ -516,8 +520,8 @@ def company_set_cv_summary(company: str, summary: str):
 
 @action("company.set_cv_title", confirm=True)
 def company_set_cv_title(company: str, title: str):
-    """Use this title under the name in this application's CVs only (e.g. the job's title, "Data Scientist"); the
-    master CV title is unchanged. An empty title goes back to the master one. Regenerate the CV afterwards."""
+    """Use this title under the name in this application's CVs instead of the job's title (which CVs use by
+    default); the master CV is unchanged. An empty title goes back to the job's title. Regenerate the CV afterwards."""
     c = companies.resolve(company)
     c = companies.update_company(c.id, cv_title=" ".join(title.split())[:80])
     return {"company": c.name, "cv_title": c.cv_title or "(master CV title)"}
@@ -661,8 +665,9 @@ def cv_headline_delete(id: str):
 
 @action("cv.headline.for_application")
 def cv_headline_for_application(company: str):
-    """What an application's CV shows at the top: the title and summary, the variant used (pinned, closest to the
-    job, or default) and whether the application overrides them. Check it fits the job before making a CV."""
+    """What an application's CV shows at the top: the title (`title_from`: the application's own, the job's title,
+    or the variant's when the job has none) and the summary (the application's own, or the variant's: pinned,
+    closest to the job, or default)."""
     return headlines.effective(company)
 
 
@@ -953,7 +958,9 @@ def cv_generate(keywords: list[str], company_id: Optional[str] = None, company_n
     """Build a full one-page CV: every achievement in its most relevant wording (`required` keywords weigh
     double), cutting the least relevant only if it doesn't fit.
     Saved as Word + PDF in <output>/<Company>/ and attached to the company."""
-    return cv_builder.generate_cv(keywords, company_id, company_name, template, export_pdf, keep_unmatched_roles, required)
+    result = cv_builder.generate_cv(keywords, company_id, company_name, template, export_pdf, keep_unmatched_roles,
+                                    required)
+    return {**result, **summary_service.proposal_after_cv(result.get("company_id"), result)}
 
 
 # ===================================================================== web
@@ -1035,7 +1042,9 @@ def workflow_new_application(name: str, job_description: str = "", position: str
     match it against the master CV (cv.keywords.match_job, merged with `keywords`), and generate the tailored CV.
     Returns the company, `covered` requirements, `gaps` (requirements the CV doesn't cover) and the CV files.
     Fill work_model, job_url (the posting link), salary_posted and the source when you know them; the job
-    description is saved as Job_Description.md next to the CV. Never marks the application as applied."""
+    description is saved as Job_Description.md next to the CV. Never marks the application as applied.
+    When the CV's summary doesn't fit the job, it is reviewed and its rewrite comes back in `proposals` (in the
+    chat: already shown to the user for approval)."""
     match = jd_match.match_job_description(job_description) if job_description else None
     merged = list(dict.fromkeys([*keywords, *(match["keywords"] if match else [])]))
     details = dict(position=position, location=location, website=website, seniority=seniority,
@@ -1058,6 +1067,7 @@ def workflow_new_application(name: str, job_description: str = "", position: str
     if generate_cv:
         required = [k for m in (match["matches"] if match else []) if m.must_have for k in m.keywords]
         result["cv"] = cv_builder.generate_cv(merged, company_id=company.id, required=required)
+        result.update(summary_service.proposal_after_cv(company.id, result["cv"]))
     return result
 
 

@@ -159,13 +159,12 @@ export async function renderCompany(root, id) {
       h("div", { class: "row cv-title-row" }, h("b", {}, "Title variant"), variantSelect,
         h("span", { class: "small muted" }, how)),
       h("div", { class: "row" }, h("b", {}, "Title under your name"), h("span", { class: "spacer" }),
-        h("span", { class: `pill ${top.title_tailored ? "applied" : "not-applied"}` }, top.title_tailored ? "Tailored" : `From “${variant.title}”`)),
+        h("span", { class: `pill ${top.title_tailored ? "applied" : "not-applied"}` },
+          top.title_tailored ? "Tailored" : top.title_from === "job" ? "The job's title" : `From “${variant.title}”`)),
       h("div", { class: "row cv-title-row" }, titleInput,
-        company.position && company.position !== titleInput.value && h("button", {
-          class: "ghost small", title: "Use the job's title", onclick: () => { titleInput.value = company.position; titleInput.focus(); },
-        }, `Use “${company.position}”`),
-        top.title_tailored && h("button", { class: "ghost small", onclick: () => saveTitle("", "Back to the variant's title") }, "Variant's title"),
-        h("button", { class: "small", onclick: () => saveTitle(titleInput.value === variant.title ? "" : titleInput.value, "Title saved for this application") }, "Save")));
+        top.title_tailored && h("button", { class: "ghost small", onclick: () => saveTitle("", company.position ? "Back to the job's title" : "Back to the variant's title") },
+          company.position ? `Use “${company.position}”` : "Variant's title"),
+        h("button", { class: "small", onclick: () => saveTitle(titleInput.value === (company.position || variant.title) ? "" : titleInput.value, "Title saved for this application") }, "Save")));
     const checkBtn = h("button", {
       disabled: !info.llm_available || !company.job_description,
       title: !company.job_description ? "Add the job description first" : !info.llm_available ? "Needs OPENAI_API_KEY" : "",

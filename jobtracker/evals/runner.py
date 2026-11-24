@@ -320,7 +320,7 @@ def _write_report(run_dir: Path) -> str:
 def _run_dir(name: str) -> Path:
     path = Path(name)
     if not path.is_absolute() and not path.exists():
-        matches = sorted(RUNS.glob(f"{name}*"))
+        matches = sorted(RUNS.glob(f"{name}-[0-9]*")) or sorted(RUNS.glob(f"{name}*"))  # "after" ≠ "after2"
         if not matches:
             raise SystemExit(f"No run {name} in {RUNS}")
         path = matches[-1]

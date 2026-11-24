@@ -71,6 +71,10 @@ the action from the project root:
 - `cv.master.get` to read it. Achievements: `cv.bullet.add {"experience_id", "text", "keywords", "lead", "group", "priority"}`.
 - An achievement can have several wordings; a CV uses one of them. To target a new keyword, add a wording to the
   existing achievement (`cv.variant.draft` → show the drafts → `cv.variant.add` the chosen one), never a near-duplicate.
+- Title at the top of a CV: always the job's title (the application's position) unless `company.set_cv_title`
+  sets another one for that application.
+- Writing CV text (summary, achievements): follow `jobtracker/guides/cv.md` (only CV facts; the summary opens with
+  the CV title at the job's level; never the job's gaps as claims).
 - Summary at the top of the CV: `cv.summary.review {"company"}` (verdict, gaps, suggested rewrite) → with the user's
   OK, `company.set_cv_summary` (that application only) or `cv.profile.update` (master, everywhere).
 - Import a CV file: `cv.import.parse {"file_path"}` (draft, not saved) → summarise → `cv.import.apply

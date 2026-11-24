@@ -6,6 +6,9 @@ job's title with each variant's title (ignoring seniority words like Senior, Sta
 keywords with the variant's hint words. Only texts the user wrote are used, so nothing is invented. The default
 is used when no variant fits the job better. An application can also pin a variant, and still override the
 title or summary for itself (company.cv_title / cv_summary).
+
+The title under the name is the JOB's title (the application's position) unless the application sets its own: a CV
+always carries the title of the role it applies to. The variant's title is used only when there's no position.
 """
 from __future__ import annotations
 
@@ -61,14 +64,62 @@ def choose(company=None, keywords: list[str] | None = None) -> dict:
     return {"headline": best, "how": "closest", "score": best_score}
 
 
+ROLE_STOP = re.compile(r"\s(?:with|who|that|and|for|in|at)\s|[,.;:()—–-]", re.IGNORECASE)
+
+
+def summary_fit(summary: str, title: str) -> str:
+    """"" if the summary's opening role fits the CV title, else why not. The opening ("Senior AI Engineer with 6+
+    years…") must name the title's role noun (Scientist, Analyst, Engineer…: its last word before any dash or
+    comma) and claim no seniority the title doesn't have."""
+    opening = ROLE_STOP.split(summary or "", maxsplit=1)[0].split()[:6]
+    title_role = [w for w in re.findall(r"[a-z0-9+#]+", ROLE_STOP.split(title or "", maxsplit=1)[0].lower())
+                  if w not in SENIORITY]
+    if not opening or not title_role:
+        return ""
+    words = set(re.findall(r"[a-z0-9+#]+", " ".join(opening).lower()))
+    extra = words & (SENIORITY - {"of", "the", "and", "i"}) - set(re.findall(r"[a-z0-9+#]+", title.lower()))
+    head = " ".join(opening)
+    if title_role[-1] not in words:
+        return f"it presents the user as “{head}”, not as the job's “{title}”"
+    if extra:
+        return f"it claims a seniority (“{head}”) the job's title “{title}” doesn't have"
+    return ""
+
+
+def summary_advice(summary: str, title: str, tailored: bool) -> dict:
+    """For a CV result: whether the summary fits the title, and what to do if not (the assistant reads it)."""
+    why = "" if tailored else summary_fit(summary, title)
+    if not why:
+        return {"summary_fits_job": True}
+    return {"summary_fits_job": False, "summary_problem": why,
+            "next_step": f"The summary doesn't fit this job: {why}. Call cv.summary.review for this application now; "
+                         f"when it answers, propose its `suggestion` word for word with company.set_cv_summary "
+                         f"(approval buttons), then regenerate the CV once it's approved."}
+
+
+def title_for(company, h: Headline | None) -> tuple[str, str]:
+    """The CV title for an application and where it comes from: "application" (its own), "job" (its position) or
+    "variant"."""
+    own = " ".join((company.cv_title if company is not None else "").split())
+    if own:
+        return own, "application"
+    position = " ".join((company.position if company is not None else "").split())[:80]
+    if position:
+        return position, "job"
+    return (h.title if h else ""), "variant"
+
+
 def effective(company_ref: str | None = None, keywords: list[str] | None = None) -> dict:
     """What an application's CV will show at the top: title and summary, and where each comes from."""
     c = companies.resolve(company_ref) if company_ref else None
     pick = choose(c, keywords)
     h = pick["headline"]
+    title, title_from = title_for(c, h)
+    summary = c.cv_summary if c and c.cv_summary else (h.summary if h else "")
     return {
         "variant": h.model_dump() if h else None, "how": pick["how"], "score": pick["score"],
-        "title": (c.cv_title if c and c.cv_title else (h.title if h else "")),
+        "title": title, "title_from": title_from,
+        **(summary_advice(summary, title, bool(c and c.cv_summary)) if c else {}),
         "summary": (c.cv_summary if c and c.cv_summary else (h.summary if h else "")),
         "title_tailored": bool(c and c.cv_title), "summary_tailored": bool(c and c.cv_summary),
         "variants": [{"id": x.id, "title": x.title, "default": x.default} for x in variants()],

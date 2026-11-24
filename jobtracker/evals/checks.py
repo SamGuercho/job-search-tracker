@@ -8,6 +8,9 @@
     {"type": "no_duplicate_calls"}                             the same action with the same arguments twice
     {"type": "no_tool_errors"}
     {"type": "max_cost_usd", "value": 0.05}
+    {"type": "tool_result_contains", "action": "cv.generate", "text": "\"title\": \"Data Scientist\""}
+                                                               a call of that action returned this (exact case)
+    {"type": "tool_result_not_contains", "action": "cv.generate", "text": "Staff"}   no call of it returned this
     {"type": "reply_contains", "text": "Nimbus"}               the final reply (any case)
     {"type": "reply_not_contains", "text": "I can't"}
     {"type": "reply_matches", "pattern": "regex"}
@@ -40,6 +43,12 @@ def run_check(check: dict, result: dict) -> tuple[bool, str]:
         high = 0 if kind == "not_called" else check.get("max")
         ok = len(hits) >= low and (high is None or len(hits) <= high)
         return ok, f"{check.get('action')} called {len(hits)}×"
+    if kind in ("tool_result_contains", "tool_result_not_contains"):
+        results = [c.get("result") or "" for c in calls if not check.get("action") or c["action"] == check["action"]]
+        found = sum(check["text"] in r for r in results)
+        if kind == "tool_result_contains":
+            return found > 0, f"in {found} of {len(results)} {check.get('action') or 'tool'} results"
+        return found == 0, f"in {found} of {len(results)} {check.get('action') or 'tool'} results"
     if kind == "max_tool_calls":
         return len(calls) <= check["value"], f"{len(calls)} tool calls"
     if kind == "no_duplicate_calls":

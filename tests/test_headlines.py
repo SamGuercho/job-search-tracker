@@ -42,21 +42,57 @@ class HeadlineTests(unittest.TestCase):
         c = companies.create_company(name="Orbitex", position="Staff Data Scientist")
         registry.run("company.set_cv_headline", {"company": c.id, "headline_id": self.sci["id"]})
         top = registry.run("cv.headline.for_application", {"company": c.id})
-        self.assertEqual((top["title"], top["how"]), ("Research Scientist", "pinned"))
+        # the pinned variant gives the summary; the title stays the job's
+        self.assertEqual((top["title"], top["title_from"], top["how"]), ("Staff Data Scientist", "job", "pinned"))
+        self.assertEqual(top["summary"], "Scientist with published research.")
         registry.run("company.set_cv_title", {"company": c.id, "title": "Data Scientist · ML"})
         top = registry.run("cv.headline.for_application", {"company": c.id})
         self.assertEqual((top["title"], top["summary"], top["title_tailored"]), ("Data Scientist · ML", "Scientist with published research.", True))
         registry.run("company.set_cv_headline", {"company": c.id, "headline_id": ""})  # back to automatic
         self.assertEqual(registry.run("cv.headline.for_application", {"company": c.id})["how"], "closest")
+        registry.run("company.set_cv_title", {"company": c.id, "title": ""})  # back to the job's title
+        top = registry.run("cv.headline.for_application", {"company": c.id})
+        self.assertEqual((top["title"], top["title_from"], top["title_tailored"]), ("Staff Data Scientist", "job", False))
 
-    def test_generated_cv_uses_the_variant_and_reports_it(self):
-        c = companies.create_company(name="Orbitex", position="Staff Data Scientist")
+    def test_generated_cv_has_the_jobs_title_and_the_closest_variants_summary(self):
+        c = companies.create_company(name="Orbitex", position="Staff  Data Scientist ")
         r = cv_builder.generate_cv(["SQL"], company_id=c.id, export_pdf=False)
-        self.assertEqual((r["headline"]["title"], r["headline"]["how"]), ("Data Scientist", "closest"))
-        self.assertIn("data scientist", texts(r))
+        self.assertEqual((r["headline"]["title"], r["headline"]["title_from"]), ("Staff Data Scientist", "job"))
+        self.assertEqual((r["headline"]["variant"], r["headline"]["how"]), ("Data Scientist", "closest"))
+        self.assertIn("staff data scientist", texts(r))
         self.assertIn("data scientist turning data into decisions.", texts(r))
+        no_position = companies.create_company(name="Lab")
+        r = cv_builder.generate_cv(["SQL"], company_id=no_position.id, export_pdf=False)
+        self.assertEqual((r["headline"]["title"], r["headline"]["title_from"]), ("AI Engineer", "variant"))
         general = cv_builder.generate_general(export_pdf=False)
         self.assertIn("ai engineer", texts(general))  # no job: the default
+
+    def test_a_single_senior_variant_never_overrides_the_jobs_title(self):
+        for h in headlines.variants()[1:]:
+            registry.run("cv.headline.delete", {"id": h.id})
+        registry.run("cv.headline.update", {"id": headlines.default().id, "title": "Staff Data Scientist"})
+        c = companies.create_company(name="Frog", position="Data Scientist")
+        r = cv_builder.generate_cv(["SQL"], company_id=c.id, export_pdf=False)
+        self.assertEqual(r["headline"]["title"], "Data Scientist")
+        self.assertNotIn("staff data scientist", texts(r))
+
+    def test_a_summary_naming_another_role_gets_a_next_step(self):
+        fit = headlines.summary_fit
+        ai = "Senior AI Engineer with 6+ years building NLP systems."
+        self.assertIn("not as the job's", fit(ai, "Data Scientist"))
+        self.assertIn("seniority", fit(ai, "AI Engineer"))
+        self.assertEqual(fit(ai, "Senior AI Engineer"), "")
+        self.assertIn("not as the job's", fit("Data Scientist with 6+ years.", "Data Analyst – Growth"))
+        self.assertEqual(fit("Data scientist focused on models.", "Staff Data Scientist"), "")
+        self.assertEqual(fit("Machine learning engineer, 6 years.", "ML Engineer"), "")
+        c = companies.create_company(name="Frog", position="Research Scientist")
+        registry.run("company.set_cv_headline", {"company": c.id, "headline_id": self.default.id})  # the AI Engineer one
+        r = cv_builder.generate_cv(["SQL"], company_id=c.id, export_pdf=False)
+        self.assertFalse(r["headline"]["summary_fits_job"])
+        self.assertIn("cv.summary.review", r["headline"]["next_step"])
+        registry.run("company.set_cv_summary", {"company": c.id, "summary": "Research scientist with published work."})
+        top = registry.run("cv.headline.for_application", {"company": c.id})
+        self.assertTrue(top["summary_fits_job"])  # the application's own summary: nothing to suggest
 
     def test_editing_rules(self):
         self.assertTrue(all(registry.ACTIONS[a].confirm for a in ("cv.headline.add", "cv.headline.update", "cv.headline.delete")))

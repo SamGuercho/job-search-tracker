@@ -64,6 +64,7 @@ def run(case: dict) -> dict:
         "replies": replies,
         "tool_calls": [{"action": s.start.get("action"), "args": s.start.get("args") or {}, "status": s.status,
                         "error": s.end.get("error") or "", "result_chars": s.end.get("result_chars"),
+                        "result": s.end.get("result") or "",
                         "llm_call_id": s.llm_call_id} for s in tools],
         "llm_calls": summary.get("llm_calls"), "cost_usd": summary.get("cost_usd"),
         "wall_ms": summary.get("wall_ms") or (time.time() - started) * 1000,
