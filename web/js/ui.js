@@ -36,6 +36,37 @@ export function toast(message, isError = false) {
   setTimeout(() => t.remove(), isError ? 6000 : 2200);
 }
 
+// PDFs fetched for sending, kept so a second tap shares at once (the share sheet needs a fresh tap).
+const sendCache = new Map();
+
+/** "Send" button for a generated PDF: opens the phone's share sheet (Gmail, WhatsApp, LinkedIn…) with
+ *  the file under its own name, never "CV (15).pdf" like a download would. `href` is a /files/… url. */
+export function sendPdfButton(href, cls = "btn") {
+  const name = decodeURIComponent(href.split("?")[0].split("/").pop());
+  const btn = h("button", { class: cls, title: `Send ${name}` }, "Send");
+  btn.addEventListener("click", async () => {
+    if (!navigator.canShare) return toast("Sending isn't available in this browser: open the PDF instead", true);
+    let file = sendCache.get(href);
+    if (!file) {
+      btn.disabled = true;
+      try {
+        const res = await fetch(href);
+        if (!res.ok) throw new Error("PDF not found");
+        file = new File([await res.blob()], name, { type: "application/pdf" });
+        sendCache.set(href, file);
+      } catch (e) { return toast(e.message, true); } finally { btn.disabled = false; }
+    }
+    if (!navigator.canShare({ files: [file] })) return toast("This browser can't send files: open the PDF instead", true);
+    try {
+      await navigator.share({ files: [file], title: name });
+    } catch (e) {
+      if (e.name === "NotAllowedError") toast("PDF ready: tap Send again");  // the download took longer than the tap allows
+      else if (e.name !== "AbortError") toast(e.message, true);
+    }
+  });
+  return btn;
+}
+
 /** Run an async action, showing errors as toasts. Returns undefined on failure. */
 export async function attempt(fn, success) {
   try {
@@ -228,7 +259,10 @@ export function markdown(text) {
       out.push(s.slice(last, m.index));
       if (m[1]) out.push(h("b", {}, m[1]));
       else if (m[2]) out.push(h("code", {}, m[2]));
-      else out.push(h("a", { href: m[4], target: m[4].startsWith("#") ? null : "_blank" }, m[3]));  // files open in a new tab
+      else {
+        out.push(h("a", { href: m[4], target: m[4].startsWith("#") ? null : "_blank" }, m[3]));  // files open in a new tab
+        if (/^\/files\/.+\.pdf$/i.test(m[4])) out.push(" ", sendPdfButton(m[4], "btn small"));
+      }
       last = m.index + m[0].length;
     }
     out.push(s.slice(last));

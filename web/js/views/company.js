@@ -1,6 +1,6 @@
 // Company page: details, follow-up counter, process graph, generated CVs.
 import { call, fileUrl, upload } from "../api.js";
-import { attempt, chatHref, chips, companyLogo, confirmSheet, daysBadge, field, formatDate, h, joinList, mapsUrl, markdown, matchPanel, modal, mount, readForm, studyRow, toast } from "../ui.js";
+import { attempt, chatHref, chips, companyLogo, confirmSheet, daysBadge, field, formatDate, h, joinList, mapsUrl, markdown, matchPanel, modal, mount, readForm, sendPdfButton, studyRow, toast } from "../ui.js";
 import { processCard } from "./process-graph.js";
 import { recordingsCard } from "./recordings.js";
 
@@ -319,7 +319,8 @@ export async function renderCompany(root, id) {
         h("span", { class: "spacer" }),
         d.match && h("span", { class: "chip", title: "Match score when it was last checked" }, `${d.match.score}%`),
         d.docx && h("a", { class: "btn", href: fileUrl(d.docx) }, "Word"),
-        d.pdf && h("a", { class: "btn", href: fileUrl(d.pdf), target: "_blank" }, "PDF")))
+        d.pdf && h("a", { class: "btn", href: fileUrl(d.pdf), target: "_blank" }, "PDF"),
+        d.pdf && sendPdfButton(fileUrl(d.pdf))))
       : h("p", { class: "muted" }, "No CV generated yet."));
 
   // --------------------------------------------------------- interview prep

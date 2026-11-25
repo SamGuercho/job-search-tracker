@@ -1,6 +1,6 @@
 // CV builder: match a job description (or type keywords), preview, generate.
 import { call, fileUrl } from "../api.js";
-import { attempt, debounce, field, h, keywordPattern, matchPanel, mount, toast } from "../ui.js";
+import { attempt, debounce, field, h, keywordPattern, matchPanel, mount, sendPdfButton, toast } from "../ui.js";
 
 export async function renderCvBuilder(root, params) {
   const [companies, vocabulary, info] = await Promise.all([call("company.list"), call("cv.keywords.list"), call("app.info")]);
@@ -149,6 +149,7 @@ export async function renderCvBuilder(root, params) {
       h("div", { class: "row" },
         r.docx && h("a", { class: "btn", href: fileUrl(r.docx) }, "Download Word"),
         r.pdf && h("a", { class: "btn", href: fileUrl(r.pdf), target: "_blank" }, "Open PDF"),
+        r.pdf && sendPdfButton(fileUrl(r.pdf)),
         h("span", { class: "small muted" }, r.pages ? `${r.pages} page` : `~${Math.round(r.estimated_pages * 100)}% of a page (estimated)`)),
       h("p", { class: "small muted" }, `Saved in ${r.folder}`),
       r.removed.length > 0 && h("p", { class: "small" }, `${r.removed.length} bullet(s) removed to stay on one page.`),

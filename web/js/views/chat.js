@@ -1,6 +1,6 @@
 // Assistant: conversations with the LLM agent that drives the app's actions.
 import { call, fileUrl, streamChat } from "../api.js";
-import { attempt, chatRequest, confirmSheet, h, markdown, modal, mount, promptSheet, toast, usd } from "../ui.js";
+import { attempt, chatRequest, confirmSheet, h, markdown, modal, mount, promptSheet, sendPdfButton, toast, usd } from "../ui.js";
 
 const LABELS = {
   "company.list": "Looked at your companies", "company.get": "Opened company", "company.create": "Added company",
@@ -239,6 +239,7 @@ export async function renderChat(root, chatId, params) {
       company && h("a", { href: `#/company/${company.id}` }, ` · ${company.name}`),
       cv?.docx && h("a", { href: fileUrl(cv.docx) }, " · Word"),
       cv?.pdf && h("a", { href: fileUrl(cv.pdf), target: "_blank" }, " · PDF"),
+      cv?.pdf && [" ", sendPdfButton(fileUrl(cv.pdf), "btn small")],
     ];
   };
 

@@ -1,7 +1,7 @@
 // Master CV editor: profile, experiences + achievements (with alternative wordings), education, skills.
 // Bullets and experiences save automatically when a field loses focus.
 import { call, fileUrl } from "../api.js";
-import { attempt, confirmSheet, field, h, joinList, keywordPattern, mount, promptSheet, readForm, splitList } from "../ui.js";
+import { attempt, confirmSheet, field, h, joinList, keywordPattern, mount, promptSheet, readForm, sendPdfButton, splitList } from "../ui.js";
 import { openImport } from "./import.js";
 
 const PROFILE_FIELDS = [
@@ -299,6 +299,7 @@ export async function renderMasterCv(root) {
         h("h3", {}, "General CV created"),
         h("div", { class: "row" },
           r.pdf && h("a", { class: "btn primary", href: fileUrl(r.pdf), target: "_blank" }, "Open PDF"),
+          r.pdf && sendPdfButton(fileUrl(r.pdf)),
           r.docx && h("a", { class: "btn", href: fileUrl(r.docx) }, "Download Word"),
           h("span", { class: "small muted" }, r.pages ? `${r.pages} page` : "")),
         h("p", { class: "small muted" }, `Saved in ${r.folder}`),
