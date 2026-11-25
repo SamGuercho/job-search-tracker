@@ -13,7 +13,7 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta
 
 from .. import maintenance
-from . import calendar, companies, learning, practice, prep, profile, recordings, rules
+from . import calendar, companies, learning, mail, practice, prep, profile, recordings, rules
 
 RECENT_DAYS = 3
 
@@ -99,6 +99,7 @@ def summary(days_ahead: int = 14) -> dict:
         "no_answer": silence["no_answer"],
         "debriefs": rules.debriefs(apps, {r.step for r in recordings.store.load().recordings if r.step}, today),
         "waiting": waiting,
+        "mail": mail.inbox(include_done=0)["proposed"],   # news found in the user's email, to apply or dismiss
         "recent": recent[:6],
         "practice": {
             "to_review": training["to_review"][:3],

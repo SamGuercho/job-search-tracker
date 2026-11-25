@@ -213,6 +213,17 @@ sites that refuse robots or need a login (LinkedIn) are sent from your own brows
 Ezri then shows *Add this job?* and nothing happens until you confirm. A link to the assistant coming from
 outside the app only pre-fills the message: it is never sent by itself.
 
+### Email (news about your applications)
+Connect your Gmail on **Profile → Email** (read-only: Ezri can't send or delete anything). Every 10 minutes the
+server looks at your new emails and keeps only those that name one of your applications: sent from the company's
+domain, or with the company's name or the position in the subject or text (recruiting platforms' no-reply emails
+always say who they're from). The cheap model then says which application it's about and what happened:
+application received, rejection, interview invite (date, time, link), next step, offer, a recruiter's message.
+Each one shows on **Today** under *From your email* with what **Apply** would do (close the application, plan the
+interview step, mark Applied, log the news) and **Dismiss**, plus a notification. Nothing changes by itself.
+Setting it up needs a Google OAuth client, once, by the server's owner: see the
+[home-server guide](deploy/home-server/README.md#email-news-from-your-gmail).
+
 ### Company logos
 When an application has a website, Ezri finds the company's logo on it (the icon the site declares for phones,
 else its other icons) and shows it in the lists, on the application page and on Today; without one, colored
@@ -333,13 +344,15 @@ drafts, reviews, import) use the `OPENAI_API_KEY` from `.env` (and Claude as fal
 | Backups made by the app, uploaded CVs | `data/backups/`, `data/uploads/` | **No** |
 | Generated CVs, saved job descriptions | `output/<Company>/` (or `JOBTRACKER_OUTPUT_DIR`) | **No** |
 | OpenAI key, local paths | `.env` | **No** |
+| Gmail access (a read-only Google token) and the updates found | `data/mail.json` | **No** |
 | Assistant telemetry (messages, answers, tool results, timings) | `data/telemetry.db` in the app folder, never in `JOBTRACKER_DATA_DIR` (or `JOBTRACKER_TELEMETRY_DB`) | **No** |
 | Example data for new users | `data/seed/` | Yes (fictional) |
 
 - Files are never overwritten silently: a regenerated CV or changed job description moves the previous one
   to `archive/`.
 - **Sent to OpenAI** (only with a key, only when you use an AI feature): the text of the CV you import, your
-  master CV and the job description when matching/reviewing/drafting, and your chat messages. Nothing else.
+  master CV and the job description when matching/reviewing/drafting, your chat messages, and, if you connect
+  your email, the emails that name one of your applications (never the others). Nothing else.
 - The **telemetry** keeps the full content of assistant turns (yours and, on a shared server, your friends'), so
   that turns can be reviewed and evaluated. Only the owner can open the monitor.
 - To back up your data, copy the `data/` folder (or point `JOBTRACKER_DATA_DIR` to a synced folder).
@@ -363,6 +376,8 @@ All settings live in `.env` (created from `.env.example` on first run). Restart 
 | `JOBTRACKER_TRANSCRIBE_MODEL` | `gpt-4o-transcribe-diarize` | Transcription with speaker labels. OpenAI shuts it down on 2027-02-26; then the fallback below is used and the debrief tells speakers apart from the content. |
 | `JOBTRACKER_TRANSCRIBE_FALLBACK_MODEL` | `gpt-transcribe` | Text-only transcription when the model above fails. |
 | `JOBTRACKER_MAX_RECORDING_MB` | `500` | Largest recording you can upload. |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | empty | A Google OAuth client ("Web application", redirect URI `<app address>/mail/callback`) so people can connect their Gmail (read-only) for news on Today. See the home-server guide, "Email". |
+| `JOBTRACKER_MAIL_EVERY_MIN` | `10` | How often the server checks the connected mailboxes (`JOBTRACKER_MAIL=0`: never). |
 | `JOBTRACKER_PRICES` | empty | A JSON file to override or add model prices for the Costs page (same shape as `jobtracker/prices.py`). |
 | `JOBTRACKER_CODEX` | `codex` | The Codex command (installed in the Docker image; on a Mac, the one inside the ChatGPT app works too). |
 | `JOBTRACKER_OUTPUT_DIR` | `./output` | Where company folders with CVs and job descriptions go. `~` allowed. |

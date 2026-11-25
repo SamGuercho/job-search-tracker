@@ -527,6 +527,49 @@ class StoryBook(BaseModel):
     stories: list[Story] = []
 
 
+# ---------------------------------------------------------------------- mail
+# The user's mailbox, read (Gmail, read-only) for news about their applications (services/mail.py): each email
+# about a tracked application becomes a proposed update the user applies or dismisses.
+
+MailKind = Literal["application_received", "rejection", "interview_invite", "next_step", "offer",
+                   "recruiter_message", "other", "unrelated"]
+
+
+class MailAccount(BaseModel):
+    email: str = ""
+    refresh_token: str = ""      # Google's long-lived token (read-only Gmail access); "" = not connected
+    connected_at: str | None = None
+    last_check: str | None = None
+    last_error: str = ""
+    checked_until: int = 0       # epoch seconds: mail received before this was already looked at
+
+
+class MailEvent(BaseModel):
+    id: str = Field(default_factory=new_id)
+    message_id: str              # Gmail's id
+    received_at: str = ""        # "YYYY-MM-DDTHH:MM:SS" local time
+    sender: str = ""
+    subject: str = ""
+    company_id: str = ""
+    company: str = ""
+    kind: MailKind = "other"
+    summary: str = ""            # one line: what the email says
+    step_name: str = ""          # interview invites: the step it is ("Technical interview")
+    date: str = ""               # "YYYY-MM-DD" of the interview, when the email gives it
+    time: str = ""               # "HH:MM", the user's local time
+    duration_min: int = 0
+    location: str = ""           # address or video link
+    status: Literal["proposed", "applied", "dismissed"] = "proposed"
+    done_at: str | None = None
+    result: str = ""             # what applying it changed
+
+
+class MailBook(BaseModel):
+    account: MailAccount = MailAccount()
+    events: list[MailEvent] = []
+    seen: list[str] = []         # Gmail ids already looked at (the newest few thousand)
+
+
 # ------------------------------------------------------------------ learning
 # Courses: a topic to learn for an application, as a teach session then spaced checks (services/learning.py).
 

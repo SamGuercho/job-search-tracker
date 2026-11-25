@@ -49,6 +49,7 @@ from .services import (
     linkedin,
     llm,
     logos,
+    mail,
     master_cv,
     practice,
     prep,
@@ -207,6 +208,51 @@ def practice_record(company: str, exercise: str, score: int, missed: list[str] =
     check, or learned), or checks suggested for a new notion: tell the user."""
     attempt = practice.record(company, exercise, score, missed, feedback, topic, kind, capability, story)
     return {**attempt.model_dump(mode="json"), "learning": learning.on_attempt(attempt, session)}
+
+
+# --------------------------------------------------------------------- mail
+
+@action("mail.status")
+def mail_status():
+    """The user's email connection: whether the server can read email (`configured`), whether their Gmail is
+    connected (read-only), its address, the last check and its error. Connecting happens in the app (Profile →
+    Email): it needs the user's Google sign-in, which you can't do for them."""
+    return mail.status()
+
+
+@action("mail.check")
+def mail_check():
+    """Look at the emails received since the last check now (it also runs by itself every few minutes). Only
+    emails naming one of the user's applications are read; each becomes a proposed update."""
+    return mail.check()
+
+
+@action("mail.inbox")
+def mail_inbox():
+    """News found in the user's email: `proposed` updates waiting for them (application, what happened, a
+    one-line summary, interview date/time/place, and `action`: what applying it does), and recent ones applied or
+    dismissed."""
+    return mail.inbox()
+
+
+@action("mail.apply")
+def mail_apply(update: str):
+    """Apply a proposed email update (its id from mail.inbox) when the user agrees: closes the application for a
+    rejection, plans the interview step for an invite with a date, marks Applied for a confirmation, and logs the
+    news from the company."""
+    return mail.apply(update)
+
+
+@action("mail.dismiss")
+def mail_dismiss(update: str):
+    """Dismiss a proposed email update (wrong application, not news): nothing changes."""
+    return mail.dismiss(update)
+
+
+@action("mail.disconnect", confirm=True)
+def mail_disconnect():
+    """Stop reading the user's email: forgets the access and asks Google to revoke it."""
+    return mail.disconnect()
 
 
 # ------------------------------------------------------------------ stories

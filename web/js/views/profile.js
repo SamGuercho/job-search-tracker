@@ -3,14 +3,14 @@
 // the default salary of new applications, the default language of preps, weekly goals on Today, and the working and
 // study hours study sessions are planned in.
 import { call, upload } from "../api.js";
-import { attempt, chatHref, field, formatDate, h, joinList, mount, splitList, toast } from "../ui.js";
+import { attempt, chatHref, confirmSheet, field, formatDate, h, joinList, mount, splitList, toast } from "../ui.js";
 
 const WORK_MODELS = ["On-site", "Hybrid", "Remote"];
 const DAYS = [[6, "Sun"], [0, "Mon"], [1, "Tue"], [2, "Wed"], [3, "Thu"], [4, "Fri"], [5, "Sat"]];  // Python weekdays
 const LANGUAGES = [["English", "English"], ["Hebrew", "Hebrew · עברית"], ["French", "French"]];
 
 export async function renderProfile(root) {
-  const [p, li] = await Promise.all([call("profile.get"), call("linkedin.status")]);
+  const [p, li, mailStatus] = await Promise.all([call("profile.get"), call("linkedin.status"), call("mail.status").catch(() => null)]);
   const input = (value, attrs = {}) => h("input", { value: value ?? "", dir: "auto", ...attrs });
 
   const firstName = input(p.first_name, { autocomplete: "given-name" });
@@ -72,6 +72,7 @@ export async function renderProfile(root) {
       h("p", { class: "small muted" }, "Your LinkedIn goes into the referral messages the assistant drafts. ",
         p.linkedin && h("a", { href: p.linkedin, target: "_blank", rel: "noopener" }, "Open your profile ↗"))),
       linkedinSection(li, section, () => renderProfile(root)),
+      mailStatus && mailSection(mailStatus, section, () => renderProfile(root)),
       section("What you're looking for", "Jobs outside it get a warning on Today, and the assistant points it out. Separate several with commas.",
         h("div", { class: "form-grid" },
           field("Target roles", roles, "wide"), field("Seniority", seniority), field("Max commute (min)", commute),
@@ -93,6 +94,45 @@ export async function renderProfile(root) {
       section("Weekly goals", "Shown on Today as this week's progress (weeks start on Monday).",
         h("div", { class: "form-grid" }, field("Applications per week", goalApps), field("Practice answers per week", goalPractice))),
       h("div", { class: "row" }, h("span", { class: "spacer" }), h("button", { class: "primary", onclick: save }, "Save"))));
+}
+
+// Email: read-only Gmail access, so news about applications (a rejection, an interview invite) shows on Today and
+// as a notification. Only emails naming one of your applications are read further (services/mail.py).
+function mailSection(m, section, refresh) {
+  const params = new URLSearchParams(location.hash.split("?")[1] || "");
+  const back = params.get("mail_error") || (params.get("mail") === "connected" ? "" : null);
+  if (back !== null) {
+    if (back) toast(back, true); else toast("Your email is connected");
+    history.replaceState(null, "", "#/profile");
+  }
+  const when = (iso) => (iso ? `${formatDate(iso.slice(0, 10))} ${iso.slice(11, 16)}` : "never");
+  const checkNow = async (e) => {
+    e.target.disabled = true;
+    const r = await attempt(() => call("mail.check"));
+    e.target.disabled = false;
+    if (!r) return;
+    toast(r.error ? r.error : r.found.length ? `${r.found.length} update${r.found.length > 1 ? "s" : ""}: see Today` : `Nothing new (${r.looked_at} emails, ${r.about_applications} about your applications)`, Boolean(r.error));
+    refresh();
+  };
+  const disconnect = async () => {
+    if (!(await confirmSheet("Ezri stops reading your email and asks Google to remove its access. Updates already found stay on Today.", { title: "Disconnect your email?", ok: "Disconnect", danger: true }))) return;
+    if (await attempt(() => call("mail.disconnect"), "Email disconnected")) refresh();
+  };
+  const how = "Only emails that name one of your applications (from the company's domain, or its name or the position in the subject or text) are read further and sent to the AI; the rest never leave the server. Nothing changes by itself: each one becomes an update on Today that you apply or dismiss.";
+  if (!m.configured) {
+    return section("Email", "Spot rejections, interview invites and next steps in your Gmail, as notifications.",
+      h("p", { class: "small muted" }, "Not set up on this server yet: the owner creates a Google OAuth client and adds GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET (home-server guide, “Email”). Its redirect URI must be:"),
+      h("code", { class: "small" }, m.redirect_uri || `${location.origin}/mail/callback`));
+  }
+  return section("Email", how,
+    m.connected
+      ? h("div", { class: "small" }, `Connected: `, h("b", {}, m.email || "Gmail"), ` (read-only) · last check ${when(m.last_check)} · every ${m.every_min} min`)
+      : h("div", { class: "small" }, "Not connected. You'll sign in with Google and allow Ezri to read (never send or delete) your email."),
+    m.last_error && h("div", { class: "small", style: "color:var(--amber)" }, m.last_error),
+    h("div", { class: "row" },
+      m.connected
+        ? [h("button", { onclick: checkNow }, "Check now"), h("span", { class: "spacer" }), h("button", { class: "danger", onclick: disconnect }, "Disconnect")]
+        : h("a", { class: "btn primary", href: "/mail/connect" }, "Connect Gmail")));
 }
 
 // LinkedIn: no API gives your network, so the contacts come from LinkedIn's own data export, uploaded here.

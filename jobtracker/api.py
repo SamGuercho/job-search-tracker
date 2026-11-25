@@ -6,6 +6,7 @@ import contextvars
 import json
 from contextlib import asynccontextmanager
 from pathlib import Path
+from urllib.parse import quote
 
 from fastapi import Body, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, RedirectResponse, Response, StreamingResponse
@@ -26,7 +27,7 @@ from . import (
     registry,
     users,
 )
-from .services import assistant, calendar, linkedin, llm, logos, pdf, recordings, reminders, usage
+from .services import assistant, calendar, linkedin, llm, logos, mail, pdf, recordings, reminders, usage
 from .services.companies import NotFound
 from .services.cv_import import SUPPORTED
 from .services.llm import LLMUnavailable
@@ -41,6 +42,7 @@ async def lifespan(_app):
     manager = mcp_server.http_manager()
     maintenance.check_data()  # a version that can't read the data says so on /health (the update script rolls back)
     reminders.start()  # interview / follow-up notifications (JOBTRACKER_REMINDERS=0 turns them off)
+    mail.start()  # reads connected mailboxes for news about applications (JOBTRACKER_MAIL=0 turns it off)
     async with manager.run():
         _mcp["app"] = StreamableHTTPASGIApp(manager)
         yield
@@ -217,6 +219,38 @@ def calendar_feed(request: Request):
     """All upcoming interviews, as a calendar to subscribe to (updates by itself)."""
     return Response(calendar.feed_ics(str(request.base_url)), media_type="text/calendar; charset=utf-8",
                     headers={"Content-Disposition": 'inline; filename="Job interviews.ics"'})
+
+
+def _base_url(request: Request) -> str:
+    """This app's address as the browser sees it (https behind `tailscale serve`)."""
+    host = request.headers.get("x-forwarded-host") or request.headers.get("host") or request.url.netloc
+    proto = request.headers.get("x-forwarded-proto") or request.url.scheme
+    if host.split(":")[0].endswith(".ts.net"):  # tailscale serve: always https
+        proto = "https"
+    return f"{proto}://{host}/"
+
+
+@app.get("/mail/connect")
+def mail_connect(request: Request):
+    """Start the Google sign-in for read-only Gmail access (Profile → Email → Connect)."""
+    try:
+        return RedirectResponse(mail.connect_url(_base_url(request)), status_code=303)
+    except mail.MailError as e:
+        return RedirectResponse(f"/#/profile?mail_error={quote(str(e))}", status_code=303)
+
+
+@app.get("/mail/callback")
+def mail_callback(request: Request, code: str = "", state: str = "", error: str = ""):
+    """Google sends the user back here after the sign-in."""
+    if error or not code:
+        reason = ("You didn't allow access to your email." if error == "access_denied"
+                  else f"Google said: {error or 'no code'}")
+        return RedirectResponse(f"/#/profile?mail_error={quote(reason)}", status_code=303)
+    try:
+        mail.finish_connect(code, state, _base_url(request))
+    except mail.MailError as e:
+        return RedirectResponse(f"/#/profile?mail_error={quote(str(e))}", status_code=303)
+    return RedirectResponse("/#/profile?mail=connected", status_code=303)
 
 
 @app.get("/share")

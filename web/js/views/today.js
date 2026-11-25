@@ -2,7 +2,7 @@
 // interviews (with readiness), interviews to debrief, applications to send (positions fill fast), follow-ups and
 // "probably no answer", then what's waiting, what came back and what to review. The rules are in services/rules.py.
 import { call } from "../api.js";
-import { addToCalendar, attempt, chatHref, companyLogo, formatSlot, h, mount, promptSheet, studyRow } from "../ui.js";
+import { addToCalendar, attempt, chatHref, companyLogo, formatSlot, h, mount, promptSheet, studyRow, toast } from "../ui.js";
 
 const chat = (q) => chatHref(q);
 const DISMISSED_KEY = "today-dismissed";  // debrief prompts closed on this device (they expire after 3 days anyway)
@@ -246,13 +246,32 @@ export async function renderToday(root) {
     h("div", { class: "today-main" }, h("b", { dir: "auto" }, e.exercise), h("div", { class: "small muted" }, `${e.company} · ${e.capability || e.topic || e.kind}`)),
     h("span", { class: "chev" }, "›"));
 
+  // News found in the user's email: what happened and what Apply does; nothing changes until they tap it
+  const mailRow = (e) => {
+    const row = h("div", { class: "today-row mail-row" },
+      h("div", { class: "today-main" },
+        h("b", { dir: "auto" }, h("a", { href: `#/company/${e.company_id}` }, e.company), ` · ${e.label}`),
+        h("div", { class: "small", dir: "auto" }, e.summary || e.subject),
+        h("div", { class: "small muted", dir: "auto" }, `${e.action} · ${e.received_at.slice(0, 16).replace("T", " ")} · ${e.subject}`),
+        h("div", { class: "row", style: "margin-top:6px" },
+          h("button", { class: "small primary", onclick: async (ev) => {
+            ev.target.disabled = true;
+            const r = await attempt(() => call("mail.apply", { update: e.id }));
+            if (r) { toast(`${e.company}: ${r.applied.result}`); renderToday(root); } else ev.target.disabled = false;
+          } }, "Apply"),
+          h("button", { class: "small", onclick: async () => {
+            if (await attempt(() => call("mail.dismiss", { update: e.id }))) row.remove();
+          } }, "Dismiss"))));
+    return row;
+  };
+
   const card = (title, items, extra, note) => {
     const shown = items.filter(Boolean);
     return shown.length > 0 && h("section", { class: "card today-card" }, h("h2", {}, title, note && h("span", { class: "small muted" }, ` ${note}`)), shown, extra);
   };
   const debriefs = t.debriefs.map(debrief).filter(Boolean);
   const nothing = !t.interviews.length && !t.follow_ups.length && !t.no_answer.length && !t.to_apply.length && !debriefs.length
-    && !t.waiting.length && !t.recent.length && !t.practice.to_review.length && !study.today.length && !study.upcoming.length && !study.suggested.length;
+    && !t.waiting.length && !(t.mail || []).length && !t.recent.length && !t.practice.to_review.length && !study.today.length && !study.upcoming.length && !study.suggested.length;
   const date = new Date(`${t.date}T00:00:00`).toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" });
   const urgentApply = t.to_apply.filter((a) => a.level !== "new").length;
   const withReferee = t.to_apply.filter((a) => a.referee);
@@ -277,6 +296,7 @@ export async function renderToday(root) {
         h("a", { class: "btn", href: "#/practice" }, "Practise"))),
     h("div", { class: "today-grid" },
       h("div", { class: "stack" },
+        card("From your email", (t.mail || []).map(mailRow), null, "nothing changes until you apply"),
         card("Next interviews", t.interviews.map(interview)),
         studyCard(),
         card("How did it go?", debriefs),

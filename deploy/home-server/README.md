@@ -272,6 +272,37 @@ for your ChatGPT account, so treat that folder like a password (it is git-ignore
 Sign out with `docker compose exec app codex logout`. Anyone can still get a prep without the button: an AI
 assistant connected through MCP can write it with the `prep_brief` and `prep_save` tools, on their own plan.
 
+## Email (news from your Gmail)
+
+Each person can connect their Gmail (read-only) on **Profile → Email**. Every 10 minutes the server looks at the
+new emails, keeps only those that name one of that person's applications (the company's domain, its name or the
+position), and has the cheap model say what happened: a rejection, an interview invite (with its date), a next
+step, an offer. Each becomes an update on **Today** with **Apply** / **Dismiss**, and a notification. Nothing
+changes by itself, and the other emails are never sent anywhere.
+
+Google needs to know the app once (about 15 minutes, done by you, the owner):
+
+1. Open https://console.cloud.google.com, create a project (e.g. "Ezri").
+2. **APIs & Services → Library**: search **Gmail API**, **Enable**.
+3. **Google Auth Platform** (OAuth consent screen): **Get started**, app name "Ezri", your email, audience
+   **External**. Under **Data access**, **Add or remove scopes**: tick `.../auth/gmail.readonly`.
+4. **Audience**: click **Publish app** (In production). In "Testing", Google cuts the access after 7 days and
+   everyone would have to reconnect every week. The app stays unverified: people see "Google hasn't verified this
+   app" when connecting → **Advanced → Go to Ezri**. That's expected for a private app (100 people at most).
+5. **Clients → Create client**: type **Web application**, **Authorized redirect URIs**:
+   `https://<pc-name>.<tailnet>.ts.net/mail/callback` (your app's address, as in step 8). **Create**.
+6. In `.env`, paste the client's id and secret:
+   ```
+   GOOGLE_CLIENT_ID=1234-abc.apps.googleusercontent.com
+   GOOGLE_CLIENT_SECRET=GOCSPX-...
+   ```
+7. Update: `powershell -ExecutionPolicy Bypass -File .\update-now.ps1`, then **Profile → Email → Connect Gmail**.
+
+Each person's access is a Google token in their data folder (`mail.json`): it can read their email, so the data
+folder (and its backups) deserves the same care as a password. **Disconnect** on the Profile page deletes it and
+asks Google to revoke it; anyone can also remove "Ezri" from their Google account's third-party access.
+`JOBTRACKER_MAIL_EVERY_MIN` changes how often it checks; `JOBTRACKER_MAIL=0` turns the checks off.
+
 ---
 
 ## Everyday use
