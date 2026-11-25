@@ -679,26 +679,31 @@ def company_set_cv_headline(company: str, headline_id: str = ""):
 
 @action("profile.get")
 def profile_get():
-    """The user: name, greeting name, LinkedIn, email, what they look for (target roles, seniority, locations,
+    """The user: name (first and last), greeting name, LinkedIn,
+    email, what they look for (target roles, seniority, locations,
     work models, max commute), salary expectation, notice period, start date, interview language, weekly goals."""
     return profile.get()
 
 
 @action("profile.update")
-def profile_update(name: Optional[str] = None, preferred_name: Optional[str] = None, linkedin: Optional[str] = None,
+def profile_update(first_name: Optional[str] = None, last_name: Optional[str] = None, name: Optional[str] = None,
+                   preferred_name: Optional[str] = None, linkedin: Optional[str] = None,
                    target_roles: Optional[list[str]] = None, seniority: Optional[str] = None,
                    locations: Optional[list[str]] = None, work_models: Optional[list[WorkModel]] = None,
                    max_commute_min: Optional[int] = None, salary_expectation: Optional[str] = None,
                    notice_period: Optional[str] = None, available_from: Optional[str] = None,
                    interview_language: Optional[str] = None, goals: Optional[WeeklyGoals] = None,
                    study: Optional[StudyHours] = None):
-    """Change the user's profile (only the fields given): name and LinkedIn (the master CV header's), greeting
-    name, what they look for (target roles, seniority, locations, work models, max commute: jobs outside get a
+    """Change the user's profile (only the fields given): first and last name and LinkedIn (the master CV
+    header's; they name the CV files, first-last-position-company; `name` = a full name, split at the first
+    space, prefer first_name and last_name), greeting name,
+    what they look for (target roles, seniority, locations, work models, max commute: jobs outside get a
     warning), salary expectation (default for new applications), notice period, available from (YYYY-MM-DD),
     interview prep language, weekly goals (applications, practice answers), and `study`: working hours (never
     used for study), study hours on work days, weekend days (Python weekdays, Monday = 0; default Friday and
     Saturday), whether they're free to study on weekends and when, and the most study per day (minutes)."""
-    return profile.update(name=name, linkedin=linkedin, preferred_name=preferred_name, target_roles=target_roles,
+    return profile.update(first_name=first_name, last_name=last_name, name=name, linkedin=linkedin,
+                          preferred_name=preferred_name, target_roles=target_roles,
                           seniority=seniority, locations=locations, work_models=work_models,
                           max_commute_min=max_commute_min, salary_expectation=salary_expectation,
                           notice_period=notice_period, available_from=available_from,
@@ -723,7 +728,8 @@ def company_referral(company: str, referee: Optional[str] = None, asked: bool = 
 
 @action("cv.profile.update", confirm=True)
 def cv_profile_update(fields: ProfilePatch):
-    """Update the CV header/profile (name, contacts). The title and summary are title variants (cv.headline.*):
+    """Update the CV header/profile (first_name and last_name: `name` follows them; contacts).
+    The title and summary are title variants (cv.headline.*):
     a title/summary given here changes the default variant."""
     changes = _patch(fields)
     title, summary = changes.pop("title", None), changes.pop("summary", None)

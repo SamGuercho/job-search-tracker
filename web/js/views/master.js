@@ -5,7 +5,7 @@ import { attempt, confirmSheet, field, h, joinList, keywordPattern, mount, promp
 import { openImport } from "./import.js";
 
 const PROFILE_FIELDS = [
-  ["name", "Name"],
+  ["first_name", "First name"], ["last_name", "Last name"],
   ["email", "Email"], ["phone", "Phone"], ["location", "Location"], ["linkedin", "LinkedIn URL"], ["website", "Website"],
 ];
 

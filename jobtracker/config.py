@@ -54,7 +54,8 @@ MONITOR_PORT = int(os.environ.get("MONITOR_PORT", "8100"))
 MONITOR_URL = os.environ.get("JOBTRACKER_MONITOR_URL", f"http://127.0.0.1:{MONITOR_PORT}")
 
 # Generated CV file name, without extension. {name} = your name with underscores.
-CV_FILENAME = os.environ.get("JOBTRACKER_CV_FILENAME", "{name}_CV")
+# CV file names: {first_name} {last_name} {position} {company} ({name} = the full name); empty parts are left out
+CV_FILENAME = os.environ.get("JOBTRACKER_CV_FILENAME", "{first_name}-{last_name}-{position}-{company}")
 
 # Web server
 HOST = os.environ.get("JOBTRACKER_HOST", "127.0.0.1")          # 0.0.0.0 in a container

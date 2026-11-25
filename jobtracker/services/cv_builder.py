@@ -3,9 +3,11 @@
 Pipeline (each step is a separate function so an agent can call them alone):
   1. select_bullets(keywords)  -> TailoredCV with every achievement, ranked by relevance to the job
   2. fit_estimate(...)         -> drops the least relevant bullets until it fits 1 page
-  3. generate_cv(...)          -> writes <output folder>/<Company>/<Name>_CV.docx and .pdf
+  3. generate_cv(...)          -> writes <output folder>/<Company>/<First>-<Last>-<Position>-<Company>.docx and .pdf
 """
 from __future__ import annotations
+
+import re
 
 from pydantic import BaseModel
 
@@ -13,7 +15,7 @@ from .. import config, users
 from ..cv_templates import get_template
 from ..models import Education, GeneratedDocument, Profile, SkillGroup
 from . import companies, master_cv, pdf
-from .files import archive_previous, output_folder, safe_name
+from .files import archive_previous, output_folder
 
 MAX_PAGES = 1
 MAX_PDF_ITERATIONS = 12
@@ -153,6 +155,18 @@ def select_bullets(keywords: list[str], keep_unmatched_roles: bool = True,
 GENERAL_FOLDER = "Master CV"
 
 
+def cv_file_stem(p, position: str, company: str) -> str:
+    """Samuel-Benguerchon-Senior-Data-Scientist-Sensi-AI: hyphens only (no spaces to break in a mail or a
+    link); an empty part is left out (the general CV has no company)."""
+    def part(v: str) -> str:  # words only: "ACME & Sons" -> "ACME-Sons", "" stays ""
+        words = re.sub(r"[^\w\-&. ]+", " ", v or "").split()
+        return "-".join(w.strip(".&") for w in words if re.search(r"\w", w))
+
+    stem = config.CV_FILENAME.format(first_name=part(p.first_name), last_name=part(p.last_name),
+                                     name=part(p.name), position=part(position), company=part(company))
+    return re.sub(r"([-_ ])[-_ ]+", r"\1", stem).strip("-_ .") or "CV"
+
+
 def generate_general(template: str | None = None, export_pdf: bool = True) -> dict:
     """A CV for no job in particular (headhunters, networking): every achievement in its main wording,
     trimmed to one page by priority (pinned first, then highest priority). Saved in <output>/Master CV/."""
@@ -232,7 +246,8 @@ def generate_cv(keywords: list[str], company_id: str | None = None, company_name
     fit_estimate(cv, template, budget=1.05 if engine else 0.97)
 
     folder = output_folder(name)
-    stem = config.CV_FILENAME.format(name=safe_name(cv.profile.name or "Candidate"), company=safe_name(name))
+    stem = cv_file_stem(cv.profile, (company.position if company else "") or cv.profile.title,
+                        "" if name == GENERAL_FOLDER else name)
     docx_path, pdf_path = folder / f"{stem}.docx", folder / f"{stem}.pdf"
     archive_previous(docx_path, pdf_path)
 

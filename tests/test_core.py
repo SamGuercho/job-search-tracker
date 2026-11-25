@@ -73,10 +73,10 @@ class GenerationTests(unittest.TestCase):
         reset()
 
     def test_generate_writes_docx_in_company_folder_and_links_it(self):
-        company = companies.create_company(name="ACME & Sons")
+        company = companies.create_company(name="ACME & Sons", position="Senior Data Scientist")
         r = registry.run("cv.generate", {"keywords": ["SQL"], "company_id": company.id})
         self.assertTrue((config.OUTPUT_DIR / r["docx"]).exists())
-        self.assertEqual(r["docx"], "ACME & Sons/Your_Name_CV.docx")
+        self.assertEqual(r["docx"], "ACME & Sons/Your-Name-Senior-Data-Scientist-ACME-Sons.docx")
         self.assertEqual(companies.get_company(company.id).documents[0].docx, r["docx"])
 
     def test_templates_render_lead_group_and_languages(self):
@@ -93,10 +93,19 @@ class GenerationTests(unittest.TestCase):
             self.assertTrue(bullet.runs[0].bold)
             self.assertTrue(any("French (Native)" in t for t in texts), template)
 
+    def test_cv_file_name_is_first_last_position_company(self):
+        registry.run("profile.update", {"first_name": "Jean-Luc", "last_name": "De la Croix"})
+        p = master_cv.get_master().profile
+        self.assertEqual(p.name, "Jean-Luc De la Croix")  # the CV header follows
+        self.assertEqual(cv_builder.cv_file_stem(p, "ML Engineer (GenAI)", "Wix.com Ltd."),
+                         "Jean-Luc-De-la-Croix-ML-Engineer-GenAI-Wix.com-Ltd")
+        general = cv_builder.generate_general(export_pdf=False)  # no company: first-last-title
+        self.assertEqual(general["docx"], f"Master CV/Jean-Luc-De-la-Croix-{p.title.replace(' ', '-')}.docx")
+
     def test_existing_cv_is_archived_not_overwritten(self):
         first = cv_builder.generate_cv(["SQL"], company_name="Again")
         cv_builder.generate_cv(["Python"], company_name="Again")
-        archived = list((config.OUTPUT_DIR / "Again" / "archive").glob("Your_Name_CV_*.docx"))
+        archived = list((config.OUTPUT_DIR / "Again" / "archive").glob("Your-Name-*_20*.docx"))
         self.assertEqual(len(archived), 1)
         self.assertTrue((config.OUTPUT_DIR / first["docx"]).exists())
 

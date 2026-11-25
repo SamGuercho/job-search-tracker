@@ -15,12 +15,16 @@ class ProfileTests(unittest.TestCase):
     def test_profile_uses_the_cv_and_a_preferred_first_name(self):
         registry.run("profile.update", {"name": "Samuel Cohen", "linkedin": "linkedin.com/in/samuel"})
         p = registry.run("profile.get", {})
-        self.assertEqual((p["first_name"], p["linkedin"]), ("Samuel", "https://linkedin.com/in/samuel"))
+        self.assertEqual((p["first_name"], p["last_name"], p["greeting"], p["linkedin"]),
+                         ("Samuel", "Cohen", "Samuel", "https://linkedin.com/in/samuel"))
         self.assertEqual(master_cv.get_master().profile.name, "Samuel Cohen")  # one place: the CV header
+        registry.run("profile.update", {"last_name": "Benguerchon"})
+        self.assertEqual(master_cv.get_master().profile.name, "Samuel Benguerchon")
         registry.run("profile.update", {"preferred_name": "Sam"})
-        self.assertEqual(registry.run("profile.get", {})["first_name"], "Sam")
+        p = registry.run("profile.get", {})
+        self.assertEqual((p["first_name"], p["greeting"]), ("Samuel", "Sam"))
         me = registry.run("today.get", {})["me"]
-        self.assertEqual(me, {"first_name": "Sam", "linkedin": "https://linkedin.com/in/samuel"})
+        self.assertEqual(me, {"greeting": "Sam", "linkedin": "https://linkedin.com/in/samuel"})
 
     def test_referral_status_on_to_apply(self):
         for c in companies.list_companies():

@@ -260,7 +260,7 @@ export async function renderToday(root) {
 
   mount(root,
     h("div", { class: "page-head" },
-      h("div", {}, h("h1", { dir: "auto" }, greeting() + (t.me?.first_name ? `, ${t.me.first_name}` : "")), h("div", { class: "sub muted" }, date))),
+      h("div", {}, h("h1", { dir: "auto" }, greeting() + (t.me?.greeting ? `, ${t.me.greeting}` : "")), h("div", { class: "sub muted" }, date))),
     (t.server || []).length > 0 && h("div", { class: "card server-warning", role: "status" },
       h("b", {}, "Server"), (t.server || []).map((w) => h("p", { class: "small" }, w))),
     h("div", { class: "today-stats" },

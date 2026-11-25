@@ -1,6 +1,6 @@
 """The person using the app: how to greet them, their LinkedIn, and what they're looking for.
 
-Name and LinkedIn are the master CV's (one place to edit them, on the CV header too); everything else lives in
+First and last name and LinkedIn are the master CV's (one place to edit them, on the CV header too); everything else lives in
 profile.json: the greeting name, target roles, places and work models (jobs outside them get a warning, see
 fit()), salary expectation (the default for new applications), notice period and start date, the default
 language of interview preps, weekly goals (shown on Today), and working and study hours (study sessions are
@@ -23,8 +23,9 @@ def settings() -> UserProfile:
 def get() -> dict:
     cv = master_cv.get_master().profile
     mine = store.load()
-    first = mine.preferred_name.strip() or (cv.name.split() or [""])[0]
-    return {**mine.model_dump(), "name": cv.name, "first_name": first, "linkedin": cv.linkedin, "email": cv.email}
+    greeting = mine.preferred_name.strip() or cv.first_name
+    return {**mine.model_dump(), "name": cv.name, "first_name": cv.first_name, "last_name": cv.last_name,
+            "greeting": greeting, "linkedin": cv.linkedin, "email": cv.email}
 
 
 def _clean(value):
@@ -39,9 +40,12 @@ def _clean(value):
     return value
 
 
-def update(name: str | None = None, linkedin: str | None = None, **fields) -> dict:
-    """Change any of: name, linkedin (master CV), and the UserProfile fields (None = unchanged)."""
-    cv_changes = {k: _clean(v) for k, v in {"name": name, "linkedin": linkedin}.items() if v is not None}
+def update(name: str | None = None, linkedin: str | None = None, first_name: str | None = None,
+           last_name: str | None = None, **fields) -> dict:
+    """Change any of: first and last name (or a full name, split at the first space), linkedin (master CV),
+    and the UserProfile fields (None = unchanged)."""
+    given = {"name": name, "first_name": first_name, "last_name": last_name, "linkedin": linkedin}
+    cv_changes = {k: _clean(v) for k, v in given.items() if v is not None}
     if cv_changes.get("linkedin") and not cv_changes["linkedin"].startswith(("http://", "https://")):
         cv_changes["linkedin"] = "https://" + cv_changes["linkedin"].lstrip("/")
     if cv_changes:

@@ -90,7 +90,7 @@ def summary(days_ahead: int = 14) -> dict:
                             if n.state == "done" and n.type() == "applied" and (n.date or "")[:10] >= week_start)
     return {
         "date": today.isoformat(),
-        "me": {k: v for k, v in profile.get().items() if k in ("first_name", "linkedin")},
+        "me": {k: v for k, v in profile.get().items() if k in ("greeting", "linkedin")},
         "server": maintenance.warnings(),   # owner only: backup missing/failed/old, unreadable data
         "interviews": interviews,
         "train_first": rules.train_first(interviews),

@@ -270,7 +270,9 @@ class LinkedInBook(BaseModel):
 
 
 class Profile(BaseModel):
-    name: str = ""
+    name: str = ""          # the CV header: always "first_name last_name" once either is set
+    first_name: str = ""
+    last_name: str = ""     # first and last name name the CV files (services/cv_builder.cv_file_stem)
     title: str = ""
     email: str = ""
     phone: str = ""
@@ -278,6 +280,16 @@ class Profile(BaseModel):
     linkedin: str = ""
     website: str = ""
     summary: str = ""
+
+    @model_validator(mode="after")
+    def _split_name(self):
+        """A header from before first/last name: its first word is the first name, the rest the last name."""
+        if not (self.first_name or self.last_name) and self.name.split():
+            first, *rest = self.name.split()
+            self.first_name, self.last_name = first, " ".join(rest)
+        if self.first_name or self.last_name:
+            self.name = " ".join(f"{self.first_name} {self.last_name}".split())
+        return self
 
 
 # Terms that mean the same thing. A job description saying any of them selects

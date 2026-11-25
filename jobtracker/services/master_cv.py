@@ -42,6 +42,10 @@ def _clean_keywords(keywords: list[str]) -> list[str]:
 # ------------------------------------------------------------------ profile
 
 def update_profile(**fields) -> Profile:
+    """A full `name` alone is split again into first and last name (first word / the rest)."""
+    if fields.get("name") is not None and fields.get("first_name") is None and fields.get("last_name") is None:
+        first, *rest = fields["name"].split() or [""]
+        fields.update(first_name=first, last_name=" ".join(rest))
     with store.transaction() as cv:
         cv.profile = Profile.model_validate({**cv.profile.model_dump(), **fields})
     return cv.profile

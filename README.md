@@ -126,7 +126,7 @@ visible columns (**Columns**), and log a follow-up in one click. The chat bar se
 Pick the application or paste the job description → **Find matching keywords**: each requirement of the
 ad is matched to the words **actually written in your CV** (same word, synonym, or AI), with the
 requirements your CV doesn't cover listed as gaps. The preview shows which achievements are used and why;
-**Create CV** writes `<Company>/<Your_Name>_CV.docx` and `.pdf`. Every achievement is used, each in its wording
+**Create CV** writes `<Company>/<First>-<Last>-<Position>-<Company>.docx` and `.pdf` (first and last name from your profile). Every achievement is used, each in its wording
 that best fits the job, so a short job description still gets a full CV; only when it exceeds one page are
 bullets cut, those matching no keyword first, then those repeating covered keywords.
 
@@ -354,7 +354,7 @@ All settings live in `.env` (created from `.env.example` on first run). Restart 
 | `JOBTRACKER_CODEX` | `codex` | The Codex command (installed in the Docker image; on a Mac, the one inside the ChatGPT app works too). |
 | `JOBTRACKER_OUTPUT_DIR` | `./output` | Where company folders with CVs and job descriptions go. `~` allowed. |
 | `JOBTRACKER_DATA_DIR` | `./data` | Where your data files live. |
-| `JOBTRACKER_CV_FILENAME` | `{name}_CV` | CV file name; `{name}` = your name, `{company}` = the company. |
+| `JOBTRACKER_CV_FILENAME` | `{first_name}-{last_name}-{position}-{company}` | CV file name; also `{name}` = your full name. Empty parts are left out. |
 | `JOBTRACKER_PDF_ENGINE` | auto | `libreoffice`, `word` or `none`. |
 | `JOBTRACKER_PASSWORD` | empty | When set, every page and API call requires signing in (signed, HTTP-only session cookie). |
 | `JOBTRACKER_TAILSCALE_USERS` | off | Several users behind `tailscale serve` (on in the home-server deployment): each Tailscale login gets its own space, Tailscale decides who gets in, requests without Tailscale identity are refused (no password). Only with the app listening on 127.0.0.1. |

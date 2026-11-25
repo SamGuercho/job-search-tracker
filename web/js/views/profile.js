@@ -13,7 +13,8 @@ export async function renderProfile(root) {
   const [p, li] = await Promise.all([call("profile.get"), call("linkedin.status")]);
   const input = (value, attrs = {}) => h("input", { value: value ?? "", dir: "auto", ...attrs });
 
-  const name = input(p.name, { autocomplete: "name" });
+  const firstName = input(p.first_name, { autocomplete: "given-name" });
+  const lastName = input(p.last_name, { autocomplete: "family-name" });
   const first = input(p.preferred_name, { placeholder: p.first_name || "e.g. Sam" });
   const linkedin = input(p.linkedin, { type: "url", placeholder: "https://www.linkedin.com/in/your-name", dir: "ltr" });
   const roles = input(joinList(p.target_roles), { placeholder: "e.g. Data Scientist, AI Engineer" });
@@ -41,7 +42,7 @@ export async function renderProfile(root) {
 
   const save = async () => {
     const changes = {
-      name: name.value, preferred_name: first.value, linkedin: linkedin.value,
+      first_name: firstName.value, last_name: lastName.value, preferred_name: first.value, linkedin: linkedin.value,
       target_roles: splitList(roles.value), seniority: seniority.value, locations: splitList(areas.value),
       work_models: models.map((l) => l.querySelector("input")).filter((c) => c.checked).map((c) => c.value),
       max_commute_min: Number(commute.value) || 0, salary_expectation: salary.value, notice_period: notice.value,
@@ -64,9 +65,10 @@ export async function renderProfile(root) {
     h("div", { class: "page-head" }, h("div", {}, h("h1", {}, "Profile"),
       h("div", { class: "sub muted" }, "Who you are and what you're looking for: Ezri uses it to greet you, draft your messages and warn you about jobs that don't fit"))),
     h("div", { class: "stack" },
-      section("You", "Your name and LinkedIn are your master CV's: changing them here changes your CV header too."
+      section("You", "Your name and LinkedIn are your master CV's: changing them here changes your CV header too. "
+        + "Your CV files are named first-last-position-company (e.g. Dana-Levi-Data-Scientist-Wix.pdf)."
         + (p.email ? ` Email: ${p.email} (on the Master CV page).` : ""),
-      h("div", { class: "form-grid" }, field("Your name", name), field("First name for greetings", first), field("LinkedIn profile", linkedin, "wide")),
+      h("div", { class: "form-grid" }, field("First name", firstName), field("Last name", lastName), field("Greet me as", first), field("LinkedIn profile", linkedin, "wide")),
       h("p", { class: "small muted" }, "Your LinkedIn goes into the referral messages the assistant drafts. ",
         p.linkedin && h("a", { href: p.linkedin, target: "_blank", rel: "noopener" }, "Open your profile ↗"))),
       linkedinSection(li, section, () => renderProfile(root)),
