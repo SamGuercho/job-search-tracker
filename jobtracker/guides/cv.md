@@ -19,6 +19,8 @@ fact is missing, leave it out or ask; never fill the gap with what the job asks 
 - Never turn the job's requirements or the candidate's gaps into claims ("messy data", "funnel analytics", a city,
   a language level…) unless the CV states them. Stating fewer things truthfully beats matching more.
 - Same numbers as the CV ("6+ years" stays "6+ years"); no new tools, employers, domains or results.
+- Degrees, schools and languages have their own sections, which recruiters read: don't spend the summary on them
+  ("M.Sc. in…") unless the user asks. A job requiring a degree the CV's education shows is already covered.
 
 ## Achievements (bullet points)
 - One sentence: a strong action verb, what was done, how (tools, methods), and the result, with numbers only when

@@ -27,6 +27,34 @@ class Match(BaseModel):
     must_have: bool = False
     bullets: int = 0           # bullets containing at least one of the keywords
     in_skills: bool = False
+    in_education: bool = False
+
+
+# Degrees: "M.Sc.", "Master's", "MS" all name the same level. Levels are ranked: a higher degree covers a lower one.
+# Short capital forms are matched in capitals only and only before a degree context ("BS/MS in…", "MS degree", "MS or
+# PhD"), so "200 ms", "MS SQL" and "Boston, MA" aren't degrees; "master" alone is not one either ("Scrum master").
+_B, _A = r"(?<![\w.])", r"(?![\w])"
+_DEGREE_CONTEXT = r"(?=\s*(?:/|\(|\bor\b|\bin\b|\bdegree))"
+DEGREES = {  # rank: (patterns, any case), (patterns, capitals only)
+    1: ([r"bachelor(?:'s|’s|s)?", r"b\.?\s?sc\.?", r"b\.?\s?eng\.?", r"b\.?\s?tech\.?", r"undergraduate degree"],
+        [r"BS", r"BA", r"B\.S\.", r"B\.A\."]),
+    2: ([r"master(?:'s|’s|s)", r"master\s+(?:degree|of)", r"m\.?\s?sc\.?", r"m\.?\s?eng\.?", r"postgraduate degree"],
+        [r"MS", r"MA", r"M\.S\.", r"M\.A\."]),
+    3: ([r"ph\.?\s?d\.?", r"doctorate", r"doctoral degree"], []),
+}
+_DEGREE_PATTERNS = {rank: [re.compile(_B + p + _A, re.IGNORECASE) for p in loose]
+                    + [re.compile(_B + p + _A + _DEGREE_CONTEXT) for p in caps]
+                    for rank, (loose, caps) in DEGREES.items()}
+
+
+def degree_mentions(text: str) -> dict[int, str]:
+    """The degree levels a text names: {rank: the first wording found}."""
+    out = {}
+    for rank, patterns in _DEGREE_PATTERNS.items():
+        hits = [m for p in patterns for m in p.finditer(text or "")]
+        if hits:
+            out[rank] = min(hits, key=lambda m: m.start()).group(0).strip()
+    return out
 
 
 class _AIRequirement(BaseModel):
@@ -57,6 +85,12 @@ class _CV:
         self.cv = master_cv.get_master()
         self.bullets = [b for e in self.cv.experiences for b in e.bullets]
         self.skills = [i for g in self.cv.skills for i in g.items]
+        self.education = [" ".join(x for x in (e.degree, e.school, e.details) if x) for e in self.cv.education]
+        # the user's degrees by level: {rank: the degree as written on the CV ("MSc Data Science")}
+        self.degrees: dict[int, str] = {}
+        for e in self.cv.education:
+            for rank in degree_mentions(e.degree):
+                self.degrees.setdefault(rank, e.degree.strip())
 
     def in_bullets(self, term: str) -> int:
         """Achievements with at least one wording that contains the term."""
@@ -66,13 +100,27 @@ class _CV:
         pattern = master_cv.keyword_pattern(term)
         return any(pattern.search(i) for i in self.skills)
 
+    def in_education(self, term: str) -> bool:
+        pattern = master_cv.keyword_pattern(term)
+        return any(pattern.search(e) for e in self.education)
+
     def has(self, term: str) -> bool:
-        return bool(self.in_bullets(term) or self.in_skills(term))
+        return bool(self.in_bullets(term) or self.in_skills(term) or self.in_education(term))
+
+    def degree_for(self, text: str) -> str:
+        """The user's degree that meets a requirement naming degree levels ("Bachelor's or Master's": the lowest
+        named), as written on the CV; "" if none does (or the text names no degree)."""
+        named = degree_mentions(text)
+        if not named or not self.degrees:
+            return ""
+        enough = [rank for rank in self.degrees if rank >= min(named)]
+        return self.degrees[min(enough)] if enough else ""
 
     def terms(self) -> list[str]:
-        """Vocabulary and synonym terms actually written somewhere in the CV."""
+        """Vocabulary and synonym terms actually written somewhere in the CV, and the user's degrees."""
         candidates = master_cv.keyword_vocabulary() + [t for g in self.cv.synonyms for t in g]
-        return [t for t in master_cv._clean_keywords(candidates) if self.has(t)]
+        degrees = [e.degree.strip() for e in self.cv.education if e.degree.strip()]
+        return master_cv._clean_keywords([t for t in candidates if self.has(t)] + degrees)
 
 
 def match_job_description(text: str, use_ai: bool = True) -> dict:
@@ -104,7 +152,12 @@ def match_job_description(text: str, use_ai: bool = True) -> dict:
         for term in in_jd:
             add(term, in_cv, "synonym")
 
-    # 3. AI: requirements phrased differently, mapped to CV terms only
+    # 3. degrees the job names ("M.Sc.", "Bachelor's", "PhD"), met by the user's degree at that level or above
+    for wording in degree_mentions(text).values():
+        degree = cv.degree_for(wording)
+        add(wording, [degree] if degree else [], "exact")
+
+    # 4. AI: requirements phrased differently, mapped to CV terms only
     ai_used, ai_error = False, None
     if use_ai and llm.available():
         terms = cv.terms()
@@ -119,8 +172,12 @@ def match_job_description(text: str, use_ai: bool = True) -> dict:
             ai_error = str(e)
 
     for m in matches.values():
+        if not m.keywords:  # "Master's degree in a quantitative field" (AI): met by the user's degree
+            degree = cv.degree_for(m.jd_term)
+            m.keywords = [degree] if degree else []
         m.bullets = sum(any(master_cv.in_text(k, w) for k in m.keywords for w in b.wordings()) for b in cv.bullets)
         m.in_skills = any(cv.in_skills(k) for k in m.keywords)
+        m.in_education = any(cv.in_education(k) for k in m.keywords)
 
     # With AI, drop word-level rows that an AI requirement already shows ("LLM" inside "large language models").
     ai_sets = [{k.lower() for k in m.keywords} for m in matches.values() if m.source == "ai" and m.keywords]

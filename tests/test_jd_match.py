@@ -49,5 +49,52 @@ class JDMatchTests(unittest.TestCase):
         self.assertIn("Python", registry.run("cv.keywords.suggest", {"word": "pyhton"}))
 
 
+class EducationTests(unittest.TestCase):
+    """The seed CV has an MSc Data Science and a BSc Mathematics."""
+
+    def setUp(self):
+        reset()
+
+    def match(self, text, use_ai=False):
+        return registry.run("cv.keywords.match_job", {"text": text, "use_ai": use_ai})
+
+    def test_degree_wordings_and_false_friends(self):
+        self.assertEqual(jd_match.degree_mentions("BS/MS in Computer Science"), {1: "BS", 2: "MS"})
+        self.assertEqual(jd_match.degree_mentions("M.Sc. or Ph.D. in statistics"), {2: "M.Sc.", 3: "Ph.D."})
+        self.assertEqual(jd_match.degree_mentions("Master's degree required"), {2: "Master's"})
+        for text in ("p95 under 200 ms", "MS SQL Server", "Boston, MA 02110", "Scrum master", "master data"):
+            self.assertEqual(jd_match.degree_mentions(text), {}, text)
+
+    def test_a_degree_the_cv_has_is_covered_by_it(self):
+        r = self.match("M.Sc. in a quantitative field. Python.")
+        by_term = {m["jd_term"]: m for m in r["matches"]}
+        self.assertEqual(by_term["M.Sc."]["keywords"], ["MSc Data Science"])
+        self.assertTrue(by_term["M.Sc."]["in_education"])
+        self.assertNotIn("M.Sc.", [g["jd_term"] for g in r["gaps"]])
+
+    def test_a_higher_degree_covers_a_lower_one_but_not_the_reverse(self):
+        r = self.match("Bachelor's degree required; PhD preferred.")
+        covered = {m["jd_term"]: m["keywords"] for m in r["matches"]}
+        self.assertEqual(covered["Bachelor's"], ["BSc Mathematics"])  # the degree at that level when there is one
+        self.assertIn("PhD", [g["jd_term"] for g in r["gaps"]])
+
+    def test_education_words_count_as_written_in_the_cv(self):
+        cv = jd_match._CV()
+        self.assertTrue(cv.has("Data Science"))  # in the degree, not in a bullet or skill
+        self.assertIn("MSc Data Science", cv.terms())  # the AI can map requirements to the degree
+
+    def test_ai_degree_requirement_is_met_by_the_degree(self):
+        original, original_available = jd_match.llm.structured, jd_match.llm.available
+        jd_match.llm.available = lambda: True
+        jd_match.llm.structured = lambda i, t, schema: schema.model_validate({"requirements": [
+            {"requirement": "Master's degree in a quantitative field", "must_have": True, "cv_terms": []}]})
+        try:
+            r = self.match("A Master's degree in a quantitative field is required.", use_ai=True)
+        finally:
+            jd_match.llm.structured, jd_match.llm.available = original, original_available
+        self.assertEqual(r["gaps"], [])
+        self.assertIn("MSc Data Science", r["required"])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -21,6 +21,7 @@ from ..models import Company, JobMatch, MatchScore, Requirement
 from . import companies, jd_match, master_cv
 
 REQUIRED_WEIGHT = 2
+MATCH_VERSION = 1  # bump when matching changes, so kept requirements are read again (1: education counts)
 
 
 def text_hash(text: str) -> str:
@@ -31,7 +32,7 @@ def from_match(text: str, match: dict) -> JobMatch:
     """Requirements of a jd_match result (covered and gaps)."""
     reqs = [Requirement(term=m.jd_term, keywords=m.keywords, required=m.must_have)
             for m in [*match["matches"], *match["gaps"]]]
-    return JobMatch(text_hash=text_hash(text), ai_used=match["ai_used"], requirements=reqs)
+    return JobMatch(text_hash=text_hash(text), ai_used=match["ai_used"], requirements=reqs, version=MATCH_VERSION)
 
 
 def remember(company_id: str, text: str, match: dict) -> None:
@@ -47,7 +48,7 @@ def requirements(company: Company, use_ai: bool = False) -> JobMatch | None:
     text = company.job_description
     if not text.strip():
         return None
-    kept = company.job_match
+    kept = company.job_match if company.job_match and company.job_match.version == MATCH_VERSION else None
     if kept and kept.text_hash == text_hash(text) and (kept.ai_used or not use_ai):
         return kept
     match = jd_match.match_job_description(text, use_ai)

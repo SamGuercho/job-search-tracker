@@ -49,6 +49,15 @@ class GeneratedCVTests(unittest.TestCase):
                          cv_score.text_hash("Looking for COBOL and SQL."))
         self.assertIn("SQL", [x["term"] for x in r["match"]["covered"]])
 
+    def test_the_degree_counts_and_older_kept_requirements_are_read_again(self):
+        companies.update_company(self.c.id, job_description="M.Sc. in a quantitative field. SQL.")
+        old = cv_score.requirements(companies.get_company(self.c.id))
+        companies.update_company(self.c.id, job_match=old.model_copy(update={"version": 0, "requirements": []}))
+        cv_builder.generate_cv(["SQL"], company_id=self.c.id, export_pdf=False)
+        r = registry.run("cv.match_score", {"company": "Orbitex"})
+        self.assertIn("M.Sc.", [x["term"] for x in r["match"]["covered"]])  # the Word file's education section
+        self.assertEqual(companies.get_company(self.c.id).job_match.version, cv_score.MATCH_VERSION)
+
     def test_needs_a_cv(self):
         with self.assertRaises(ValueError):
             registry.run("cv.match_score", {"company": "Orbitex"})

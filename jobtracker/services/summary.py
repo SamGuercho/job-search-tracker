@@ -49,6 +49,8 @@ The CV's TITLE (given below) is the job's title: the summary must present the ca
 2. strengths: what in the summary already fits the job (short phrases).
 3. missing: the job's important requirements the summary does not mention. For each, in_cv = true only if the
    CANDIDATE'S CV (below) gives evidence for it, with that evidence quoted briefly; else in_cv = false.
+   Leave out requirements met by the CV's Education or Languages sections (a degree, a field of study, a spoken
+   language): the CV shows them in their own section, so the summary doesn't need them.
 4. suggestion: the summary adapted to this job, following the CV writing guide below: it OPENS with the CV
    TITLE exactly as given ("<TITLE> with ..."), then years and domains, then the 2-3 strengths this job values
    most, put first and in the job's words where they truthfully describe the same thing; the "missing" items the

@@ -37,6 +37,7 @@ class JobMatch(BaseModel):
     """The job description's requirements, kept so scoring a CV again costs nothing."""
     text_hash: str              # of the job description they were read from
     ai_used: bool = False
+    version: int = 0            # how they were matched (cv_score.MATCH_VERSION): older ones are read again
     requirements: list[Requirement] = []
 
 
