@@ -96,6 +96,12 @@ def overview(days: int = 30, user: str | None = None):
     return query(queries.overview, max(1, min(days, 365)), _user(user))
 
 
+@app.get("/api/mail")
+def mail(days: int = 30, user: str | None = None):
+    """The email check: what it looked at, found, how people judged it, and what it missed."""
+    return query(queries.mail, max(1, min(days, 365)), _user(user))
+
+
 @app.get("/api/conversations")
 def conversations(days: int = 30, user: str | None = None):
     return query(queries.conversations, max(1, min(days, 365)), _user(user))

@@ -1,7 +1,7 @@
 // Service worker: makes the monitor installable (home-screen icon, own window) and lets the page open when the
 // server can't be reached. Network first, so an update is always visible when online. The API is never cached:
 // the monitor shows live telemetry, and flags and eval cases are written through it.
-const CACHE = "monitor-shell-v1";
+const CACHE = "monitor-shell-v2";
 const SHELL = ["/", "/static/monitor.css", "/static/monitor.js", "/static/logo-64.png",
   "/manifest.webmanifest", "/static/icons/icon-192.png"];
 

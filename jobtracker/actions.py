@@ -76,7 +76,7 @@ def partial(model: type[BaseModel], exclude: set[str] = frozenset()) -> type[Bas
 CompanyPatch = partial(Company, exclude={"id", "status", "process", "documents", "created_at", "cv_summary", "cv_title",
                                          "cv_headline", "cv_include",
                                          "job_description_file", "job_description_saved_at", "logo_file", "logo_source",
-                                         "logo_checked_at", "referral_asked_at"})
+                                         "logo_checked_at", "referral_asked_at", "news_log"})
 StepPatch = partial(Node, exclude={"id"})
 ProfilePatch = partial(Profile)
 ExperiencePatch = partial(Experience, exclude={"id", "bullets"})
@@ -244,9 +244,52 @@ def mail_apply(update: str):
 
 
 @action("mail.dismiss")
-def mail_dismiss(update: str):
-    """Dismiss a proposed email update (wrong application, not news): nothing changes."""
-    return mail.dismiss(update)
+def mail_dismiss(update: str, reason: str = ""):
+    """Dismiss a proposed email update: nothing changes. `reason`: wrong_application, wrong_kind, not_news,
+    already_done or other (it tells the monitor what went wrong)."""
+    return mail.dismiss(update, reason)
+
+
+@action("company.heard")
+def company_heard(company: str, channel: Literal["email", "call", "in_person", "linkedin", "other"], step: str = ""):
+    """How the user heard of news they entered themselves (asked after they change a step): email, call, in_person,
+    linkedin or other. For email, `mail` says whether Ezri had caught it (found), missed it, or not_connected."""
+    return mail.heard(company, channel, step)
+
+
+@action("mail.find_missed")
+def mail_find_missed(company: str):
+    """The user's recent emails that may be the one Ezri missed for this application, likeliest first (sender,
+    subject, date, Gmail's snippet), for the user to pick."""
+    return mail.find_missed(company)
+
+
+@action("mail.diagnose")
+def mail_diagnose(company: str, message: str):
+    """Why Ezri missed this email (`message`: its id from mail.find_missed): not checked yet, the filter didn't see
+    the application's name, or the AI misread it; with the fixes the user can make."""
+    return mail.diagnose(company, message)
+
+
+@action("mail.fix_filter")
+def mail_fix_filter(company: str, message: str, name: str = "", domain: str = ""):
+    """Add another name (as emails write it) or email domain to an application, so emails like `message` are
+    caught from now on. `works` says whether that email now would be."""
+    return mail.fix_filter(company, message, name, domain)
+
+
+@action("mail.correct")
+def mail_correct(company: str, message: str, kind: str):
+    """The AI misread this email: what it really was (application_received, rejection, interview_invite,
+    next_step, offer, recruiter_message). Recorded to improve Ezri; only the kind, not the email."""
+    return mail.correct(company, message, kind)
+
+
+@action("mail.share", confirm=True)
+def mail_share(message: str, note: str = ""):
+    """Only when the user asks: share this one email (sender, subject, text) with the server's owner, to improve
+    Ezri. Never call it on your own."""
+    return mail.share(message, note)
 
 
 @action("mail.disconnect", confirm=True)

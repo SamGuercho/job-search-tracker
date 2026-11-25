@@ -38,7 +38,7 @@ from pydantic import BaseModel
 
 from .. import config, users
 from ..logs import log
-from ..models import Company, MailAccount, MailBook, MailEvent, MailKind
+from ..models import Company, MailAccount, MailBook, MailEvent, MailKind, NewsReport
 from ..process import Node
 from ..storage import UserDocument
 from . import companies, llm, master_cv, push, usage, web
@@ -279,10 +279,24 @@ _LEGAL = re.compile(r"[\s,]+(inc|ltd|llc|gmbh|sa|sas|bv|plc|corp|corporation|lim
 
 
 def _names(c: Company) -> list[str]:
-    """How an email may name the company: its name, and without "Inc.", "Ltd"…"""
-    name = c.name.strip()
-    short = _LEGAL.sub("", name).strip()
-    return [n for n in dict.fromkeys([name, short]) if len(n) >= 3]
+    """How an email may name the company: its name, without "Inc.", "Ltd"…, and the other names the user added."""
+    names = [c.name.strip(), _LEGAL.sub("", c.name.strip()).strip(), *(n.strip() for n in c.other_names)]
+    return [n for n in dict.fromkeys(names) if len(n) >= 3 or not n.isascii()]
+
+
+def _sites(c: Company) -> list[str]:
+    """The domains its emails may come from: its website's and the ones the user added."""
+    return [d for d in dict.fromkeys([_domain(c.website) if c.website else "", *(_domain(x) for x in c.email_domains)]) if d]
+
+
+_HEBREW = re.compile(r"[\u0590-\u05FF]")
+
+
+def mentions(name: str, text: str) -> bool:
+    """The name is written in the text as a word. In Hebrew, it may carry prefix letters ("מזפרן": from Zafran)."""
+    if _HEBREW.search(name):
+        return bool(re.search(rf"(?<![\w])[ובכלמשה]{{0,2}}{re.escape(name.strip())}(?![\w])", text))
+    return bool(master_cv.keyword_pattern(name).search(text))
 
 
 def candidates(email: dict, apps: list[Company]) -> list[Company]:
@@ -294,10 +308,10 @@ def candidates(email: dict, apps: list[Company]) -> list[Company]:
     haystack = f"{email.get('subject', '')}\n{email.get('text', '')}"
     by_company, by_position = [], []
     for c in apps:
-        if (c.website and _same_site(sender_host, _domain(c.website))) or \
-                any(master_cv.keyword_pattern(n).search(haystack) for n in _names(c)):
+        if any(_same_site(sender_host, site) for site in _sites(c)) or \
+                any(mentions(n, haystack) for n in _names(c)):
             by_company.append(c)
-        elif c.position.strip() and master_cv.keyword_pattern(c.position.strip()).search(haystack):
+        elif c.position.strip() and mentions(c.position.strip(), haystack):
             by_position.append(c)
     if by_company:  # the position then only tells two roles at the same company apart
         return by_company
@@ -356,6 +370,56 @@ def classify(email: dict, options: list[Company]) -> _Verdict:
     return verdict
 
 
+# ---------------------------------------------------- features (no content)
+# What the monitor may know about an email: never its text, subject or address, only these traits.
+
+PLATFORMS = {  # recruiting platforms that send on behalf of companies
+    "greenhouse.io": "Greenhouse", "greenhouse-mail.io": "Greenhouse", "lever.co": "Lever", "hire.lever.co": "Lever",
+    "ashbyhq.com": "Ashby", "smartrecruiters.com": "SmartRecruiters", "myworkday.com": "Workday",
+    "myworkdayjobs.com": "Workday", "workday.com": "Workday", "comeet.co": "Comeet", "comeet.com": "Comeet",
+    "workable.com": "Workable", "workablemail.com": "Workable", "teamtailor.com": "Teamtailor", "bamboohr.com": "BambooHR",
+    "icims.com": "iCIMS", "hibob.com": "HiBob", "linkedin.com": "LinkedIn", "breezy.hr": "Breezy", "jobvite.com": "Jobvite",
+    "recruitee.com": "Recruitee", "pinpointhq.com": "Pinpoint", "rippling.com": "Rippling",
+}
+PUBLIC_MAIL = {"gmail.com", "googlemail.com", "outlook.com", "hotmail.com", "yahoo.com", "icloud.com", "live.com",
+               "walla.co.il", "proton.me", "protonmail.com"}
+
+
+def _sender_host(email: dict) -> str:
+    _, address = parseaddr(email.get("sender", ""))
+    return _domain(address) if "@" in address else ""
+
+
+def platform(host: str) -> str:
+    """The recruiting platform an email came through, "public" (a personal mailbox) or "direct"."""
+    for domain, name in PLATFORMS.items():
+        if host == domain or host.endswith("." + domain):
+            return name
+    return "public" if host in PUBLIC_MAIL else "direct" if host else "unknown"
+
+
+def language(email: dict) -> str:
+    text = f"{email.get('subject', '')} {email.get('text', '')[:2000]}"
+    letters = [ch for ch in text if ch.isalpha()]
+    if not letters:
+        return "unknown"
+    hebrew = sum(1 for ch in letters if "\u0590" <= ch <= "\u05FF") / len(letters)
+    if hebrew > 0.3:
+        return "he"
+    return "mixed" if hebrew > 0.05 else "en" if all(ch.isascii() for ch in letters[:500]) else "other"
+
+
+def features(email: dict) -> dict:
+    return {"platform": platform(_sender_host(email)), "language": language(email),
+            "newsletter": bool(email.get("list_unsubscribe"))}
+
+
+def _telemetry(event_type: str, /, **payload) -> None:
+    """An event for the monitor (telemetry.db). Never breaks the feature."""
+    from ..telemetry.emit import emit
+    emit(event_type, **payload)
+
+
 # --------------------------------------------------------------- the check
 
 def _event(email: dict, verdict: _Verdict, company: Company) -> MailEvent:
@@ -375,10 +439,14 @@ def check(now: float | None = None) -> dict:
     if not account.refresh_token:
         return {"connected": False, "found": []}
     started = int(now or time.time())
+    clock = time.monotonic()
     seen = set(book.seen)
     found: list[MailEvent] = []
     looked, sent_to_model = 0, 0
     ids_looked: list[str] = []
+    outcomes: dict[str, str] = {}
+    verdicts: dict[str, int] = {}
+    traits: dict[str, dict] = {}
     error = ""
     try:
         ids = [i for i in list_new(max(0, account.checked_until - 120)) if i not in seen]  # a little overlap
@@ -388,13 +456,18 @@ def check(now: float | None = None) -> dict:
                 email = fetch(message_id)
                 looked += 1
                 options = candidates(email, apps)
+                outcome = "skipped"
                 if options:
                     sent_to_model += 1
                     verdict = classify(email, options)  # LLMUnavailable: stop here, retried at the next check
+                    verdicts[verdict.kind] = verdicts.get(verdict.kind, 0) + 1
                     company = next((c for c in options if c.id == verdict.company_id), None)
-                    if company and verdict.kind not in ("unrelated", "other"):
+                    outcome = verdict.kind if verdict.kind in ("unrelated", "other") or not company else "proposed"
+                    if outcome == "proposed":
                         found.append(_event(email, verdict, company))
+                        traits[message_id] = features(email)
                 ids_looked.append(message_id)
+                outcomes[message_id] = outcome
         checked_until = started
     except (MailError, llm.LLMUnavailable) as e:
         error, checked_until = str(e), account.checked_until
@@ -405,6 +478,9 @@ def check(now: float | None = None) -> dict:
         book.events += new
         before = set(book.seen)
         book.seen = (book.seen + [i for i in ids_looked if i not in before])[-KEEP_SEEN:]
+        book.outcomes.update(outcomes)
+        if len(book.outcomes) > KEEP_SEEN:
+            book.outcomes = dict(list(book.outcomes.items())[-KEEP_SEEN:])
         if book.account.refresh_token:  # (not disconnected meanwhile)
             book.account.checked_until = max(book.account.checked_until, checked_until)
             book.account.last_check = datetime.now().isoformat(timespec="seconds")
@@ -413,6 +489,11 @@ def check(now: float | None = None) -> dict:
         if e.kind in NOTIFY:
             push.notify(f"{e.company}: {LABELS.get(e.kind, e.kind)}", e.summary or e.subject, "/#/today",
                         tag=f"mail:{e.id}")
+        delay = (datetime.fromisoformat(e.found_at) - datetime.fromisoformat(e.received_at)).total_seconds() \
+            if e.received_at else None
+        _telemetry("mail.found", kind=e.kind, delay_s=delay, notified=e.kind in NOTIFY, **traits.get(e.message_id, {}))
+    _telemetry("mail.check", status="error" if error else "ok", looked=looked, about_applications=sent_to_model,
+               found=len(new), verdicts=verdicts, error=error[:300], duration_ms=round(1000 * (time.monotonic() - clock)))
     return {"connected": True, "looked_at": looked, "about_applications": sent_to_model,
             "found": [view(e) for e in new], "error": error}
 
@@ -505,12 +586,20 @@ def apply(event_id: str) -> dict:
     companies.log_update(c.id, by="them", on=on, note=f"Email: {e.summary or e.subject}")
     changes.append("news logged")
     done = _set(e.id, status="applied", result=", ".join(x for x in changes if x))
+    _telemetry("mail.decision", decision="applied", kind=e.kind, reason="")
     return {"applied": view(done), "company_id": c.id}
 
 
-def dismiss(event_id: str) -> dict:
+DISMISS_REASONS = {"wrong_application": "Wrong application", "wrong_kind": "Misread what happened",
+                   "not_news": "Not news", "already_done": "Already done", "other": "Other"}
+
+
+def dismiss(event_id: str, reason: str = "") -> dict:
+    """Leave it; `reason` (DISMISS_REASONS) tells the monitor what went wrong."""
     e = _find(event_id)
-    return {"dismissed": view(_set(e.id, status="dismissed"))}
+    done = _set(e.id, status="dismissed", result=DISMISS_REASONS.get(reason, ""))
+    _telemetry("mail.decision", decision="dismissed", kind=e.kind, reason=reason if reason in DISMISS_REASONS else "")
+    return {"dismissed": view(done)}
 
 
 # ---------------------------------------------------------- background check
@@ -558,3 +647,179 @@ def start() -> None:
             time.sleep(config.MAIL_EVERY_MIN * 60)
 
     threading.Thread(target=loop, daemon=True, name="mail").start()
+
+
+# ------------------------------------------------- how did you hear? / misses
+# After the user enters news themselves, the app asks how they heard it (one tap). "By email" when Ezri proposed
+# nothing for that application is a miss: the user finds the email among a few likely ones, the server says why it
+# was missed (it reads the user's own mailbox, nobody else does), and offers the fix. The monitor only gets the
+# reason and the email's traits (platform, language), never its text, unless the user shares it on purpose.
+
+CHANNELS = ("email", "call", "in_person", "linkedin", "other")
+MISS_WINDOW_DAYS = 10
+SEARCH_LIMIT = 60
+_GENERIC = {"talent", "team", "recruiting", "recruitment", "recruiter", "hr", "careers", "career", "jobs", "job",
+            "no", "reply", "noreply", "notifications", "notification", "via", "the", "hiring", "people", "acquisition",
+            "do", "not", "donotreply", "mail", "info", "support", "admin"}
+
+
+def _recent_event(company_id: str, days: int = MISS_WINDOW_DAYS) -> MailEvent | None:
+    since = datetime.fromtimestamp(time.time() - days * 86400).isoformat(timespec="seconds")
+    hits = [e for e in store.load().events if e.company_id == company_id and max(e.found_at, e.received_at) >= since]
+    return max(hits, key=lambda e: e.found_at) if hits else None
+
+
+def heard(company_ref: str, channel: str, step: str = "") -> dict:
+    """Record how the user heard of news they entered. For "email": did Ezri catch it?"""
+    if channel not in CHANNELS:
+        raise ValueError(f"channel must be one of {', '.join(CHANNELS)}")
+    c = companies.resolve(company_ref)
+    node = next((n for n in c.process.nodes if n.id == step or n.name.lower() == step.lower()), None) if step else None
+    step_type = ("closed" if node.kind == "closed" else node.type()) if node else ""
+    out: dict = {"channel": channel, "mail": ""}
+    if channel == "email":
+        if not store.load().account.refresh_token:
+            out["mail"] = "not_connected"
+        elif hit := _recent_event(c.id):
+            out.update(mail="found", event=view(hit))
+        else:
+            out["mail"] = "missed"
+    companies.add_news_report(c.id, NewsReport(step=node.name if node else step, step_type=step_type, channel=channel,
+                                               mail=out["mail"] if out["mail"] in ("found", "missed") else ""))
+    _telemetry("mail.heard", channel=channel, step_type=step_type, mail=out["mail"])
+    return out
+
+
+def _name_tokens(c: Company) -> list[str]:
+    words = {w.lower() for n in _names(c) for w in re.findall(r"\w+", n) if len(w) >= 3 and w.lower() not in _GENERIC}
+    return sorted(words)
+
+
+def find_missed(company_ref: str, days: int = MISS_WINDOW_DAYS) -> dict:
+    """The user's recent emails that look like they could be about this application (even if Ezri skipped them),
+    most likely first, for the user to point at the one Ezri missed. Only headers and Gmail's snippet are read."""
+    c = companies.resolve(company_ref)
+    tokens = _name_tokens(c)
+    position = [w.lower() for w in re.findall(r"\w+", c.position) if len(w) >= 4]
+    answer = _get("/messages", {"q": f"newer_than:{days}d -in:sent -in:drafts -in:chats", "maxResults": SEARCH_LIMIT})
+    outcomes = store.load().outcomes
+    found = []
+    for m in answer.get("messages", []):
+        meta = _get(f"/messages/{m['id']}", {"format": "metadata",
+                                             "metadataHeaders": ["From", "Subject", "List-Unsubscribe"]})
+        headers = {h["name"].lower(): h["value"] for h in meta.get("payload", {}).get("headers", [])}
+        sender, subject, snippet = headers.get("from", ""), headers.get("subject", ""), meta.get("snippet", "")
+        name, address = parseaddr(sender)
+        host = _domain(address) if "@" in address else ""
+        text = f"{subject} {snippet}".lower()
+        score = 3 * any(t in host or t in name.lower() for t in tokens) + 2 * any(t in text for t in tokens) \
+            + any(w in text for w in position) + (platform(host) not in ("direct", "public", "unknown")) \
+            - 2 * bool(headers.get("list-unsubscribe"))
+        if score > 0:
+            received = datetime.fromtimestamp(int(meta.get("internalDate", "0")) / 1000).isoformat(timespec="minutes")
+            found.append({"id": m["id"], "sender": sender, "subject": subject, "received_at": received,
+                          "snippet": snippet[:160], "score": score, "looked_at": m["id"] in outcomes})
+    found.sort(key=lambda x: (x["score"], x["received_at"]), reverse=True)  # likeliest, then newest
+    return {"company": c.name, "company_id": c.id, "emails": found[:6], "searched": len(answer.get("messages", []))}
+
+
+REASONS = {
+    "not_checked": "Ezri hadn't looked at this email yet",
+    "filter": "The email doesn't name the application the way Ezri knows it",
+    "model": "The AI read it but didn't see it as news about this application",
+    "found": "Ezri had found it",
+}
+
+
+def _display_name_guess(email: dict) -> str:
+    name, _ = parseaddr(email.get("sender", ""))
+    words = [w for w in re.findall(r"[^\W\d_][\w&'.-]*", name) if w.lower() not in _GENERIC]
+    return " ".join(words[:3])
+
+
+def diagnose(company_ref: str, message_id: str) -> dict:
+    """Why Ezri missed this email (the user picked it), and the fixes the user can make. The monitor gets the
+    reason and the email's traits, never its content."""
+    c = companies.resolve(company_ref)
+    book = store.load()
+    email = fetch(message_id)
+    outcome = book.outcomes.get(message_id)
+    matches_now = c.id in {x.id for x in candidates(email, [c])}
+    event = next((e for e in book.events if e.message_id == message_id), None)
+    if outcome is None:
+        reason = "not_checked"
+    elif outcome == "skipped":
+        reason = "filter"
+    elif outcome == "proposed" and event and event.company_id == c.id:
+        reason = "found"
+    else:  # unrelated, other, or proposed for another application
+        reason = "model"
+    host = _sender_host(email)
+    fixes = []
+    if not matches_now and reason in ("filter", "not_checked"):
+        if platform(host) == "direct" and host not in _sites(c):
+            fixes.append({"type": "domain", "value": host,
+                          "label": f"Its emails come from {host}: add it to {c.name}'s email domains"})
+        guess = _display_name_guess(email)
+        if guess and guess.lower() not in {n.lower() for n in _names(c)}:
+            fixes.append({"type": "name", "value": guess,
+                          "label": f"Add another name for {c.name} (how this email writes it)"})
+        if not any(f["type"] == "name" for f in fixes):
+            fixes.append({"type": "name", "value": "", "label": f"Add another name for {c.name}"})
+    explanation = REASONS[reason]
+    if reason == "not_checked":
+        explanation += (f": {book.account.last_error}" if book.account.last_error
+                        else ": it arrived before you connected your email, or before the last check.")
+    elif reason == "model" and event:
+        explanation = f"The AI took it for news about {event.company} ({LABELS.get(event.kind, event.kind)})"
+    elif reason == "model":
+        explanation += f" (it answered “{outcome}”)."
+    _telemetry("mail.miss", reason=reason, outcome=outcome or "", matches_now=matches_now,
+               fixes=[f["type"] for f in fixes], **features(email))
+    return {"reason": reason, "explanation": explanation, "fixes": fixes, "matches_now": matches_now,
+            "email": {"id": message_id, "sender": email["sender"], "subject": email["subject"],
+                      "received_at": email["received_at"]},
+            "kinds": {k: v for k, v in LABELS.items()}}
+
+
+def fix_filter(company_ref: str, message_id: str, name: str = "", domain: str = "") -> dict:
+    """Add another name or email domain to the application so emails like this one are caught from now on."""
+    c = companies.resolve(company_ref)
+    name, domain = " ".join(name.split()), _domain(domain) if domain.strip() else ""
+    if not name and not domain:
+        raise ValueError("Give a name or an email domain to add.")
+    companies.update_company(c.id, fetch_logo=False,
+                             **({"other_names": [*c.other_names, name]} if name and name not in c.other_names else {}),
+                             **({"email_domains": [*c.email_domains, domain]}
+                                if domain and domain not in c.email_domains else {}))
+    email = fetch(message_id)
+    works = c.id in {x.id for x in candidates(email, [companies.get_company(c.id)])}
+    if works:
+        with store.transaction() as book:
+            book.outcomes[message_id] = "fixed"
+    _telemetry("mail.fixed", by="name" if name else "domain", works=works, **features(email))
+    return {"works": works, "company": companies.get_company(c.id).view()}
+
+
+def correct(company_ref: str, message_id: str, kind: str) -> dict:
+    """The AI misread this email: what it really was. Recorded for the monitor (the kind, not the email)."""
+    if kind not in LABELS:
+        raise ValueError(f"kind must be one of {', '.join(LABELS)}")
+    companies.resolve(company_ref)
+    email = fetch(message_id)
+    book = store.load()
+    _telemetry("mail.label", predicted=book.outcomes.get(message_id, ""), correct=kind, **features(email))
+    with store.transaction() as book:
+        book.outcomes[message_id] = "corrected"
+    return {"recorded": kind}
+
+
+def share(message_id: str, note: str = "") -> dict:
+    """The user chose to share this one email with the server's owner, to improve Ezri: its sender, subject and
+    text go to the monitor."""
+    email = fetch(message_id)
+    book = store.load()
+    _telemetry("mail.shared", sender=email["sender"][:200], subject=email["subject"][:300],
+               received_at=email["received_at"], text=email["text"][:BODY_CHARS], note=note.strip()[:1000],
+               outcome=book.outcomes.get(message_id, ""), **features(email))
+    return {"shared": True}

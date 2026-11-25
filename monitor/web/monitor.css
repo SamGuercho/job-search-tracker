@@ -180,3 +180,8 @@ dialog label { display: grid; gap: 4px; font-size: 13px; color: var(--text-2); }
 dialog select, dialog textarea { font: inherit; width: 100%; padding: 6px 8px; border-radius: 6px; border: 1px solid var(--border);
   background: var(--surface); color: var(--text); }
 .dialog-actions { display: flex; gap: 8px; justify-content: flex-end; }
+
+/* Email page: emails people shared for review */
+.shared-mail { border-top: 1px solid var(--border); padding: 8px 0; }
+.shared-mail summary { cursor: pointer; }
+.mail-text { white-space: pre-wrap; font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--surface-2, rgba(127,127,127,.08)); padding: 10px; border-radius: 6px; max-height: 360px; overflow: auto; }

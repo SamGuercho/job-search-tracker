@@ -224,6 +224,14 @@ interview step, mark Applied, log the news) and **Dismiss**, plus a notification
 Setting it up needs a Google OAuth client, once, by the server's owner: see the
 [home-server guide](deploy/home-server/README.md#email-news-from-your-gmail).
 
+**When Ezri misses one.** After you change a step yourself (a reply, an interview, a rejection), a one-tap row asks
+*How did you hear?* (email, call, in person, LinkedIn). "Email" when Ezri proposed nothing means it missed it:
+**Find it** lists your likely recent emails, you pick the one, and the server says why: not checked yet, the email
+doesn't name the application the way Ezri knows it, or the AI misread it. Then you fix it yourself: add another name
+(e.g. the company's name in Hebrew; prefixes like מ/ב/ל are understood) or email domain to the application (also in
+its Details), or tell Ezri what the email really was. You can also choose to share that one email with the server's
+owner. Dismissing an update asks why in one tap (wrong application, misread, not news, already done).
+
 ### Company logos
 When an application has a website, Ezri finds the company's logo on it (the icon the site declares for phones,
 else its other icons) and shows it in the lists, on the application page and on Today; without one, colored
@@ -287,6 +295,11 @@ The **monitor** is a separate small app that reads them (owner only), installabl
   queue the fixing process works through (`GET /api/review/queue` returns it with each turn's whole trace).
   Each AI call records a `prompt_version` (a hash of the instructions and tools), so flags can be compared before
   and after a fix.
+- **Email**: the email check, from its events (counts and traits only, never an email's content): emails read,
+  updates found and how long after the email arrived, **precision** (updates applied vs dismissed, per kind, and why
+  they were dismissed), **recall** (news people said came by email that Ezri had caught), misses by cause (not
+  checked, filter, AI) with the email's platform (Greenhouse, Comeet…) and language, the corrections people gave the
+  AI, check errors, and the emails people chose to share.
 - **Fixing what was flagged** (with Claude Code: type `/fix-flagged`, see `.claude/skills/fix-flagged/SKILL.md`):
   the flags become **eval cases** (a frozen snapshot of the turn: the conversation before it, the person's data,
   recorded web pages, plus the checks that define "fixed" and yes/no questions graded by Claude Code), a baseline

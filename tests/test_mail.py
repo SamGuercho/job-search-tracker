@@ -1,8 +1,10 @@
 """Email: Google sign-in state, parsing Gmail messages, the filter (only emails naming an application), the check
 loop with Gmail and the model stubbed, and applying each kind of update to the process."""
 import base64
+import tempfile
 import time
 import unittest
+from pathlib import Path
 from unittest import mock
 
 from fastapi.testclient import TestClient
@@ -222,3 +224,185 @@ class CheckAndApplyTests(Configured):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class MonitoringTests(Configured):
+    """Aliases, outcomes, "how did you hear?", the diagnosis of a miss and its fixes, and what the monitor gets."""
+
+    def setUp(self):
+        super().setUp()
+        self.c = companies.create_company(name="Zafran", position="Data Scientist", website="https://zafran.io")
+        self.connect()
+        self.events = []
+        patcher = mock.patch.object(mail, "_telemetry", side_effect=lambda t, **p: self.events.append((t, p)))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.messages = {
+            "hebrew": gmail_message("hebrew", "צוות גיוס <jobs@comeet.co>", "עדכון", text="תודה על הזמן. מזפרן: לא נמשיך"),
+            "other": gmail_message("other", "Talent <talent@zafran-sec.com>", "Update", text="We won't move forward"),
+            "news": gmail_message("news", "x@ads.com", "Sale", text="Buy now", unsubscribe=True),
+        }
+
+    def fetch(self, i):
+        return mail.parse(self.messages[i])
+
+    def run_check(self, ids, kind="rejection"):
+        verdict = lambda e, o: mail._Verdict(company_id=o[0].id, kind=kind, summary="x", step_name="", date="",
+                                             time="", duration_min=0, location="")
+        with mock.patch.object(mail, "list_new", return_value=ids), mock.patch.object(mail, "fetch", side_effect=self.fetch), \
+                mock.patch.object(mail, "classify", side_effect=verdict), mock.patch.object(mail.push, "notify", return_value=1):
+            return mail.check()
+
+    def test_hebrew_names_with_prefixes_and_extra_domains(self):
+        self.assertTrue(mail.mentions("זפרן", "תודה מזפרן"))
+        self.assertFalse(mail.mentions("זפרן", "זפרנים"))
+        e = mail.parse(self.messages["other"])
+        self.assertEqual(mail.candidates(e, [self.c]), [])
+        companies.update_company(self.c.id, email_domains=["zafran-sec.com"])
+        self.assertEqual(len(mail.candidates(e, [companies.get_company(self.c.id)])), 1)
+        companies.update_company(self.c.id, other_names=["זפרן"])
+        self.assertEqual(len(mail.candidates(mail.parse(self.messages["hebrew"]), [companies.get_company(self.c.id)])), 1)
+
+    def test_outcomes_and_counts_without_content(self):
+        r = self.run_check(["other", "news"])
+        self.assertEqual(r["about_applications"], 0)
+        self.assertEqual(mail.store.load().outcomes, {"other": "skipped", "news": "skipped"})
+        check = next(p for t, p in self.events if t == "mail.check")
+        self.assertEqual((check["looked"], check["found"]), (2, 0))
+        companies.update_company(self.c.id, email_domains=["zafran-sec.com"])
+        self.messages["other2"] = gmail_message("other2", "talent@zafran-sec.com", "Update", text="No")
+        self.run_check(["other2"])
+        self.assertEqual(mail.store.load().outcomes["other2"], "proposed")
+        found = next(p for t, p in self.events if t == "mail.found")
+        self.assertEqual((found["kind"], found["platform"], found["language"]), ("rejection", "direct", "en"))
+        self.assertNotIn("subject", found)
+        dump = repr(self.events)
+        self.assertNotIn("move forward", dump)
+        self.assertNotIn("zafran-sec.com", dump)
+
+    def test_heard_found_missed_and_logged(self):
+        self.assertEqual(registry.run("company.heard", {"company": "Zafran", "channel": "email", "step": "Rejected / Closed"})["mail"], "missed")
+        self.run_check(["hebrew"])  # (name not known yet: skipped)
+        companies.update_company(self.c.id, email_domains=["zafran-sec.com"])
+        self.run_check(["other"])
+        r = registry.run("company.heard", {"company": "Zafran", "channel": "email"})
+        self.assertEqual(r["mail"], "found")
+        registry.run("company.heard", {"company": "Zafran", "channel": "call", "step": "Applied"})
+        log = companies.get_company(self.c.id).news_log
+        self.assertEqual([(x.channel, x.mail, x.step_type) for x in log],
+                         [("email", "missed", "closed"), ("email", "found", ""), ("call", "", "applied")])
+        heard = [p for t, p in self.events if t == "mail.heard"]
+        self.assertEqual([p["mail"] for p in heard], ["missed", "found", ""])
+        with mail.store.transaction() as book:
+            book.account = mail.MailAccount()
+        self.assertEqual(mail.heard("Zafran", "email")["mail"], "not_connected")
+        with self.assertRaises(ValueError):
+            mail.heard("Zafran", "pigeon")
+
+    def test_diagnose_filter_miss_and_fix_it(self):
+        self.run_check(["other"])
+        with mock.patch.object(mail, "fetch", side_effect=self.fetch):
+            d = registry.run("mail.diagnose", {"company": "Zafran", "message": "other"})
+            self.assertEqual(d["reason"], "filter")
+            fixes = {f["type"]: f["value"] for f in d["fixes"]}
+            self.assertEqual(fixes["domain"], "zafran-sec.com")
+            r = registry.run("mail.fix_filter", {"company": "Zafran", "message": "other", "domain": "zafran-sec.com"})
+        self.assertTrue(r["works"])
+        self.assertEqual(companies.get_company(self.c.id).email_domains, ["zafran-sec.com"])
+        self.assertEqual(mail.store.load().outcomes["other"], "fixed")
+        miss = next(p for t, p in self.events if t == "mail.miss")
+        self.assertEqual((miss["reason"], miss["platform"]), ("filter", "direct"))
+        self.assertEqual(next(p for t, p in self.events if t == "mail.fixed")["works"], True)
+
+    def test_diagnose_platform_email_offers_a_name_and_other_reasons(self):
+        with mock.patch.object(mail, "fetch", side_effect=self.fetch):
+            d = mail.diagnose("Zafran", "hebrew")
+            self.assertEqual(d["reason"], "not_checked")  # never looked at
+            self.assertEqual([f["type"] for f in d["fixes"]], ["name"])  # comeet.co is a platform: no domain fix
+            self.assertEqual(next(p for t, p in self.events if t == "mail.miss")["language"], "he")
+            r = mail.fix_filter("Zafran", "hebrew", name="זפרן")
+            self.assertTrue(r["works"])
+            with mail.store.transaction() as book:
+                book.outcomes["other"] = "unrelated"
+            d = mail.diagnose("Zafran", "other")
+            self.assertEqual(d["reason"], "model")
+            self.assertIn("unrelated", d["explanation"])
+            registry.run("mail.correct", {"company": "Zafran", "message": "other", "kind": "rejection"})
+        label = next(p for t, p in self.events if t == "mail.label")
+        self.assertEqual((label["predicted"], label["correct"]), ("unrelated", "rejection"))
+
+    def test_share_sends_content_only_when_asked(self):
+        with mock.patch.object(mail, "fetch", side_effect=self.fetch):
+            registry.run("mail.share", {"message": "other", "note": "missed it"})
+        shared = next(p for t, p in self.events if t == "mail.shared")
+        self.assertEqual((shared["subject"], shared["note"]), ("Update", "missed it"))
+        self.assertIn("move forward", shared["text"])
+        from jobtracker.services import assistant
+        self.assertTrue("mail.share".startswith(assistant.HIDDEN))
+        self.assertTrue(registry.ACTIONS["mail.share"].confirm)
+
+    def test_dismiss_reason_is_counted(self):
+        companies.update_company(self.c.id, email_domains=["zafran-sec.com"])
+        r = self.run_check(["other"])
+        registry.run("mail.dismiss", {"update": r["found"][0]["id"], "reason": "wrong_application"})
+        decision = next(p for t, p in self.events if t == "mail.decision")
+        self.assertEqual((decision["decision"], decision["reason"]), ("dismissed", "wrong_application"))
+
+    def test_find_missed_ranks_likely_emails(self):
+        listing = {"messages": [{"id": "1"}, {"id": "2"}, {"id": "3"}]}
+        meta = {
+            "1": {"from": "Zafran Talent <no-reply@comeet.co>", "subject": "Your application", "snippet": "Hi"},
+            "2": {"from": "friend@gmail.com", "subject": "Dinner", "snippet": "8pm"},
+            "3": {"from": "deals@shop.com", "subject": "Zafran-style rugs", "snippet": "", "unsub": True},
+        }
+
+        def get(path, params=None):
+            if path == "/messages":
+                return listing
+            m = meta[path.rsplit("/", 1)[1]]
+            headers = [{"name": "From", "value": m["from"]}, {"name": "Subject", "value": m["subject"]}]
+            if m.get("unsub"):
+                headers.append({"name": "List-Unsubscribe", "value": "<x>"})
+            return {"internalDate": "1790000000000", "snippet": m["snippet"], "payload": {"headers": headers}}
+        with mock.patch.object(mail, "_get", side_effect=get):
+            r = registry.run("mail.find_missed", {"company": "Zafran"})
+        self.assertEqual([e["id"] for e in r["emails"]], ["1"])  # the newsletter and the dinner are left out
+
+
+class MonitorEmailPageTests(unittest.TestCase):
+    def test_counts_precision_recall_and_misses(self):
+        from jobtracker.telemetry import store
+        from jobtracker.telemetry.emit import emit
+        from monitor import queries
+        reset()
+        db = Path(tempfile.mkdtemp()) / "t.db"
+        saved = config.TELEMETRY_DB, config.TELEMETRY
+        config.TELEMETRY_DB, config.TELEMETRY = db, True
+        try:
+            emit("mail.check", status="ok", looked=10, about_applications=3, found=2, verdicts={"rejection": 2, "unrelated": 1})
+            emit("mail.check", status="error", looked=0, about_applications=0, found=0, verdicts={}, error="expired")
+            emit("mail.found", kind="rejection", delay_s=600, platform="Greenhouse", language="en")
+            emit("mail.found", kind="interview_invite", delay_s=1200, platform="direct", language="he")
+            emit("mail.decision", decision="applied", kind="rejection", reason="")
+            emit("mail.decision", decision="dismissed", kind="interview_invite", reason="wrong_application")
+            emit("mail.heard", channel="email", step_type="closed", mail="found")
+            emit("mail.heard", channel="email", step_type="hr", mail="missed")
+            emit("mail.heard", channel="call", step_type="hr", mail="")
+            emit("mail.miss", reason="filter", outcome="skipped", platform="Comeet", language="he", newsletter=False,
+                 matches_now=False, fixes=["name"])
+            emit("mail.shared", sender="a@b.c", subject="Hi", received_at="2026-11-25T10:00:00", text="Body", note="",
+                 outcome="skipped", platform="Comeet", language="he", newsletter=False)
+            self.assertTrue(store.flush())
+            conn = store.connect(db, readonly=True)
+            m = queries.mail(conn, 30, None)
+        finally:
+            config.TELEMETRY_DB, config.TELEMETRY = saved
+        t = m["totals"]
+        self.assertEqual((t["checks"], t["errors"], t["looked"], t["about"], t["found"]), (2, 1, 10, 3, 2))
+        self.assertEqual((t["precision"], t["recall"]), (0.5, 0.5))
+        self.assertEqual(t["delay_min"]["p50"], 15)
+        self.assertEqual(m["dismiss_reasons"], {"wrong_application": 1})
+        self.assertEqual(m["channels"], {"email": 2, "call": 1})
+        self.assertEqual(m["miss_reasons"], {"filter": 1})
+        self.assertEqual(m["shared"][0]["text"], "Body")
+        self.assertEqual(m["errors"][0]["error"], "expired")

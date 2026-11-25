@@ -266,3 +266,102 @@ def review_queue(conn: sqlite3.Connection, full: bool = True) -> dict:
         for turn_id in {f["turn_id"] for f in items}:
             traces[turn_id] = turn(conn, turn_id)
     return {"catalog": F.catalog(), "flags": items, "turns": traces}
+
+
+# ------------------------------------------------------------------- email
+# Events from services/mail.py: counts and traits only (never an email's content), except the emails people chose
+# to share (mail.shared).
+
+MAIL_KINDS = ["application_received", "rejection", "interview_invite", "next_step", "offer", "recruiter_message"]
+
+
+def mail(conn: sqlite3.Connection, days: int = 30, user: str | None = None) -> dict:
+    where, args = _where(days, user, "ts_ns")
+    rows = [row_to_event(r) for r in conn.execute(
+        f"SELECT * FROM events WHERE type LIKE 'mail.%' AND {where} ORDER BY seq", args)]
+    by_type: dict[str, list[dict]] = defaultdict(list)
+    for e in rows:
+        by_type[e["type"]].append(e)
+
+    checks = by_type["mail.check"]
+    per_day: dict[str, dict] = defaultdict(lambda: {"looked": 0, "about": 0, "found": 0, "checks": 0, "errors": 0})
+    verdicts: dict[str, int] = defaultdict(int)
+    for e in checks:
+        p, day = e["payload"], e["ts"][:10]
+        d = per_day[day]
+        d["checks"] += 1
+        d["looked"] += p.get("looked", 0)
+        d["about"] += p.get("about_applications", 0)
+        d["found"] += p.get("found", 0)
+        d["errors"] += e["status"] == "error"
+        for k, n in (p.get("verdicts") or {}).items():
+            verdicts[k] += n
+    errors = [{"ts": e["ts"], "user": e["user_id"], "error": e["payload"].get("error", "")}
+              for e in checks if e["status"] == "error"][-10:][::-1]
+
+    kinds = {k: {"found": 0, "applied": 0, "dismissed": 0} for k in MAIL_KINDS}
+    delays = []
+    platforms: dict[str, int] = defaultdict(int)
+    for e in by_type["mail.found"]:
+        p = e["payload"]
+        kinds.setdefault(p.get("kind", "?"), {"found": 0, "applied": 0, "dismissed": 0})["found"] += 1
+        if p.get("delay_s") is not None:
+            delays.append(p["delay_s"] / 60)
+        platforms[p.get("platform", "unknown")] += 1
+    reasons: dict[str, int] = defaultdict(int)
+    for e in by_type["mail.decision"]:
+        p = e["payload"]
+        row = kinds.setdefault(p.get("kind", "?"), {"found": 0, "applied": 0, "dismissed": 0})
+        row[p.get("decision", "dismissed")] = row.get(p.get("decision", "dismissed"), 0) + 1
+        if p.get("decision") == "dismissed":
+            reasons[p.get("reason") or "no reason"] += 1
+    applied = sum(k["applied"] for k in kinds.values())
+    dismissed = sum(k["dismissed"] for k in kinds.values())
+
+    channels: dict[str, int] = defaultdict(int)
+    by_email = {"found": 0, "missed": 0, "not_connected": 0}
+    for e in by_type["mail.heard"]:
+        p = e["payload"]
+        channels[p.get("channel", "?")] += 1
+        if p.get("channel") == "email" and p.get("mail") in by_email:
+            by_email[p["mail"]] += 1
+    told = by_email["found"] + by_email["missed"]
+
+    misses = [{"ts": e["ts"], "user": e["user_id"], **{k: e["payload"].get(k) for k in
+               ("reason", "outcome", "platform", "language", "newsletter", "matches_now", "fixes")}}
+              for e in by_type["mail.miss"]][::-1]
+    miss_reasons: dict[str, int] = defaultdict(int)
+    for m in misses:
+        miss_reasons[m["reason"] or "?"] += 1
+    fixed = by_type["mail.fixed"]
+    labels: dict[tuple, int] = defaultdict(int)
+    for e in by_type["mail.label"]:
+        p = e["payload"]
+        labels[(p.get("predicted") or "?", p.get("correct") or "?", p.get("platform") or "?", p.get("language") or "?")] += 1
+    shared = [{"ts": e["ts"], "user": e["user_id"], **e["payload"]} for e in by_type["mail.shared"]][::-1]
+
+    return {
+        "days": days, "user": user, "users": users(conn),
+        "totals": {"checks": len(checks), "errors": sum(e["status"] == "error" for e in checks),
+                   "looked": sum(d["looked"] for d in per_day.values()),
+                   "about": sum(d["about"] for d in per_day.values()),
+                   "found": len(by_type["mail.found"]), "applied": applied, "dismissed": dismissed,
+                   "precision": round(applied / (applied + dismissed), 3) if applied + dismissed else None,
+                   "told_by_email": told, "caught": by_email["found"],
+                   "recall": round(by_email["found"] / told, 3) if told else None,
+                   "delay_min": dist(delays), "fixes": len(fixed), "fixes_working": sum(bool(e["payload"].get("works"))
+                                                                                         for e in fixed)},
+        "per_day": [{"date": d, **v} for d, v in sorted(per_day.items())],
+        "verdicts": dict(sorted(verdicts.items(), key=lambda kv: -kv[1])),
+        "kinds": [{"kind": k, **v} for k, v in kinds.items()],
+        "dismiss_reasons": dict(sorted(reasons.items(), key=lambda kv: -kv[1])),
+        "platforms": dict(sorted(platforms.items(), key=lambda kv: -kv[1])),
+        "channels": dict(sorted(channels.items(), key=lambda kv: -kv[1])),
+        "by_email": by_email,
+        "miss_reasons": dict(sorted(miss_reasons.items(), key=lambda kv: -kv[1])),
+        "misses": misses[:50],
+        "labels": [{"predicted": k[0], "correct": k[1], "platform": k[2], "language": k[3], "count": n}
+                   for k, n in sorted(labels.items(), key=lambda kv: -kv[1])],
+        "errors": errors,
+        "shared": shared[:30],
+    }

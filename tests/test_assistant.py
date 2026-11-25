@@ -113,7 +113,9 @@ class AssistantTests(unittest.TestCase):
         names = {t["name"] for t in assistant.tools()}
         self.assertIn("workflow-new_application", names)
         self.assertNotIn("chat-send", names)
-        self.assertEqual(len(names), len([a for a in registry.ACTIONS if not a.startswith("chat.")]) + len(assistant.CHAT_TOOLS))
+        self.assertNotIn("mail-share", names)  # sharing an email is the user's own tap
+        self.assertEqual(len(names), len([a for a in registry.ACTIONS if not a.startswith(assistant.HIDDEN)])
+                         + len(assistant.CHAT_TOOLS))
 
     def test_tool_call_runs_action_then_answers(self):
         FakeOpenAI.script = [([call("company-create", {"name": "Nimbus", "position": "AI Engineer"})], ""),

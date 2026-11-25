@@ -128,6 +128,14 @@ def log_update(company_id: str, by: str = "me", on: str | None = None, note: str
     return company
 
 
+def add_news_report(company_id: str, report) -> Company:
+    """How the user heard of news they entered (the newest 50 kept)."""
+    with store.transaction() as book:
+        company = _find(book, company_id)
+        company.news_log = [*company.news_log, report][-50:]
+    return company
+
+
 def add_document(company_id: str, document: GeneratedDocument) -> Company:
     with store.transaction() as book:
         company = _find(book, company_id)

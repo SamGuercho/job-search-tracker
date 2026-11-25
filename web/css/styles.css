@@ -602,3 +602,12 @@ body.is-offline main { padding-top: 8px; }
 .course-head input[type="checkbox"] { width: auto; margin: 0; flex: none; }
 .course .study-row { align-items: center; padding: 6px 0; }
 .day-picks { display: flex; flex-wrap: wrap; gap: 6px; }
+
+/* "How did you hear?" after entering news, and the missed-email sheet */
+.heard-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 10px; margin: 0 0 8px; border-radius: 8px; background: var(--accent-soft); }
+.heard-bar > span { margin-right: 4px; }
+.miss-sheet .miss-pick { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; text-align: left; white-space: normal; margin: 6px 0; }
+.miss-sheet .miss-fix { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; margin: 8px 0; }
+.miss-sheet .miss-fix .row { margin-top: 6px; }
+.miss-sheet .miss-fix input { flex: 1; min-width: 0; }
+.miss-sheet details input { width: 100%; margin: 6px 0; }

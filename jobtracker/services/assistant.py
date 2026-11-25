@@ -32,7 +32,7 @@ MAX_STEPS = 12               # model round-trips per user message
 MAX_PARALLEL_TOOLS = 8       # tool calls of one model response run at the same time (up to this many)
 MAX_TOOL_OUTPUT = 30_000     # characters sent back to the model per tool call
 KEEP_RESULT = 4_000          # results smaller than this are kept for UI links
-HIDDEN = ("chat.",)          # actions the assistant can't call (itself)
+HIDDEN = ("chat.", "mail.share")  # actions the assistant can't call (itself; sharing an email is the user's tap)
 
 INSTRUCTIONS = """You are the assistant of {name}'s job-search tracker. Today is {today}.
 You act through tools that read and change the tracker: companies and their process steps, follow-ups,

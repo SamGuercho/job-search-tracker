@@ -433,11 +433,71 @@ async function reviewPage(tab) {
 }
 
 // ------------------------------------------------------------------ routing
+// ---------------------------------------------------------------------- email
+// The email check (services/mail.py): counts and traits only, never an email's content, except those shared on purpose.
+const pct = (v) => (v === null || v === undefined ? "–" : `${Math.round(100 * v)}%`);
+const mins = (v) => (v === null || v === undefined ? "–" : v >= 120 ? `${(v / 60).toFixed(1)} h` : `${Math.round(v)} min`);
+const KIND_LABEL = { application_received: "Application received", rejection: "Rejection", interview_invite: "Interview invite",
+  next_step: "Next step", offer: "Offer", recruiter_message: "Recruiter message", unrelated: "Unrelated", other: "About it, nothing to do" };
+const REASON_LABEL = { not_checked: "Not checked yet", filter: "Filter skipped it", model: "AI misread it", found: "Was found",
+  wrong_application: "Wrong application", wrong_kind: "Misread", not_news: "Not news", already_done: "Already done" };
+const entries = (o) => Object.entries(o || {});
+const CHANNEL_LABEL = { email: "📧 Email", call: "📞 Call", in_person: "🤝 In person", linkedin: "💬 LinkedIn", other: "Other" };
+
+async function mailPage() {
+  const d = await get(`/api/mail?${qs()}`);
+  users = d.users;
+  const t = d.totals;
+  const tile = (label, value, sub, cls = "") => h("div", { class: `tile ${cls}` }, h("div", { class: "label" }, label), h("div", { class: "value" }, value), sub && h("div", { class: "sub" }, sub));
+  const counts = (o, label = (k) => k) => table(["", "Count"], entries(o).map(([k, n]) => [label(k), num(n)]), [1]);
+  mount(root,
+    h("h1", {}, "Email"),
+    h("div", { class: "muted small" }, "The email check: what it read, what it found, how people judged it, and what it missed. Only counts and traits (platform, language): never an email's content, except the ones people shared."),
+    filterBar(route),
+    !t.checks && !d.misses.length ? h("div", { class: "card empty" }, "No email checks in this period. Someone connects their Gmail on Profile → Email.") : [
+      h("div", { class: "tiles" },
+        tile("Emails read", num(t.looked), `${num(t.about)} about an application`),
+        tile("Updates found", num(t.found), `median ${mins(t.delay_min.p50)} after arrival`),
+        tile("Precision", pct(t.precision), `${num(t.applied)} applied · ${num(t.dismissed)} dismissed`, t.precision !== null && t.precision < 0.8 ? "warn" : ""),
+        tile("Recall", pct(t.recall), `${num(t.caught)} caught of ${num(t.told_by_email)} news people said came by email`, t.recall !== null && t.recall < 0.8 ? "warn" : ""),
+        tile("Misses diagnosed", num(d.misses.length), `${num(t.fixes_working)} fixed by the person (${num(t.fixes)} tried)`),
+        tile("Check errors", num(t.errors), `${num(t.checks)} checks`, t.errors ? "bad" : "")),
+      h("div", { class: "grid2" },
+        h("div", { class: "card" }, h("h2", {}, "Per kind of news"), table(["Kind", "Found", "Applied", "Dismissed", "Precision"],
+          d.kinds.map((k) => [KIND_LABEL[k.kind] || k.kind, num(k.found), num(k.applied), num(k.dismissed), pct(k.applied + k.dismissed ? k.applied / (k.applied + k.dismissed) : null)]), [1, 2, 3, 4])),
+        h("div", { class: "card" }, h("h2", {}, "Why updates were dismissed"), counts(d.dismiss_reasons, (k) => REASON_LABEL[k] || k))),
+      h("div", { class: "grid2" },
+        h("div", { class: "card" }, h("h2", {}, "Misses, by cause"), counts(d.miss_reasons, (k) => REASON_LABEL[k] || k),
+          h("div", { class: "small muted", style: { marginTop: "8px" } }, "Filter: the email doesn't name the application as Ezri knows it (the person can add a name or domain). AI: it reached the model, which misread it.")),
+        h("div", { class: "card" }, h("h2", {}, "How people heard news they entered"), counts(d.channels, (k) => CHANNEL_LABEL[k] || k),
+          h("div", { class: "small muted", style: { marginTop: "8px" } }, `By email: ${num(d.by_email.found)} caught, ${num(d.by_email.missed)} missed, ${num(d.by_email.not_connected)} without a connected mailbox.`))),
+      h("div", { class: "card" }, h("h2", {}, "Misses"), table(["When", "Person", "Cause", "AI answered", "Platform", "Language", "Newsletter", "Matches now", "Fixes offered"],
+        d.misses.map((m) => [m.ts.slice(0, 16).replace("T", " "), who(m.user), REASON_LABEL[m.reason] || m.reason, m.outcome || "–", m.platform, m.language,
+          m.newsletter ? "yes" : "no", m.matches_now ? "yes" : "no", (m.fixes || []).join(", ") || "–"]))),
+      d.labels.length > 0 && h("div", { class: "card" }, h("h2", {}, "AI corrections (what it said → what it was)"), table(["AI said", "It was", "Platform", "Language", "Count"],
+        d.labels.map((l) => [l.predicted, KIND_LABEL[l.correct] || l.correct, l.platform, l.language, num(l.count)]), [4])),
+      h("div", { class: "grid2" },
+        h("div", { class: "card" }, h("h2", {}, "Per day"), table(["Day", "Checks", "Read", "About an application", "Found", "Errors"],
+          d.per_day.slice().reverse().map((x) => [x.date, num(x.checks), num(x.looked), num(x.about), num(x.found), num(x.errors)]), [1, 2, 3, 4, 5])),
+        h("div", { class: "card" }, h("h2", {}, "What the AI answered"), counts(d.verdicts, (k) => KIND_LABEL[k] || k),
+          h("h2", { style: { marginTop: "12px" } }, "Updates by platform"), counts(d.platforms))),
+      d.errors.length > 0 && h("div", { class: "card" }, h("h2", {}, "Last check errors"), table(["When", "Person", "Error"],
+        d.errors.map((e) => [e.ts.slice(0, 16).replace("T", " "), who(e.user), e.error]))),
+      h("div", { class: "card" }, h("h2", {}, `Emails shared for review (${d.shared.length})`),
+        d.shared.length ? d.shared.map((x) => h("details", { class: "shared-mail" },
+          h("summary", {}, h("b", { dir: "auto" }, x.subject || "(no subject)"), " · ", h("span", { dir: "auto" }, x.sender), ` · shared by ${who(x.user)} on ${x.ts.slice(0, 10)}`),
+          h("div", { class: "small muted" }, `Received ${x.received_at} · ${x.platform} · ${x.language} · Ezri's outcome: ${x.outcome || "not checked"}`),
+          x.note && h("p", {}, h("i", { dir: "auto" }, x.note)),
+          h("pre", { class: "mail-text", dir: "auto" }, x.text)))
+          : h("div", { class: "muted small" }, "None. People can share a missed email from the “Ezri missed this email” sheet.")),
+    ]);
+}
+
 async function route(refresh = false) {
   clearTimeout(timer);
   hideTip();
   const hash = location.hash.slice(1) || "/";
-  const section = hash === "/" ? "dashboard" : hash.startsWith("/review") ? "review" : "conversations";
+  const section = hash === "/" ? "dashboard" : hash.startsWith("/review") ? "review" : hash.startsWith("/mail") ? "mail" : "conversations";
   for (const a of document.querySelectorAll("nav a")) a.classList.toggle("active", a.dataset.nav === section);
   refreshReviewCount();
   const y = scrollY;
@@ -446,6 +506,7 @@ async function route(refresh = false) {
     else if (hash.startsWith("/c/")) await conversationPage(decodeURIComponent(hash.slice(3)));
     else if (hash.startsWith("/conversations")) await conversationList();
     else if (hash.startsWith("/review")) await reviewPage(hash.split("/")[2] || "queue");
+    else if (hash.startsWith("/mail")) await mailPage();
     else await dashboard();
     if (refresh) scrollTo(0, y);
   } catch (e) {

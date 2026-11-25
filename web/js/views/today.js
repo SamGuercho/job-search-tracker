@@ -259,8 +259,14 @@ export async function renderToday(root) {
             const r = await attempt(() => call("mail.apply", { update: e.id }));
             if (r) { toast(`${e.company}: ${r.applied.result}`); renderToday(root); } else ev.target.disabled = false;
           } }, "Apply"),
-          h("button", { class: "small", onclick: async () => {
-            if (await attempt(() => call("mail.dismiss", { update: e.id }))) row.remove();
+          h("button", { class: "small", onclick: (ev) => {
+            // one tap more says what was wrong (the monitor counts it; nothing about the email itself)
+            const reasons = [["wrong_application", "Wrong application"], ["wrong_kind", "Misread"], ["not_news", "Not news"], ["already_done", "Already done"]];
+            const dismiss = async (reason) => { if (await attempt(() => call("mail.dismiss", { update: e.id, reason }))) row.remove(); };
+            ev.target.parentElement.replaceWith(h("div", { class: "row", style: "margin-top:6px;flex-wrap:wrap" },
+              h("span", { class: "small muted" }, "Why?"),
+              reasons.map(([value, label]) => h("button", { class: "small", onclick: () => dismiss(value) }, label)),
+              h("button", { class: "small ghost", onclick: () => dismiss("") }, "Just dismiss")));
           } }, "Dismiss"))));
     return row;
   };

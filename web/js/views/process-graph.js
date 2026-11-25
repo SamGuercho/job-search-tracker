@@ -1,7 +1,8 @@
 // Process graph of one application: layered layout, click a node to edit it,
 // "+" on a link inserts a step there, and a red Closed rail every step leads to.
 import { call } from "../api.js";
-import { addToCalendar, attempt, confirmSheet, field, formatDate, h, mount, readForm } from "../ui.js";
+import { addToCalendar, attempt, confirmSheet, field, formatDate, h, mount, readForm, toast } from "../ui.js";
+import { missedEmail } from "./mail-miss.js";
 
 const W = 136, H = 70, COL = 184, ROW = 96, PAD = 12, RAIL = 26;
 const SUGGESTIONS = ["Applied", "Response received", "First HR interview", "Hiring manager interview", "Technical interview",
@@ -43,17 +44,63 @@ function layout(process) {
 }
 
 const remembered = new Map(); // company id -> selected node, kept across page re-renders
+const asking = new Map();     // company id -> {step, name}: "how did you hear?" for news just entered
+const CHANNELS = [["email", "📧 Email"], ["call", "📞 Call"], ["in_person", "🤝 In person"], ["linkedin", "💬 LinkedIn"], ["other", "Other"]];
 
-export function processCard(company, { onChange, stepTypes = {} }) {
+export function processCard(company, { onChange, stepTypes = {}, askHeard = false }) {
   const p = company.process;
   let selected = remembered.get(company.id) ?? null;   // node id
   let adding = null;     // {mode: "end"|"after"|"before"|"between"|"branch", ref, ref2}
   const card = h("div", { class: "card" });
 
+  // News the user entered themselves (a step of theirs turned on, the application closed): ask how they heard,
+  // so an email Ezri missed is noticed. Not for their own steps (Applied) or a step turned off.
+  const newsStep = (action, payload) => {
+    if (!askHeard) return null;
+    if (action === "process.close") {
+      const closed = p.nodes.find((x) => x.kind === "closed");
+      return closed && { step: closed.id, name: closed.name };
+    }
+    const state = payload.state;
+    if (!(state === "planned" || state === "done")) return null;
+    if (action === "process.set_state") {
+      const n = p.nodes.find((x) => x.id === payload.step);
+      return n && n.state !== state && (n.category || inferred(n)) !== "applied" && { step: n.id, name: n.name };
+    }
+    if (action === "process.add_step" || action === "process.add_branch") {
+      return inferred({ name: payload.name || "" }) !== "applied" && { step: payload.name, name: payload.name };
+    }
+    return null;
+  };
+
   const run = async (action, payload, msg) => {
     const r = await attempt(() => call(action, { company: company.id, ...payload }), msg);
-    if (r) { adding = null; await onChange(); }
+    if (r) {
+      adding = null;
+      const news = newsStep(action, payload);
+      if (news) asking.set(company.id, news); else if (action === "process.set_state" && payload.state === "todo") asking.delete(company.id);
+      await onChange();
+    }
     return r;
+  };
+
+  const answer = async (channel) => {
+    const q = asking.get(company.id);
+    asking.delete(company.id);
+    draw();
+    if (!channel) return;
+    const r = await attempt(() => call("company.heard", { company: company.id, channel, step: q.step }));
+    if (!r) return;
+    if (r.mail === "found") toast("Ezri had caught that email ✓");
+    else if (r.mail === "missed") missedEmail(company);
+    else toast("Thanks");
+  };
+  const heardBar = () => {
+    const q = asking.get(company.id);
+    return q && h("div", { class: "heard-bar" },
+      h("span", { class: "small" }, `How did you hear about “${q.name}”?`),
+      CHANNELS.map(([value, label]) => h("button", { class: "small", onclick: () => answer(value) }, label)),
+      h("button", { class: "small ghost", onclick: () => answer(null) }, "Skip"));
   };
 
   function draw() {
@@ -104,6 +151,7 @@ export function processCard(company, { onChange, stepTypes = {} }) {
         h("span", { class: "spacer" }),
         h("button", { class: "small", onclick: () => { adding = { mode: "end" }; selected = null; draw(); } }, "+ Add step")),
       h("div", { class: "small muted", style: "margin:4px 0 6px" }, "Click a step to turn it on/off or edit it · + on a link inserts a step · every step can end in Rejected / Closed"),
+      heardBar(),
       h("div", { class: "pg-wrap" },
         h("div", { class: "pg-canvas", style: `width:${width}px;height:${railY + RAIL}px` },
           svg, plus, steps.map(nodeEl),

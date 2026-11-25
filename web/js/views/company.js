@@ -15,6 +15,7 @@ export async function renderCompany(root, id) {
   let network = await call("linkedin.contacts", { company: id }).catch(() => null);  // LinkedIn contacts there
   let courses = await call("learning.courses", { company: id }).catch(() => []);   // study sessions for this prep
   const bank = (await call("story.list").catch(() => null))?.stories ?? null;  // the user's stories (null: not loaded)
+  const mailConnected = Boolean((await call("mail.status").catch(() => null))?.connected);  // asks how news came
   let proposal = null;  // slots proposed, not accepted yet
 
   const save = async (fields, msg = "Saved") => {
@@ -88,7 +89,7 @@ export async function renderCompany(root, id) {
 
   // --------------------------------------------------------- process graph
   // The graph keeps its own state (selection, forms); it re-renders the page after each change.
-  const process = () => processCard(company, { stepTypes: info.step_types, onChange: async () => { await reload(); render(); } });
+  const process = () => processCard(company, { stepTypes: info.step_types, askHeard: mailConnected, onChange: async () => { await reload(); render(); } });
 
   // ---------------------------------------------------------------- details
   const select = (name, options, value) => h("select", { name },
@@ -104,6 +105,8 @@ export async function renderCompany(root, id) {
       field("Exact address (for the map)", h("input", { name: "address", value: company.address, placeholder: "Optional" })),
       field("Website", h("input", { name: "website", type: "url", value: company.website })),
       field("Job posting link", h("input", { name: "job_url", type: "url", value: company.job_url })),
+      field("Other names in emails (comma separated)", h("input", { name: "other_names", "data-list": true, value: joinList(company.other_names), placeholder: "e.g. Zafran Security, its name in Hebrew" })),
+      field("Other email domains (comma separated)", h("input", { name: "email_domains", "data-list": true, value: joinList(company.email_domains), placeholder: "e.g. zafran-sec.com" })),
       field("Source", select("source_type", info.source_types, company.source_type)),
       field("Source detail", h("input", { name: "source_detail", value: company.source_detail, placeholder: "LinkedIn, Dana from TalentCo…" })),
       field("My salary expectation", h("input", { name: "salary_expectation", value: company.salary_expectation, placeholder: "e.g. 38k ILS/month" })),

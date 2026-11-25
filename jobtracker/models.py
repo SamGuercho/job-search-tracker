@@ -61,6 +61,18 @@ class GeneratedDocument(BaseModel):
     match: MatchScore | None = None
 
 
+NewsChannel = Literal["email", "call", "in_person", "linkedin", "other"]
+
+
+class NewsReport(BaseModel):
+    """How the user heard of news they entered themselves (asked after a step change)."""
+    at: str = Field(default_factory=lambda: datetime.now().isoformat(timespec="seconds"))
+    step: str = ""               # the step they changed
+    step_type: str = ""
+    channel: NewsChannel
+    mail: str = ""               # for "email": found (Ezri had it), missed, or "" (no mailbox connected)
+
+
 class Company(BaseModel):
     id: str = Field(default_factory=new_id)
     name: str
@@ -72,6 +84,9 @@ class Company(BaseModel):
     address: str = ""             # optional exact address, for the map
     work_model: WorkModel = ""
     website: str = ""
+    other_names: list[str] = []   # how emails may name the company too ("Zafran Security", its name in Hebrew)
+    email_domains: list[str] = [] # domains its emails come from, besides its website's ("zafran-sec.com")
+    news_log: list[NewsReport] = []  # how the user heard of the news they entered (email, call…)
     logo_file: str | None = None  # the company's logo in its folder (relative to the output folder), see services/logos.py
     logo_source: str = ""         # where it came from: the image URL, or "uploaded" (then never replaced automatically)
     logo_checked_at: str | None = None
@@ -559,6 +574,7 @@ class MailEvent(BaseModel):
     time: str = ""               # "HH:MM", the user's local time
     duration_min: int = 0
     location: str = ""           # address or video link
+    found_at: str = Field(default_factory=lambda: datetime.now().isoformat(timespec="seconds"))
     status: Literal["proposed", "applied", "dismissed"] = "proposed"
     done_at: str | None = None
     result: str = ""             # what applying it changed
@@ -568,6 +584,9 @@ class MailBook(BaseModel):
     account: MailAccount = MailAccount()
     events: list[MailEvent] = []
     seen: list[str] = []         # Gmail ids already looked at (the newest few thousand)
+    # what each looked-at email became: skipped (names no application), unrelated / other (the model's answer),
+    # proposed, or fixed (a miss the user repaired); to tell why an email was missed
+    outcomes: dict[str, str] = {}
 
 
 # ------------------------------------------------------------------ learning

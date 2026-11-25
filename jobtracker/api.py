@@ -117,7 +117,7 @@ def run_action(name: str, payload: dict = Body(default={})):
         return {"ok": True, "result": result, **({"notice": notice} if notice else {})}
     except NotFound as e:
         raise HTTPException(404, str(e)) from e
-    except (LLMUnavailable, PrepUnavailable, recordings.RecordingUnavailable) as e:
+    except (LLMUnavailable, PrepUnavailable, recordings.RecordingUnavailable, mail.MailError) as e:
         raise HTTPException(503, str(e)) from e
     except PermissionError as e:
         raise HTTPException(403, str(e)) from e
