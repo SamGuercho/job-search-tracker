@@ -121,17 +121,21 @@ class SummaryTests(unittest.TestCase):
     def test_a_review_that_finds_a_misfit_proposes_its_rewrite_once(self):
         companies.update_company(self.c.id, position="Data Scientist")
 
-        verdict = {"value": "relevant"}
+        verdict = {"value": "relevant", "score": 92, "missing": []}
 
         def structured(instructions, text, schema):
             if schema is summary._Review:
-                return schema.model_validate({**REVIEW, "verdict": verdict["value"],
+                return schema.model_validate({**REVIEW, "verdict": verdict["value"], "score": verdict["score"],
+                                              "missing": verdict["missing"],
                                               "suggestion": "Data Scientist with strong SQL and Python."})
             raise llm.LLMUnavailable("not in this test")
         summary.llm.structured = structured
         fits = registry.run("cv.summary.review", {"company": "Acme", "summary": "Data Scientist with SQL."})
-        self.assertNotIn("proposals", fits)  # relevant and the right role: nothing to change
-        verdict["value"] = "partly relevant"
+        self.assertNotIn("proposals", fits)  # relevant, the right role, nothing left to put forward: nothing to change
+        verdict["missing"] = REVIEW["missing"]  # relevant, but SQL (in the CV) isn't put forward: rewrite it
+        emphasis = registry.run("cv.summary.review", {"company": "Acme", "summary": "Data Scientist with Python."})
+        self.assertIn("SQL", emphasis["proposals"][0]["why"])
+        verdict.update(value="partly relevant", score=55)
         misfit = registry.run("cv.summary.review", {"company": "Acme", "summary": "Senior AI Engineer."})
         self.assertEqual(misfit["proposals"][0]["args"], {"company": self.c.id,
                                                           "summary": "Data Scientist with strong SQL and Python."})
@@ -151,6 +155,40 @@ class SummaryTests(unittest.TestCase):
             os.environ["OPENAI_API_KEY"] = ""
         pending = [m["tool"]["action"] for m in chat["messages"] if m["tool"] and m["tool"]["status"] == "pending"]
         self.assertEqual(sorted(pending), ["company.set_cv_summary", "company.set_cv_title"])  # the twin title: once
+
+    def test_every_application_cv_reviews_its_summary_until_one_is_approved(self):
+        companies.update_company(self.c.id, position="Data Scientist")
+        registry.run("cv.headline.update", {"id": headlines.default().id, "title": "Data Scientist",
+                                            "summary": "Data Scientist with Python \u2014 from ML to LLMs."})
+        calls = []
+
+        def structured(instructions, text, schema):
+            if schema is summary._Review:
+                calls.append(text)
+                return schema.model_validate({**REVIEW, "verdict": "relevant", "score": 70,
+                                              "suggestion": "Data Scientist with SQL \u2014 and Python."})
+            raise llm.LLMUnavailable("not in this test")
+        summary.llm.structured = structured
+        os.environ["OPENAI_API_KEY"] = "test"
+        try:
+            r = registry.run("cv.generate", {"keywords": ["SQL"], "company_id": self.c.id, "export_pdf": False})
+            self.assertEqual(len(calls), 1)  # the role fits, yet it was reviewed against the job
+            self.assertEqual(r["summary_review"]["emphasize"], ["SQL"])
+            self.assertEqual(r["proposals"][0]["args"]["summary"], "Data Scientist with SQL, and Python.")  # no long dash
+            text = "\n".join(p.text for p in Document(str(config.OUTPUT_DIR / r["docx"])).paragraphs)
+            self.assertNotIn("\u2014", text)
+            self.assertNotIn("\u2013", text)  # dates too
+            self.assertIn("Data Scientist with Python, from ML to LLMs.", text)
+
+            registry.run("company.set_cv_summary", r["proposals"][0]["args"])  # approved
+            again = registry.run("cv.generate", {"keywords": ["SQL"], "company_id": self.c.id, "export_pdf": False})
+            self.assertEqual(len(calls), 1)  # adapted and approved: not reviewed again
+            self.assertNotIn("proposals", again)
+            other = companies.create_company(name="NoJD", position="Data Scientist")
+            registry.run("cv.generate", {"keywords": ["SQL"], "company_id": other.id, "export_pdf": False})
+            self.assertEqual(len(calls), 1)  # no job description: nothing to review against
+        finally:
+            os.environ["OPENAI_API_KEY"] = ""
 
     def test_tailored_summary_is_used_only_for_that_application(self):
         registry.run("company.set_cv_summary", {"company": "Acme", "summary": "Tailored for Acme."})

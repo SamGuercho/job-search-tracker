@@ -13,6 +13,7 @@ import re
 from pydantic import BaseModel
 
 from .. import guides
+from ..textstyle import plain_dashes
 from . import llm, master_cv
 
 
@@ -59,6 +60,7 @@ def draft_variants(bullet_id: str, keywords: list[str], count: int = 3, facts: s
     seen = {f"{w.lead} {w.text}".strip().lower() for w in bullet.wordings()}
     drafts, rejected = [], []
     for d in result.drafts:
+        d.lead, d.text = plain_dashes(d.lead), plain_dashes(d.text)
         full = f"{d.lead} {d.text}".strip()
         invented = [n for n in _NUMBER.findall(full) if n not in allowed_numbers]
         if invented:

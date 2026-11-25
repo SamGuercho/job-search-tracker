@@ -29,6 +29,8 @@ fact is missing, leave it out or ask; never fill the gap with what the job asks 
   near-duplicate achievement.
 
 ## The whole CV
+- No long dashes (— or –) anywhere: they read as AI-written. Use a comma, a colon, parentheses or two sentences.
+  Ranges take a plain hyphen ("2019 - 2021", "5-10"). The app also replaces any that slip through.
 - One page. The most relevant achievements for the job first; drop the ones that only repeat covered keywords.
 - The language of the job posting, unless the user asks otherwise.
 - Gaps (requirements the CV doesn't cover) are reported to the user, never written into the CV.

@@ -148,3 +148,17 @@ class ActionTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PlainDashesTests(unittest.TestCase):
+    def test_long_dashes_become_commas_and_ranges_hyphens(self):
+        from jobtracker.textstyle import plain_dashes
+        cases = {
+            "enterprise software – from classical ML to LLMs.": "enterprise software, from classical ML to LLMs.",
+            "Built X—a pipeline—that scaled.": "Built X, a pipeline, that scaled.",
+            "Shipped it — fast.": "Shipped it, fast.",
+            "2019 – 2021": "2019 - 2021", "2019 – Present": "2019 - Present", "5–10 people": "5-10 people",
+            "no dash - here": "no dash - here",
+        }
+        for given, expected in cases.items():
+            self.assertEqual(plain_dashes(given), expected)

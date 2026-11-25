@@ -136,7 +136,7 @@ export async function renderCvBuilder(root, params) {
     if (!state.keywords.length) return toast("Add at least one keyword", true);
     if (!state.companyId && !state.companyName.trim()) return toast("Choose a company or type a name", true);
     generateBtn.disabled = true;
-    generateBtn.textContent = "Generating Word + PDF…";
+    generateBtn.textContent = state.companyId ? "Generating Word + PDF, reviewing the summary…" : "Generating Word + PDF…";
     const r = await attempt(() => call("cv.generate", {
       keywords: state.keywords, template: state.template, required: state.required,
       ...(state.companyId ? { company_id: state.companyId } : { company_name: state.companyName.trim() }),
@@ -154,9 +154,32 @@ export async function renderCvBuilder(root, params) {
       h("p", { class: "small muted" }, `Saved in ${r.folder}`),
       r.removed.length > 0 && h("p", { class: "small" }, `${r.removed.length} bullet(s) removed to stay on one page.`),
       matchPanel(r.match),
-      r.warnings.map((w) => h("p", { class: "small", style: "color:var(--amber)" }, `⚠ ${w}`))));
+      r.warnings.map((w) => h("p", { class: "small", style: "color:var(--amber)" }, `⚠ ${w}`))),
+    summaryProposal(r));
     toast("CV generated");
   }
+
+  // The summary was reviewed against the job (every CV for an application, until one is approved): its rewrite
+  // is applied only when you approve it, then the CV is made again with it.
+  const summaryProposal = (r) => {
+    const review = r.summary_review;
+    const p = (r.proposals || []).find((x) => x.action === "company.set_cv_summary");
+    if (!review || review.skipped || review.error) return null;
+    if (!p) return h("div", { class: "card stack-tight" }, h("h3", { style: "margin:0" }, "Summary checked against the job"),
+      h("p", { class: "small muted", style: "margin:0" }, `${review.verdict} · ${review.score}/100: it already puts forward what this job needs.`));
+    const box = h("div", { class: "card stack-tight" },
+      h("h3", { style: "margin:0" }, "Suggested summary for this job"),
+      h("p", { class: "small muted", style: "margin:0" }, `Current summary: ${review.verdict} · ${review.score}/100. ${p.why}.`),
+      h("blockquote", { dir: "auto" }, p.args.summary),
+      review.gaps?.length > 0 && h("p", { class: "small muted", style: "margin:0" }, `Not in your CV, left out: ${review.gaps.join(", ")}`),
+      h("div", { class: "row" },
+        h("button", { class: "primary", onclick: async () => {
+          if (!(await attempt(() => call("company.set_cv_summary", p.args), "Summary saved for this application"))) return;
+          generate();
+        } }, "Use it and remake the CV"),
+        h("button", { class: "ghost", onclick: () => box.remove() }, "Keep my summary")));
+    return box;
+  };
 
   // ---------------------------------------------------------------- layout
   const companyName = h("input", { placeholder: "Company name (creates the output folder)", style: state.companyId ? "display:none" : "", oninput: (e) => (state.companyName = e.target.value) });

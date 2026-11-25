@@ -215,7 +215,7 @@ export async function renderCompany(root, id) {
       h("span", { class: "spacer" }), h("button", { class: "ghost small", onclick: () => { review = null; render(); } }, "Close")),
     r.strengths.length > 0 && h("div", {}, h("div", { class: "small muted" }, "Already fits"), chips(r.strengths, "ok")),
     r.missing_but_in_cv.length > 0 && h("div", {}, h("div", { class: "small muted" }, "The job wants it, your CV has it, the summary doesn't say it"),
-      h("ul", { class: "small" }, r.missing_but_in_cv.map((m) => h("li", { dir: "auto" }, h("b", {}, m.requirement), m.evidence ? ` — ${m.evidence}` : "")))),
+      h("ul", { class: "small" }, r.missing_but_in_cv.map((m) => h("li", { dir: "auto" }, h("b", {}, m.requirement), m.evidence ? `: ${m.evidence}` : "")))),
     r.gaps.length > 0 && h("div", {}, h("div", { class: "small muted" }, "Not in your CV (don't claim it)"), chips(r.gaps, "bad")),
     r.warnings.map((w) => h("p", { class: "small", style: "color:var(--amber)" }, `⚠ ${w}`)),
     r.suggestion && h("div", {},

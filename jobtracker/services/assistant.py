@@ -71,11 +71,12 @@ How to work:
   application sets its own (company.set_cv_title). If the job's title carries a seniority the user's experience
   doesn't support (Staff, Principal, Lead…), say so and propose company.set_cv_title without that word.
   The SUMMARY comes from the master CV's title variants (cv.headline.list; one default; the closest to the job is
-  used). After EVERY CV you make for an application, read the summary it used (`headline` in the result, or
-  cv.headline.for_application; `summary_fits_job` false + `next_step` when it doesn't fit: follow it): if it
-  names another role or field than the job (e.g. "AI Engineer" for a Data Scientist job), or another seniority,
-  call cv.summary.review: when the summary doesn't fit, it proposes its rewrite itself for this application
-  (`proposed_for_approval`: buttons already shown; don't call company.set_cv_summary for it, never cv.profile.update).
+  used). EVERY CV made for an application with a job description reviews its summary against the job by itself
+  (`summary_review` in the result) until the application has its own approved summary: when the summary should
+  put forward other things (`emphasize`) or doesn't fit, its rewrite is already proposed for approval (buttons
+  shown; don't call company.set_cv_summary for it, never cv.profile.update). Say in one line what it changes and
+  why; once approved, regenerate the CV. `summary_fits_job` false + `next_step`: follow it. To check a summary
+  again, call cv.summary.review (it proposes its rewrite itself, `proposed_for_approval`).
   Propose another wording only if the user asks. No suggestion (rejected: see `warnings`)? Say so and ask the user
   for the facts to use.
   CV text follows the CV writing guide (summary: opens with the CV title at the job's level, then years and domains,

@@ -15,6 +15,7 @@ from __future__ import annotations
 import re
 
 from ..models import Headline
+from ..textstyle import plain_dashes
 from . import companies, master_cv
 
 SENIORITY = {"junior", "jr", "mid", "senior", "sr", "staff", "principal", "lead", "head", "chief", "director",
@@ -141,7 +142,7 @@ def _save(update) -> list[Headline]:
 
 def add(title: str, summary: str = "", keywords: list[str] | None = None, make_default: bool = False) -> Headline:
     hints = [k.strip() for k in keywords or [] if k.strip()]
-    new = Headline(title=" ".join(title.split()), summary=summary.strip(), keywords=hints)
+    new = Headline(title=plain_dashes(" ".join(title.split())), summary=plain_dashes(summary.strip()), keywords=hints)
     if not new.title:
         raise ValueError("Give the variant a title")
 
@@ -162,9 +163,9 @@ def update(headline_id: str, title: str | None = None, summary: str | None = Non
         if h is None:
             raise companies.NotFound(f"No title variant {headline_id!r}")
         if title is not None and title.strip():
-            h.title = " ".join(title.split())
+            h.title = plain_dashes(" ".join(title.split()))
         if summary is not None:
-            h.summary = summary.strip()
+            h.summary = plain_dashes(summary.strip())
         if keywords is not None:
             h.keywords = [k.strip() for k in keywords if k.strip()]
         if make_default:

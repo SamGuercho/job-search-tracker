@@ -11,6 +11,7 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_TAB_ALIGNMENT
 from docx.oxml.ns import qn
 from docx.shared import Cm, Pt, RGBColor
 
+from ..textstyle import plain_dashes
 from .common import bottom_border, dates, grouped, hyperlink, url
 
 FONT = "STIX Two Text"   # ships with macOS; Word/LibreOffice fall back to a serif elsewhere
@@ -118,7 +119,7 @@ class ElegantTemplate:
         return para
 
     def _run(self, para, text, size=None, bold=False, italic=False, caps=False):
-        run = para.add_run(text)
+        run = para.add_run(plain_dashes(text))  # never a long dash in a CV, whoever wrote the text
         if size:
             run.font.size = Pt(size)
         run.bold, run.italic = bold or None, italic or None

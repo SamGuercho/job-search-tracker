@@ -7,9 +7,9 @@ from docx.oxml.ns import qn
 
 
 def dates(start: str, end: str) -> str:
-    if start and start == end:  # "2016 – 2016" -> "2016"
+    if start and start == end:  # "2016 - 2016" -> "2016"
         return start
-    return " – ".join(p for p in (start, end) if p)
+    return " - ".join(p for p in (start, end) if p)  # a plain hyphen: no long dashes in a CV (textstyle.py)
 
 
 def grouped(bullets):
