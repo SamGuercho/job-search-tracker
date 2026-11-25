@@ -3,7 +3,7 @@ name = "job-search-tracker"
 version = "1.0.0"
 description = "Local web app to follow job applications and generate tailored one-page CVs, with an AI assistant and an MCP server."
 requires-python = ">=3.11"
-license = "MIT"
+license = "LicenseRef-Proprietary"
 readme = "README.md"
 
 [tool.ruff]

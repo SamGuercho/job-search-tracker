@@ -4,7 +4,7 @@
 
 Ezri is your job search coach: a job search tracker with tailored CVs, interview prep and practice.
 
-[![CI](https://github.com/SamGuercho/job-search-tracker/actions/workflows/ci.yml/badge.svg)](https://github.com/SamGuercho/job-search-tracker/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![CI](https://github.com/SamGuercho/job-search-tracker/actions/workflows/ci.yml/badge.svg)](https://github.com/SamGuercho/job-search-tracker/actions/workflows/ci.yml) [![License: All rights reserved](https://img.shields.io/badge/license-all%20rights%20reserved-lightgrey.svg)](LICENSE)
 
 A local web app to run a job search: follow every application through its process, keep one
 **master CV** and generate a **one-page CV tailored to each job** (Word + PDF), with an optional
@@ -479,4 +479,4 @@ then publish it to the GitHub Container Registry as `ghcr.io/<owner>/job-search-
 ---
 
 ## License
-[MIT](LICENSE): free to use, modify and share, keeping the copyright notice.
+All rights reserved. The code is public for viewing only: no use, copying, modification or redistribution without written permission. See [LICENSE](LICENSE).
