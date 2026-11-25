@@ -90,6 +90,7 @@ class Company(BaseModel):
     cv_summary: str = ""          # tailored CV summary for this application ("" = master CV summary)
     cv_title: str = ""            # the title under your name on this application's CV ("" = its title variant's)
     cv_headline: str = ""         # the title variant pinned for this application ("" = the closest, automatically)
+    cv_include: list[str] = []    # achievement ids always in this application's CVs (like pinned, for it only)
     last_update: str = Field(default_factory=today)
     last_update_by: UpdateSide = "me"
     referral_asked_at: str | None = None   # when you last asked the referee to refer you (Today reminds you after 3 days)

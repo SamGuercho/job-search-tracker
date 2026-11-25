@@ -72,7 +72,7 @@ def partial(model: type[BaseModel], exclude: set[str] = frozenset()) -> type[Bas
 
 
 CompanyPatch = partial(Company, exclude={"id", "status", "process", "documents", "created_at", "cv_summary", "cv_title",
-                                         "cv_headline",
+                                         "cv_headline", "cv_include",
                                          "job_description_file", "job_description_saved_at", "logo_file", "logo_source",
                                          "logo_checked_at", "referral_asked_at"})
 StepPatch = partial(Node, exclude={"id"})
@@ -518,6 +518,17 @@ def company_set_cv_summary(company: str, summary: str):
     return {"company": c.name, "cv_summary": c.cv_summary or "(master CV summary)"}
 
 
+@action("company.set_cv_include")
+def company_set_cv_include(company: str, bullet_id: str, include: bool = True):
+    """Force an achievement (bullet id) into this application's CVs, never cut to fit the page (include=false
+    stops forcing it). For this application only: the master CV's pin is unchanged. Regenerate the CV to apply."""
+    c = companies.resolve(company)
+    master_cv._find_bullet(master_cv.get_master(), bullet_id)  # NotFound for an unknown id
+    ids = [i for i in c.cv_include if i != bullet_id] + ([bullet_id] if include else [])
+    c = companies.update_company(c.id, cv_include=ids)
+    return {"company": c.name, "cv_include": c.cv_include}
+
+
 @action("company.set_cv_title", confirm=True)
 def company_set_cv_title(company: str, title: str):
     """Use this title under the name in this application's CVs instead of the job's title (which CVs use by
@@ -940,12 +951,15 @@ def cv_keywords_extract(text: str):
 
 @action("cv.preview")
 def cv_preview(keywords: list[str], keep_unmatched_roles: bool = True, template: Optional[str] = None,
-               required: list[str] = [], company: Optional[str] = None):
+               required: list[str] = [], company: Optional[str] = None, include: list[str] = []):
     """Dry run: every achievement in the wording that best fits these keywords, and which would be cut to
     fit one page (those matching no keyword go first). `required` keywords (must-haves) weigh double. With `company`,
-    that application's tailored summary is used (it changes the space left for bullets)."""
-    cv = cv_builder.select_bullets(keywords, keep_unmatched_roles, required)
-    cv_builder.use_summary(cv, companies.resolve(company) if company else None)
+    that application's tailored summary and forced achievements (cv_include) are used. `include`: more achievement
+    ids forced in (`forced`, never cut)."""
+    c = companies.resolve(company) if company else None
+    cv = cv_builder.select_bullets(keywords, keep_unmatched_roles, required,
+                                   include=[*(c.cv_include if c else []), *include])
+    cv_builder.use_summary(cv, c)
     cv_builder.fit_estimate(cv, template)
     return cv
 
@@ -960,12 +974,13 @@ def cv_generate_general(template: Optional[str] = None):
 @action("cv.generate")
 def cv_generate(keywords: list[str], company_id: Optional[str] = None, company_name: Optional[str] = None,
                 template: Optional[str] = None, export_pdf: bool = True, keep_unmatched_roles: bool = True,
-                required: list[str] = []):
+                required: list[str] = [], include: list[str] = []):
     """Build a full one-page CV: every achievement in its most relevant wording (`required` keywords weigh
     double), cutting the least relevant only if it doesn't fit.
-    Saved as Word + PDF in <output>/<Company>/ and attached to the company."""
+    Saved as Word + PDF in <output>/<Company>/ and attached to the company. The application's forced achievements
+    (company.set_cv_include) and `include` (more achievement ids) are never cut."""
     result = cv_builder.generate_cv(keywords, company_id, company_name, template, export_pdf, keep_unmatched_roles,
-                                    required)
+                                    required, include=include)
     return {**result, **summary_service.proposal_after_cv(result.get("company_id"), result)}
 
 

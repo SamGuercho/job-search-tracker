@@ -35,6 +35,7 @@ class TailoredBullet(BaseModel):
     priority: int = 0
     redundant: bool = False  # matches, but only keywords other bullets already cover
     fallback: bool = False   # matches none of the job's keywords: fills the page, cut first
+    forced: bool = False     # included on purpose for this CV (the application's cv_include): never cut
 
 
 class TailoredExperience(BaseModel):
@@ -65,13 +66,15 @@ REQUIRED_WEIGHT = 2.0
 
 
 def select_bullets(keywords: list[str], keep_unmatched_roles: bool = True,
-                   required: list[str] | None = None, everything: bool = False) -> TailoredCV:
+                   required: list[str] | None = None, everything: bool = False,
+                   include: list[str] | None = None) -> TailoredCV:
     """Take every achievement once, in the wording most relevant to the job; trimming to the page comes later.
 
     Greedy coverage ranks them: repeatedly take the achievement whose best wording covers the most keywords
     not covered yet (`required` keywords weigh double; priority breaks ties). Achievements that match only
     already-covered keywords are `redundant`; those matching no keyword are `fallback` (main wording) and are
-    the first cut when the CV is too long, then the redundant ones. Pinned achievements are never cut.
+    the first cut when the CV is too long, then the redundant ones. Pinned achievements are never cut, nor the
+    ones in `include` (achievement ids forced into this CV: an application's cv_include).
     keep_unmatched_roles=False drops the roles where nothing matches. A short job description therefore
     still gets a full CV: nothing is removed unless the page is full.
     """
@@ -135,11 +138,14 @@ def select_bullets(keywords: list[str], keep_unmatched_roles: bool = True,
         if bid not in chosen:
             pick(bid)
             chosen[bid].fallback = not everything
+    for bid in include or []:  # an id that no longer exists is ignored
+        if bid in chosen:
+            chosen[bid].pinned = chosen[bid].forced = True
 
     experiences = []
     for exp in cv.experiences:
         bullets = [chosen[b.id] for b in exp.bullets if b.id in chosen]  # CV order, not pick order
-        if not keep_unmatched_roles and bullets and all(b.fallback for b in bullets):
+        if not keep_unmatched_roles and bullets and all(b.fallback and not b.forced for b in bullets):
             continue
         experiences.append(TailoredExperience(
             **exp.model_dump(include={"id", "company", "role", "location", "start", "end"}), bullets=bullets))
@@ -226,12 +232,13 @@ def fit_estimate(cv: TailoredCV, template_name: str | None = None, budget: float
 def generate_cv(keywords: list[str], company_id: str | None = None, company_name: str | None = None,
                 template: str | None = None, export_pdf: bool = True,
                 keep_unmatched_roles: bool = True, required: list[str] | None = None,
-                everything: bool = False) -> dict:
+                everything: bool = False, include: list[str] | None = None) -> dict:
     """Create a one-page tailored CV (.docx + .pdf) in <output folder>/<Company>/.
     An existing CV with the same name is moved to <Company>/archive/ first.
 
     Give either an existing `company_id` (the files are attached to it) or a
-    free `company_name`. Returns paths, page count and what was kept/removed.
+    free `company_name`. Returns paths, page count and what was kept/removed. The application's forced
+    achievements (cv_include) and `include` are never cut.
     """
     company = companies.get_company(company_id) if company_id else None
     if company is None and company_name:
@@ -239,7 +246,8 @@ def generate_cv(keywords: list[str], company_id: str | None = None, company_name
     name = company.name if company else (company_name or "General")
     tpl = get_template(template)
 
-    cv = select_bullets(keywords, keep_unmatched_roles, required, everything)
+    include = [*(company.cv_include if company else []), *(include or [])]
+    cv = select_bullets(keywords, keep_unmatched_roles, required, everything, include)
     headline = use_summary(cv, company, keywords)
     engine = pdf.available_engine() if export_pdf else None
     # With a real PDF check we can afford an optimistic estimate; otherwise be safe.

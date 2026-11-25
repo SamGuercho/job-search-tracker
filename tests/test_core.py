@@ -67,6 +67,26 @@ class SelectionTests(unittest.TestCase):
         kept_ids = {b.id for e in cv.experiences for b in e.bullets}
         self.assertIn(pinned.id, kept_ids)
 
+    def test_an_application_can_force_a_bullet_that_would_be_cut(self):
+        exp = master_cv.get_master().experiences[0]
+        for i in range(40):
+            master_cv.add_bullet(exp.id, f"Long Python bullet number {i} " * 6, ["Python"])
+        cut = cv_builder.fit_estimate(cv_builder.select_bullets(["Python"]), budget=0.97).removed[0]
+        company = companies.create_company(name="Forced Co")
+        registry.run("company.set_cv_include", {"company": company.id, "bullet_id": cut.id})
+        preview = registry.run("cv.preview", {"keywords": ["Python"], "company": company.id})
+        kept = {b["id"]: b for e in preview["experiences"] for b in e["bullets"]}
+        self.assertTrue(kept[cut.id]["forced"])
+        self.assertNotIn(cut.id, {b["id"] for b in preview["removed"]})
+        other = registry.run("cv.preview", {"keywords": ["Python"]})  # another application: not forced
+        self.assertIn(cut.id, {b["id"] for b in other["removed"]})
+        free = registry.run("cv.preview", {"keywords": ["Python"], "include": [cut.id]})  # a CV for no application
+        self.assertNotIn(cut.id, {b["id"] for b in free["removed"]})
+        registry.run("company.set_cv_include", {"company": company.id, "bullet_id": cut.id, "include": False})
+        self.assertEqual(companies.get_company(company.id).cv_include, [])
+        with self.assertRaises(companies.NotFound):
+            registry.run("company.set_cv_include", {"company": company.id, "bullet_id": "nope"})
+
 
 class GenerationTests(unittest.TestCase):
     def setUp(self):

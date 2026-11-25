@@ -13,6 +13,22 @@ export async function renderCvBuilder(root, params) {
     preview: null,
     suggestions: {},   // typed keyword not in the CV -> closest CV terms
     required: [],      // must-have keywords from the job match (weigh double)
+    include: [...(preselected?.cv_include || [])],  // achievements forced in (saved on the application if one is chosen)
+  };
+
+  // Force an achievement into this CV (never cut), or stop forcing it. Saved on the application when one is chosen.
+  const setInclude = async (bulletId, on) => {
+    if (state.companyId) {
+      const r = await attempt(() => call("company.set_cv_include", { company: state.companyId, bullet_id: bulletId, include: on }));
+      if (!r) return;
+      const c = companies.find((x) => x.id === state.companyId);
+      if (c) c.cv_include = r.cv_include;
+      state.include = [...r.cv_include];
+    } else {
+      state.include = on ? [...state.include.filter((i) => i !== bulletId), bulletId] : state.include.filter((i) => i !== bulletId);
+    }
+    toast(on ? "Included in this CV: it won't be cut" : "No longer forced");
+    refreshPreview();
   };
 
   // -------------------------------------------------------------- keywords
@@ -81,7 +97,10 @@ export async function renderCvBuilder(root, params) {
   const previewBox = h("div");
   const refreshPreview = debounce(async () => {
     if (!state.keywords.length) { state.preview = null; return drawPreview(); }
-    state.preview = await attempt(() => call("cv.preview", { keywords: state.keywords, template: state.template, required: state.required }));
+    state.preview = await attempt(() => call("cv.preview", {
+      keywords: state.keywords, template: state.template, required: state.required,
+      ...(state.companyId ? { company: state.companyId } : { include: state.include }),
+    }));
     drawPreview();
     // Typed keywords not in the CV: look up the closest CV terms (typos, other spellings)
     const missing = (state.preview?.unmatched_keywords || []).filter((k) => !(k in state.suggestions));
@@ -120,11 +139,15 @@ export async function renderCvBuilder(root, params) {
         h("h3", {}, `${e.role} · ${e.company}`),
         e.bullets.map((b) => h("div", { class: `bullet ${b.fallback ? "fallback" : ""} ${b.redundant ? "redundant" : ""}`, title: b.matched.length ? `Matches: ${b.matched.join(", ")}` : "" },
           b.group && h("div", { class: "small", style: "color:var(--accent); font-style:italic" }, b.group),
-          b.lead && h("b", {}, `${b.lead} `), highlight(b.text, b.matched), b.pinned ? " 📌" : "",
+          b.lead && h("b", {}, `${b.lead} `), highlight(b.text, b.matched), b.pinned && !b.forced ? " 📌" : "",
+          b.forced && h("div", { class: "row", style: "gap:6px; margin-top:4px" },
+            h("span", { class: "chip on" }, "Forced in"),
+            h("button", { class: "ghost small", onclick: () => setInclude(b.id, false) }, "Undo")),
           (b.matched.length > 0 || b.wordings > 1) && h("div", { class: "small muted" },
             [b.matched.length && `matches: ${b.matched.join(", ")}`,
              b.wordings > 1 && `wording ${b.variant_id ? "variant" : "main"} of ${b.wordings} (best for this job)`].filter(Boolean).join(" · ")))),
-        p.removed.filter((b) => b.experience_id === e.id).map((b) => h("div", { class: "bullet cut" }, b.text)))),
+        p.removed.filter((b) => b.experience_id === e.id).map((b) => h("div", { class: "bullet cut" },
+          h("span", { class: "cut-text" }, b.text), h("button", { class: "small", title: "Always keep this bullet in this CV, even if another one is cut", onclick: () => setInclude(b.id, true) }, "Include anyway"))))),
     );
   };
 
@@ -139,7 +162,7 @@ export async function renderCvBuilder(root, params) {
     generateBtn.textContent = state.companyId ? "Generating Word + PDF, reviewing the summary…" : "Generating Word + PDF…";
     const r = await attempt(() => call("cv.generate", {
       keywords: state.keywords, template: state.template, required: state.required,
-      ...(state.companyId ? { company_id: state.companyId } : { company_name: state.companyName.trim() }),
+      ...(state.companyId ? { company_id: state.companyId } : { company_name: state.companyName.trim(), include: state.include }),
     }));
     generateBtn.disabled = false;
     generateBtn.textContent = "Create CV";
@@ -188,6 +211,8 @@ export async function renderCvBuilder(root, params) {
       state.companyId = e.target.value;
       companyName.style.display = state.companyId ? "none" : "";
       const c = companies.find((x) => x.id === state.companyId);
+      state.include = [...(c?.cv_include || [])];
+      refreshPreview();
       if (c) {
         jd.value = c.job_description || jd.value;
         if (c.keywords.length) setKeywords([...state.keywords, ...c.keywords]);
