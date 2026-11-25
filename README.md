@@ -218,7 +218,9 @@ Connect your Gmail on **Profile → Email** (read-only: Ezri can't send or delet
 server looks at your new emails and keeps only those that name one of your applications: sent from the company's
 domain, or with the company's name or the position in the subject or text (recruiting platforms' no-reply emails
 always say who they're from). The cheap model then says which application it's about and what happened:
-application received, rejection, interview invite (date, time, link), next step, offer, a recruiter's message.
+application received, you were referred (by whom), rejection, interview invite (date, time, link), next step, offer,
+a recruiter's message. Any news from the company (not a recruiter's first message) also marks Applied when you
+hadn't, and a referral notes who referred you and the source.
 Each one shows on **Today** under *From your email* with what **Apply** would do (close the application, plan the
 interview step, mark Applied, log the news) and **Dismiss**, plus a notification. Nothing changes by itself.
 Setting it up needs a Google OAuth client, once, by the server's owner: see the

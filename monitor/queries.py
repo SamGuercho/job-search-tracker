@@ -272,7 +272,7 @@ def review_queue(conn: sqlite3.Connection, full: bool = True) -> dict:
 # Events from services/mail.py: counts and traits only (never an email's content), except the emails people chose
 # to share (mail.shared).
 
-MAIL_KINDS = ["application_received", "rejection", "interview_invite", "next_step", "offer", "recruiter_message"]
+MAIL_KINDS = ["application_received", "referred", "rejection", "interview_invite", "next_step", "offer", "recruiter_message"]
 
 
 def mail(conn: sqlite3.Connection, days: int = 30, user: str | None = None) -> dict:

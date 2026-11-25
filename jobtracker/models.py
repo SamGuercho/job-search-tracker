@@ -546,7 +546,7 @@ class StoryBook(BaseModel):
 # The user's mailbox, read (Gmail, read-only) for news about their applications (services/mail.py): each email
 # about a tracked application becomes a proposed update the user applies or dismisses.
 
-MailKind = Literal["application_received", "rejection", "interview_invite", "next_step", "offer",
+MailKind = Literal["application_received", "referred", "rejection", "interview_invite", "next_step", "offer",
                    "recruiter_message", "other", "unrelated"]
 
 
@@ -570,6 +570,7 @@ class MailEvent(BaseModel):
     kind: MailKind = "other"
     summary: str = ""            # one line: what the email says
     step_name: str = ""          # interview invites: the step it is ("Technical interview")
+    person: str = ""             # referrals: who referred the user
     date: str = ""               # "YYYY-MM-DD" of the interview, when the email gives it
     time: str = ""               # "HH:MM", the user's local time
     duration_min: int = 0

@@ -437,7 +437,7 @@ async function reviewPage(tab) {
 // The email check (services/mail.py): counts and traits only, never an email's content, except those shared on purpose.
 const pct = (v) => (v === null || v === undefined ? "–" : `${Math.round(100 * v)}%`);
 const mins = (v) => (v === null || v === undefined ? "–" : v >= 120 ? `${(v / 60).toFixed(1)} h` : `${Math.round(v)} min`);
-const KIND_LABEL = { application_received: "Application received", rejection: "Rejection", interview_invite: "Interview invite",
+const KIND_LABEL = { application_received: "Application received", referred: "Referred", rejection: "Rejection", interview_invite: "Interview invite",
   next_step: "Next step", offer: "Offer", recruiter_message: "Recruiter message", unrelated: "Unrelated", other: "About it, nothing to do" };
 const REASON_LABEL = { not_checked: "Not checked yet", filter: "Filter skipped it", model: "AI misread it", found: "Was found",
   wrong_application: "Wrong application", wrong_kind: "Misread", not_news: "Not news", already_done: "Already done" };

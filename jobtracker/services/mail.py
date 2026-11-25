@@ -56,10 +56,14 @@ KEEP_SEEN = 3000
 BODY_CHARS = 6000           # of an email's text sent to the model
 
 LABELS: dict[str, str] = {
-    "application_received": "application received", "rejection": "rejection", "interview_invite": "interview invite",
+    "application_received": "application received", "referred": "you were referred", "rejection": "rejection",
+    "interview_invite": "interview invite",
     "next_step": "next step", "offer": "offer", "recruiter_message": "message from the recruiter",
 }
-NOTIFY = {"rejection", "interview_invite", "next_step", "offer", "recruiter_message"}
+NOTIFY = {"referred", "rejection", "interview_invite", "next_step", "offer", "recruiter_message"}
+# News that means the user is a candidate: applying it also marks Applied when it isn't yet (a referral submitted
+# for them, an invite to an application they forgot to mark…). Not a recruiter's message: it can come before.
+CANDIDATE_NEWS = {"application_received", "referred", "rejection", "interview_invite", "next_step", "offer"}
 _SSL = ssl.create_default_context(cafile=certifi.where())
 
 
@@ -324,6 +328,7 @@ class _Verdict(BaseModel):
     company_id: str     # the candidate application it is about, "" if none
     kind: MailKind
     summary: str
+    person: str
     step_name: str
     date: str
     time: str
@@ -336,11 +341,14 @@ The email may be about one of the user's applications listed below (CANDIDATES),
 1. company_id: the id of the candidate the email is about. Use the company, the position, the sender and the
    content; when several roles at the same company are listed, pick the one the position matches. "" if it is
    about none of them (a job alert, a newsletter, another company, marketing, a different role).
-2. kind: application_received (they confirm they got the application), rejection (they won't move forward, the
+2. kind: application_received (they confirm they got the application), referred (someone referred or
+   recommended the user for the role, so the candidacy is submitted, even if the email also asks them to complete
+   their details or upload a CV: referred wins over next_step), rejection (they won't move forward, the
    role is filled or closed), interview_invite (an interview or call is scheduled or offered: give its date and
    time when stated), next_step (a test, an assignment, a request for information or availability, a scheduling
    link), offer, recruiter_message (a recruiter writes about the role, anything else that needs a reply), other
    (about the application but nothing to act on), unrelated (company_id "").
+   person: for referred, the name of who referred the user when the email says it; "" otherwise.
 3. summary: one short line for a notification, in the email's language, with what matters (e.g. "Technical
    interview Tue 3 Dec 10:00 with Dana, Zoom link inside" or "Not moving forward after the HR call").
 4. For an interview_invite: step_name as the hiring process would call it ("HR interview", "Technical interview",
@@ -428,6 +436,7 @@ def _event(email: dict, verdict: _Verdict, company: Company) -> MailEvent:
     return MailEvent(message_id=email["id"], received_at=email["received_at"], sender=email["sender"][:200],
                      subject=email["subject"][:300], company_id=company.id, company=company.name, kind=verdict.kind,
                      summary=verdict.summary.strip()[:300], step_name=verdict.step_name.strip()[:80],
+                     person=verdict.person.strip()[:120] if verdict.kind == "referred" else "",
                      date=verdict.date if valid_date else "", time=verdict.time if valid_date and valid_time else "",
                      duration_min=max(0, min(verdict.duration_min, 600)), location=verdict.location.strip()[:500])
 
@@ -507,11 +516,25 @@ def view(e: MailEvent) -> dict:
 def _plan(e: MailEvent) -> str:
     """What Apply does, in words."""
     when = f" on {e.date}{' at ' + e.time if e.time else ''}" if e.date else ""
-    return {"rejection": "Close the application (rejected) and log the news",
+    by = f" (referred by {e.person})" if e.person else " (referred)"
+    plan = {"rejection": "Close the application (rejected) and log the news",
             "application_received": "Mark Applied done and log the news",
+            "referred": f"Mark Applied done{by}, note the referral and log the news",
             "interview_invite": (f"Plan “{e.step_name or 'Interview'}”{when} and log the news" if e.date
                                  else "Mark the response received and log the news (no date yet)"),
             }.get(e.kind, "Log the news on the application")
+    if e.kind in CANDIDATE_NEWS - {"application_received", "referred"} and not _applied(e.company_id):
+        plan += ", and mark Applied (not marked yet)"
+    return plan
+
+
+def _applied(company_id: str) -> bool:
+    """Whether the application's Applied step is done (True when unknown: no extra promise in the plan)."""
+    try:
+        steps = [n for n in companies.get_company(company_id).process.order() if n.type() == "applied"]
+    except Exception:  # noqa: BLE001  (the application was deleted)
+        return True
+    return not steps or steps[0].state == "done"
 
 
 def inbox(include_done: int = 10) -> dict:
@@ -574,11 +597,20 @@ def apply(event_id: str) -> dict:
     c = companies.get_company(e.company_id)
     on = (e.received_at or datetime.now().isoformat())[:10]
     changes: list[str] = []
+    if e.kind in CANDIDATE_NEWS:  # news from them means the user is a candidate
+        changes.append(_done_step(c, "applied", on))
+        c = companies.get_company(c.id)
+    if e.kind == "referred":
+        referral = {"source_type": "Referral / network"} if not c.source_type else {}
+        if e.person:
+            referral.update({**({"referee": e.person} if not c.referee else {}),
+                             **({"source_detail": e.person} if not c.source_detail else {})})
+        if referral:
+            companies.update_company(c.id, fetch_logo=False, **referral)
+            changes.append("referral noted")
     if e.kind == "rejection":
         companies.update_step(c.id, c.process.closed.id, state="done", date=on, notes="Rejected (email)")
         changes.append("application closed")
-    elif e.kind == "application_received":
-        changes.append(_done_step(c, "applied", on))
     elif e.kind == "interview_invite":
         changes.append(_done_step(c, "response", on))
         if e.date:

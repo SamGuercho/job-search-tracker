@@ -141,10 +141,10 @@ class CheckAndApplyTests(Configured):
 
     def verdict(self, email_, options):
         if "Interview" in email_["subject"]:
-            return mail._Verdict(company_id=options[0].id, kind="interview_invite", summary="Technical interview Tue 10:00",
+            return mail._Verdict(company_id=options[0].id, kind="interview_invite", summary="Technical interview Tue 10:00", person="",
                                  step_name="Technical interview", date="2026-12-01", time="10:00", duration_min=45,
                                  location="https://zoom.us/j/1")
-        return mail._Verdict(company_id=options[0].id, kind="rejection", summary="Not moving forward",
+        return mail._Verdict(company_id=options[0].id, kind="rejection", summary="Not moving forward", person="",
                              step_name="", date="", time="", duration_min=0, location="")
 
     def run_check(self, ids, verdict=None):
@@ -178,7 +178,7 @@ class CheckAndApplyTests(Configured):
 
     def test_unrelated_and_invalid_answers_are_dropped(self):
         def wrong(email_, options):
-            return mail._Verdict(company_id="not-a-candidate", kind="rejection", summary="", step_name="", date="",
+            return mail._Verdict(company_id="not-a-candidate", kind="rejection", summary="", person="", step_name="", date="",
                                  time="", duration_min=0, location="")
         with mock.patch.object(mail.llm, "structured", side_effect=lambda *a: wrong(None, None)):
             self.assertEqual(mail.classify(email("a@nimbus.io", "x"), [self.c]).kind, "unrelated")
@@ -213,7 +213,7 @@ class CheckAndApplyTests(Configured):
             book.events.append(received)
         registry.run("mail.apply", {"update": received.id})
         applied = next(n for n in companies.get_company(self.c.id).process.steps if n.name == "Applied")
-        self.assertEqual((applied.state, applied.date), ("done", "2026-11-20"))
+        self.assertEqual(applied.state, "done")  # by the invite already (news from them): the confirmation keeps it
 
     def test_dismiss_changes_nothing(self):
         r, _, _ = self.run_check(["c"])
@@ -247,7 +247,7 @@ class MonitoringTests(Configured):
         return mail.parse(self.messages[i])
 
     def run_check(self, ids, kind="rejection"):
-        verdict = lambda e, o: mail._Verdict(company_id=o[0].id, kind=kind, summary="x", step_name="", date="",
+        verdict = lambda e, o: mail._Verdict(company_id=o[0].id, kind=kind, summary="x", person="", step_name="", date="",
                                              time="", duration_min=0, location="")
         with mock.patch.object(mail, "list_new", return_value=ids), mock.patch.object(mail, "fetch", side_effect=self.fetch), \
                 mock.patch.object(mail, "classify", side_effect=verdict), mock.patch.object(mail.push, "notify", return_value=1):
@@ -406,3 +406,53 @@ class MonitorEmailPageTests(unittest.TestCase):
         self.assertEqual(m["miss_reasons"], {"filter": 1})
         self.assertEqual(m["shared"][0]["text"], "Body")
         self.assertEqual(m["errors"][0]["error"], "expired")
+
+
+class ReferralTests(Configured):
+    def setUp(self):
+        super().setUp()
+        self.c = companies.create_company(name="Riskified", position="Data Scientist", website="https://riskified.com")
+        self.connect()
+
+    def event(self, kind, person=""):
+        e = mail.MailEvent(message_id=kind, company_id=self.c.id, company="Riskified", kind=kind, person=person,
+                           received_at="2026-11-24T09:00:00", summary="Dana referred you to Riskified")
+        with mail.store.transaction() as book:
+            book.events.append(e)
+        return e
+
+    def applied(self):
+        return next(n for n in companies.get_company(self.c.id).process.steps if n.name == "Applied")
+
+    def test_referral_marks_applied_and_notes_the_referee(self):
+        e = self.event("referred", "Dana Levi")
+        self.assertEqual(mail.view(e)["action"], "Mark Applied done (referred by Dana Levi), note the referral and log the news")
+        r = registry.run("mail.apply", {"update": e.id})
+        self.assertIn("“Applied” done", r["applied"]["result"])
+        c = companies.get_company(self.c.id)
+        self.assertEqual((self.applied().state, self.applied().date), ("done", "2026-11-24"))
+        self.assertEqual((c.status, c.source_type, c.referee, c.source_detail), ("Applied", "Referral / network", "Dana Levi", "Dana Levi"))
+
+    def test_referral_keeps_what_the_user_set(self):
+        companies.update_company(self.c.id, source_type="Job board", referee="Someone")
+        registry.run("mail.apply", {"update": self.event("referred", "Dana").id})
+        c = companies.get_company(self.c.id)
+        self.assertEqual((c.source_type, c.referee), ("Job board", "Someone"))
+
+    def test_news_from_them_marks_applied_when_forgotten(self):
+        e = self.event("next_step")
+        self.assertTrue(mail.view(e)["action"].endswith("and mark Applied (not marked yet)"))
+        registry.run("mail.apply", {"update": e.id})
+        self.assertEqual(self.applied().state, "done")
+        self.assertFalse(mail.view(self.event("offer"))["action"].endswith("(not marked yet)"))  # now it is
+        msg = self.event("recruiter_message")
+        companies.update_step(self.c.id, self.applied().id, state="todo")
+        registry.run("mail.apply", {"update": msg.id})
+        self.assertEqual(self.applied().state, "todo")  # a recruiter may write before any application
+
+    def test_person_is_kept_for_referrals_only(self):
+        email = {"id": "x", "sender": "a@riskified.com", "subject": "s", "received_at": "2026-11-24T09:00:00"}
+        v = mail._Verdict(company_id=self.c.id, kind="next_step", summary="s", person="Dana", step_name="", date="",
+                          time="", duration_min=0, location="")
+        self.assertEqual(mail._event(email, v, self.c).person, "")
+
