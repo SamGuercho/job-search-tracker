@@ -219,7 +219,8 @@ can open it; it shows everyone's conversations, so tell the people who use your 
 ```powershell
 tailscale serve --bg --https=8443 8100
 ```
-Then open `https://<pc-name>.<tailnet>.ts.net:8443`. The data stays on this PC, in the Docker volume
+Then open `https://<pc-name>.<tailnet>.ts.net:8443`. It installs like the app (*Install app* in Chrome,
+*Add to Home Screen* in Safari) as **Ezri Monitor**, with its own icon (a chart badge). The data stays on this PC, in the Docker volume
 `jobsearch_telemetry` (SQLite works reliably there, not in a Windows folder). Once a week the app writes a
 compressed copy (`telemetry-<date>.db.xz`) to `data\telemetry-backups` and keeps the last 3; `backup.ps1` mirrors
 that folder to `<backups>\telemetry` in OneDrive, so the cloud holds the same 3 files, never more. The live

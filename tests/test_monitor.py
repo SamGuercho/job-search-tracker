@@ -91,6 +91,28 @@ class MonitorTests(unittest.TestCase):
         finally:
             config.PASSWORD = original
 
+    def test_installable_as_an_app(self):
+        page = self.client.get("/").text
+        self.assertIn('rel="manifest" href="/manifest.webmanifest"', page)
+        manifest = self.client.get("/manifest.webmanifest")
+        self.assertEqual(manifest.headers["content-type"], "application/manifest+json")
+        icons = manifest.json()["icons"]
+        self.assertIn("maskable", {i["purpose"] for i in icons})
+        for icon in icons:
+            self.assertEqual(self.client.get(icon["src"]).headers["content-type"], "image/png")
+        worker = self.client.get("/sw.js")
+        self.assertEqual((worker.status_code, worker.headers["content-type"].split(";")[0]), (200, "text/javascript"))
+        # browsers fetch the manifest without cookies: install files stay reachable, the rest still needs the login
+        original, config.PASSWORD = config.PASSWORD, "secret"
+        try:
+            self.client.cookies.clear()
+            self.assertEqual(self.client.get("/manifest.webmanifest").status_code, 200)
+            self.assertEqual(self.client.get("/static/icons/icon-192.png").status_code, 200)
+            self.assertEqual(self.client.get("/sw.js").status_code, 401)
+            self.assertEqual(self.client.get("/static/monitor.js").status_code, 401)
+        finally:
+            config.PASSWORD = original
+
 
 if __name__ == "__main__":
     unittest.main()

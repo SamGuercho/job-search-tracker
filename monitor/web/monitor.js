@@ -454,3 +454,4 @@ async function route(refresh = false) {
 }
 addEventListener("hashchange", () => { selected = null; route(); });
 route();
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});

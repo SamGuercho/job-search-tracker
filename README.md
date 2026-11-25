@@ -258,7 +258,8 @@ switches to Claude and errors. All carry a timestamp, the conversation, the turn
 person and the AI call they belong to. They are written live to `telemetry.db` (SQLite), kept on this computer:
 not in your data folder, so a synced data folder (iCloud, OneDrive) never carries it.
 
-The **monitor** is a separate small app that reads them (owner only):
+The **monitor** is a separate small app that reads them (owner only), installable like the app
+(home-screen icon, own window, as *Ezri Monitor*):
 ```bash
 .venv/bin/python -m jobtracker monitor        # http://127.0.0.1:8100
 ```

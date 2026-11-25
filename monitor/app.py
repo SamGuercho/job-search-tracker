@@ -27,6 +27,8 @@ _db: dict = {"path": None, "conn": None}
 _rw: dict = {"path": None, "conn": None}
 _lock = threading.Lock()
 _write_lock = threading.Lock()
+# What installing the monitor as an app needs: browsers fetch the manifest without cookies (nothing private here)
+PUBLIC = ("/health", "/manifest.webmanifest", "/static/icons/", "/static/logo-64.png")
 
 
 def _connection(slot: dict, readonly: bool):
@@ -63,7 +65,8 @@ def _denied(request: Request, message: str, status: int = 403):
 
 @app.middleware("http")
 async def owner_only(request: Request, call_next):
-    if request.url.path == "/health":
+    path = request.url.path
+    if any(path == p or (p.endswith("/") and path.startswith(p)) for p in PUBLIC):
         return await call_next(request)
     if users.enabled():
         login = request.headers.get(users.HEADER, "").strip()
@@ -219,6 +222,17 @@ def review_queue(full: bool = True):
 @app.get("/")
 def index():
     return FileResponse(WEB / "index.html")
+
+
+@app.get("/manifest.webmanifest")
+def manifest():
+    return FileResponse(WEB / "manifest.webmanifest", media_type="application/manifest+json")
+
+
+@app.get("/sw.js")
+def service_worker():
+    """At the root, so it controls the whole monitor (a worker's scope is its own folder)."""
+    return FileResponse(WEB / "sw.js", media_type="text/javascript")
 
 
 app.mount("/static", StaticFiles(directory=WEB), name="static")

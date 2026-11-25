@@ -1,0 +1,21 @@
+{
+  "name": "Ezri Monitor",
+  "short_name": "Ezri Monitor",
+  "description": "How Ezri's assistant behaves: dashboard, conversations, turn traces and the review queue.",
+  "id": "/",
+  "start_url": "/#/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#4934c9",
+  "theme_color": "#4934c9",
+  "icons": [
+    { "src": "/static/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/static/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/static/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Dashboard", "url": "/#/", "icons": [{ "src": "/static/icons/icon-192.png", "sizes": "192x192", "type": "image/png" }] },
+    { "name": "Conversations", "url": "/#/conversations", "icons": [{ "src": "/static/icons/icon-192.png", "sizes": "192x192", "type": "image/png" }] },
+    { "name": "Review", "url": "/#/review", "icons": [{ "src": "/static/icons/icon-192.png", "sizes": "192x192", "type": "image/png" }] }
+  ]
+}
