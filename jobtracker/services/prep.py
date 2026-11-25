@@ -25,7 +25,7 @@ from .. import config, users
 from ..logs import log
 from ..models import InterviewPrep, PrepBook, PrepResult
 from ..storage import UserDocument
-from . import companies, files, master_cv, push, usage
+from . import companies, files, master_cv, push, stories, usage
 
 store = UserDocument("preps.json", PrepBook)
 PREP_FILENAME = "Interview_Prep.md"
@@ -42,12 +42,13 @@ Prepare the candidate below for their next interviews at {company}, as the best 
    to revise, most likely first.
 3. Map the candidate's real experience (their CV below) to the role: strengths to push, gaps to prepare.
    Never invent experience for the candidate.
-4. Write {count} exercises the candidate is likely to face in the technical interviews, from easy to hard,
-   matching the job's actual requirements (e.g. coding, SQL, system design, case study, depending on the role).
-   For each: why this company would ask it, the prompt as an interviewer would say it, a complete reference
-   solution, a grading rubric whose points add up to 10, what a strong answer looks like, common mistakes, and
-   `estimated_min`: the minutes a focused study session needs to learn the notion from this candidate's level
-   and do the exercise (15 to 90; the app schedules the session in their free time).
+4. Write {count} technical exercises (`category` "technical") the candidate is likely to face in the technical
+   interviews, from easy to hard, matching the job's actual requirements (e.g. coding, SQL, system design, case
+   study, depending on the role). A technical exercise has a correct answer. For each: why this company would
+   ask it, the prompt as an interviewer would say it, a complete reference solution, a grading rubric whose
+   points add up to 10, what a strong answer looks like, common mistakes, and `estimated_min`: the minutes a
+   focused study session needs to learn the notion from this candidate's level and do the exercise (15 to 90;
+   the app schedules the session in their free time). `competency` "" and `stories` [] for technical exercises.
    The rubric must let another, simpler model grade the candidate's answer fairly and consistently.
    If a practice history is given below: never repeat an exercise already practised; put more weight on the
    weak topics and the points the candidate missed (with new exercises, not the same ones); match the
@@ -55,11 +56,25 @@ Prepare the candidate below for their next interviews at {company}, as the best 
    their target.
    Give each exercise a `capability`: the broad skill it trains, reusing exactly one of these names when one
    fits: {capabilities}. Only if none fits, use a short new name (1 to 3 words).
-5. Suggest smart questions the candidate can ask the interviewers.
+5. Write {stories} story questions (`category` "story", `kind` "behavioral"): the "tell me about a time…"
+   questions this company's interviewers are most likely to ask for this role and seniority (from their
+   values or leadership principles, what candidates report, and the job). There is no correct answer: the
+   answer is a true story from the candidate's past, so NEVER write a story or a model answer for them.
+   For each: `competency` (what it tests, reusing one of these names when one fits: {competencies}),
+   `why`, `prompt` (the question as the interviewer would ask it), `stories`: the exact titles of the
+   candidate's stories below that answer it best (best first; [] if none fits: they must write one),
+   `solution`: how to answer it, not the answer: which of their experiences (stories, or CV achievements when
+   no story fits) to use and why, and the beats this interviewer wants to hear, `rubric` (10 points: what this
+   interviewer listens for, e.g. a clear situation, their own actions, a measurable result, the lesson, fit with
+   the company's values, under two minutes), `strong_answer`: the shape of a strong answer (structure and
+   signals, not a story), `common_mistakes`, `topic` (the theme, e.g. "Disagreeing with a manager"),
+   `capability` "Behavioral", `difficulty`, and `estimated_min` 0 (story questions are never scheduled).
+6. Suggest smart questions the candidate can ask the interviewers.
 
-Write all the text in {language}, concise and concrete (keep the JSON field names and the `difficulty` and
-`capability` values in English). Use Markdown inside text fields. Do not run shell commands or edit
-files: research and answer only. Your final message must be the JSON object matching the given schema.
+Write all the text in {language}, concise and concrete (keep the JSON field names and the `category`,
+`difficulty`, `capability` and `competency` values in English, and story titles exactly as written). Use
+Markdown inside text fields. Do not run shell commands or edit files: research and answer only. Your final
+message must be the JSON object matching the given schema.
 """
 
 
@@ -107,14 +122,22 @@ def _context(company) -> str:
     history = practice.summary_for_prep()
     if history:
         lines.append(f"\nCandidate's practice history (all applications):\n{history}")
+    bank = stories.summary_for_prep()
+    lines.append("\nCandidate's stories (their story bank, for the story questions; titles are exact):\n"
+                 + (bank or "- none written yet: every story question gets `stories` [] and points to CV achievements"))
     return "\n".join(lines)
 
 
-def brief(ref: str, exercises: int = 5, language: str = "") -> dict:
+STORY_QUESTIONS = 4  # story questions per prep, on top of the technical exercises
+
+
+def brief(ref: str, exercises: int = 5, language: str = "", story_questions: int = STORY_QUESTIONS) -> dict:
     """Everything a model needs to write the prep: instructions, context and the JSON schema to return."""
     company = companies.resolve(ref)
     from . import practice  # (imports prep)
     instructions = INSTRUCTIONS.format(company=company.name, website=company.website or "find it", count=exercises,
+                                       stories=story_questions,
+                                       competencies=", ".join(c for c, _ in stories.COMPETENCIES),
                                        capabilities=", ".join(practice.known_capabilities()),
                                        language=language.strip() or _default_language())
     return {"company_id": company.id, "company": company.name, "instructions": instructions,
@@ -191,12 +214,24 @@ def markdown(name: str, position: str, r: PrepResult) -> str:
     out = [f"# Interview prep – {name}" + (f" ({position})" if position else ""), "",
            "## The company", r.company_summary, "", "## Likely interview process", r.interview_process, "",
            "## Focus topics", *[f"- {t}" for t in r.focus_topics], "", "## Your angle", r.candidate_angle, "",
-           "## Exercises"]
-    for i, e in enumerate(r.exercises, 1):
+           "## Technical exercises"]
+    numbered = list(enumerate(r.exercises, 1))
+    for i, e in [(i, e) for i, e in numbered if e.category == "technical"]:
         out += ["", f"### {i}. {e.title} ({e.kind}, {e.difficulty})", f"*Why they'd ask it:* {e.why}", "",
                 e.prompt, "", "<details><summary>Solution, rubric, strong answer</summary>", "", e.solution, "",
                 "**Rubric (10 points)**", *[f"- {p.point} ({p.points})" for p in e.rubric], "",
                 "**Strong answer:** " + e.strong_answer, "", "**Common mistakes**",
+                *[f"- {m}" for m in e.common_mistakes], "", "</details>"]
+    told = [(i, e) for i, e in numbered if e.category == "story"]
+    if told:
+        out += ["", "## Story questions", "", "*Answered with your own true stories (see Stories in the app).*"]
+    for i, e in told:
+        use = ", ".join(f"“{t}”" for t in e.stories) or "none yet: write one"
+        out += ["", f"### {i}. {e.title}" + (f" ({e.competency})" if e.competency else ""),
+                f"*Why they'd ask it:* {e.why}", "", e.prompt, "", f"**Your story:** {use}", "",
+                "<details><summary>How to answer, what they listen for</summary>", "", e.solution, "",
+                "**What they listen for (10 points)**", *[f"- {p.point} ({p.points})" for p in e.rubric], "",
+                "**A strong answer:** " + e.strong_answer, "", "**Common mistakes**",
                 *[f"- {m}" for m in e.common_mistakes], "", "</details>"]
     out += ["", "## Questions to ask them", *[f"- {q}" for q in r.questions_to_ask], "",
             "## Sources", *[f"- {s}" for s in r.sources], ""]
@@ -247,7 +282,7 @@ def _default_language() -> str:
     return profile.settings().interview_language or "English"
 
 
-def start(ref: str, exercises: int = 5, language: str = "") -> InterviewPrep:
+def start(ref: str, exercises: int = 5, language: str = "", story_questions: int = STORY_QUESTIONS) -> InterviewPrep:
     """Start a prep in the background (premium users only). Poll get() for the result."""
     if not users.is_premium():
         raise PermissionError("Interview prep is for premium accounts (JOBTRACKER_PREMIUM).")
@@ -258,7 +293,7 @@ def start(ref: str, exercises: int = 5, language: str = "") -> InterviewPrep:
     if current and current.status == "running":
         return current
     company = companies.resolve(ref)
-    task = brief(company.id, exercises, language)
+    task = brief(company.id, exercises, language, story_questions)
     by = f"codex {config.PREP_MODEL} ({config.PREP_EFFORT})"
     prep = _store(InterviewPrep(company_id=company.id, status="running", by=by))
     user = users.current()
@@ -274,8 +309,9 @@ def _run(user: str, company_id: str, run_id: str, task: dict, by: str) -> None:
             result = run_codex(task)
             usage.record_plan(config.PREP_MODEL, time.monotonic() - started)
             save(company_id, result, by, run_id)
-            push.notify("Interview prep ready", f"{task['company']}: research, likely questions and "
-                        f"{len(result.exercises)} exercises.", f"/#/company/{company_id}", tag=f"prep:{company_id}")
+            told = sum(1 for e in result.exercises if e.category == "story")
+            push.notify("Interview prep ready", f"{task['company']}: research, {len(result.exercises) - told} "
+                        f"exercises and {told} story questions.", f"/#/company/{company_id}", tag=f"prep:{company_id}")
             log.info("Interview prep done for %s", task["company"])
         except Exception as e:  # recorded on the prep, shown in the app
             log.warning("Interview prep failed for %s: %s", task["company"], e)

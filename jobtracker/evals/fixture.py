@@ -8,7 +8,7 @@ from pathlib import Path
 from .. import config, users
 
 FIXTURE_FILES = ("companies.json", "master_cv.json", "profile.json", "preps.json", "practice.json", "recordings.json",
-                 "learning.json", "linkedin.json")
+                 "learning.json", "linkedin.json", "stories.json")
 
 
 def data_folder(login: str) -> Path:

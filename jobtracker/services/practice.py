@@ -13,7 +13,7 @@ from pydantic import BaseModel
 from ..logs import log
 from ..models import PracticeAttempt, PracticeBook
 from ..storage import UserDocument
-from . import companies, llm, prep
+from . import companies, llm, prep, stories
 
 store = UserDocument("practice.json", PracticeBook)
 GOOD = 7    # a score below this (out of 10) means "to review"
@@ -175,15 +175,19 @@ def _find_exercise(company_ref: str, exercise: str):
 
 
 def record(company: str, exercise: str, score: int, missed: list[str] | None = None, feedback: str = "",
-           topic: str = "", kind: str = "", capability: str = "") -> PracticeAttempt:
+           topic: str = "", kind: str = "", capability: str = "", story: str = "") -> PracticeAttempt:
     """Log one graded answer. `exercise` is the prep exercise's number or title; an exercise that isn't in the
-    prep (made up during practice) is logged too, with the topic/kind given."""
+    prep (made up during practice) is logged too, with the topic/kind given. `story`: the story the user told
+    (id or title), for a story question."""
     c = companies.resolve(company)
     found = _find_exercise(c.id, exercise)
     title, kind = (found.title, found.kind) if found else (exercise.strip(), kind)
     topic = found.topic if found else topic
+    told = stories.resolve(story) if story.strip() else None
+    if told and not found and not kind:
+        kind = "behavioral"
     attempt = PracticeAttempt(
-        company_id=c.id, company=c.name, exercise=title, kind=kind, topic=topic,
+        story_id=told.id if told else "", company_id=c.id, company=c.name, exercise=title, kind=kind, topic=topic,
         capability=assign(found.capability if found and found.capability else capability, topic, kind, title),
         difficulty=found.difficulty if found else "", score=max(0, min(int(score), 10)),
         missed=[m for m in (missed or []) if m.strip()], feedback=feedback.strip())

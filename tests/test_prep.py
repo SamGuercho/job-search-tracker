@@ -81,7 +81,8 @@ class PrepTests(unittest.TestCase):
 
     def test_brief_has_instructions_context_and_schema(self):
         b = registry.run("prep.brief", {"company": "Nimbus", "exercises": 3})
-        self.assertIn("3 exercises", b["instructions"])
+        self.assertIn("3 technical exercises", b["instructions"])
+        self.assertIn("4 story questions", b["instructions"])
         self.assertIn("https://nimbus.example", b["instructions"])
         self.assertIn("SQL and experimentation.", b["context"])
         self.assertIn("Candidate's CV", b["context"])

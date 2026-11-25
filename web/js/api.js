@@ -8,7 +8,7 @@ import { h, toast } from "./ui.js";
 const READ_ONLY = new Set([
   "app.info", "today.get", "company.list", "company.get", "prep.get", "practice.profile", "practice.history",
   "practice.capabilities", "recording.list", "recording.transcript", "cv.master.get", "chat.list", "chat.get",
-  "calendar.upcoming", "analytics.summary", "usage.report", "usage.averages", "process.get",
+  "calendar.upcoming", "analytics.summary", "usage.report", "usage.averages", "process.get", "story.list",
 ]);
 const DATA_CACHE = "jobtracker-data-v1";
 const SERVER_DOWN = new Set([502, 503, 504]);  // what Tailscale answers when the home server's app is off
@@ -132,7 +132,7 @@ export async function saveForOffline({ force = false } = {}) {
   if (!force && Date.now() - last < 15 * 60 * 1000) return null;
   const quiet = (action, payload = {}) => call(action, payload).catch(() => null);
   const [companies, chats] = await Promise.all([quiet("company.list"), quiet("chat.list"),
-    quiet("app.info"), quiet("today.get"), quiet("practice.profile"), quiet("practice.history"), quiet("cv.master.get"),
+    quiet("app.info"), quiet("today.get"), quiet("practice.profile"), quiet("practice.history"), quiet("cv.master.get"), quiet("story.list"),
     quiet("usage.report", { days: 30 }), quiet("usage.averages"), quiet("analytics.summary")]);
   if (!companies) return null;  // offline: keep the previous copy
   for (const c of companies) {

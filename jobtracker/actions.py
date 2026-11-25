@@ -56,6 +56,7 @@ from .services import (
     push,
     recordings,
     rules,
+    stories,
     today,
     usage,
     wording,
@@ -179,9 +180,11 @@ def prep_get(company: str, version: Optional[str] = None):
     """The interview prep pack of an application (company research, likely interview process, focus topics,
     exercises with reference solution and a 10-point grading rubric, questions to ask), or null if none: the
     latest finished one, or `version` (an id from `versions`). `status` is running (being written, takes
-    minutes), done or error; `run` is a newer run still running or failed. To practice with the user: give one
-    exercise's prompt at a time, wait for their answer, grade it against the rubric (score /10, points hit and
-    missed), record it with practice.record, then show the solution if they want it."""
+    minutes), done or error; `run` is a newer run still running or failed. Each exercise is `category`
+    "technical" (a reference solution) or "story" (a "tell me about a time…" question: `stories` names the
+    user's stories that answer it, `solution` says how to answer, never a model story). To practice with the
+    user: give one exercise's prompt at a time, wait for their answer, grade it against the rubric (score /10,
+    points hit and missed), record it with practice.record, then show the solution if they want it."""
     p = prep.get(company, version)
     if p is None:
         return None
@@ -194,15 +197,64 @@ def prep_get(company: str, version: Optional[str] = None):
 
 @action("practice.record")
 def practice_record(company: str, exercise: str, score: int, missed: list[str] = [], feedback: str = "",
-                    topic: str = "", kind: str = "", capability: str = "", session: str = ""):
+                    topic: str = "", kind: str = "", capability: str = "", session: str = "", story: str = ""):
     """Log a graded practice answer: `exercise` is the prep exercise's number or title, `score` out of 10
     (from the rubric), `missed` the rubric points the answer missed, `feedback` one or two lines. For an
     exercise that isn't in the prep, also give its topic, kind and capability (the broad skill: SQL, Statistics,
-    System design…). In a study session, give its id as `session`. Call it after every graded answer.
+    System design…). In a study session, give its id as `session`. For a story question, give the story the
+    user told as `story` (id or title). Call it after every graded answer.
     `learning` in the result says what it changed: the session completed and what comes next (a check, a 3rd
     check, or learned), or checks suggested for a new notion: tell the user."""
-    attempt = practice.record(company, exercise, score, missed, feedback, topic, kind, capability)
+    attempt = practice.record(company, exercise, score, missed, feedback, topic, kind, capability, story)
     return {**attempt.model_dump(mode="json"), "learning": learning.on_attempt(attempt, session)}
+
+
+# ------------------------------------------------------------------ stories
+
+@action("story.list")
+def story_list():
+    """The user's story bank: their true stories for "tell me about a time…" questions (Situation, Task, Action,
+    Result, lesson), each with the competencies it answers, the master CV achievements it tells, the STAR parts
+    still `missing` and its practice scores; `coverage`: the common competencies and the stories that answer
+    each; `gaps`: common competencies with no story yet (what to write next)."""
+    return stories.overview()
+
+
+@action("story.get")
+def story_get(story: str):
+    """One story (id or title) with its achievements and practice."""
+    s = stories.resolve(story)
+    return stories.view(s, attempts=[a for a in practice.store.load().attempts if a.story_id == s.id])
+
+
+@action("story.add")
+def story_add(title: str, situation: str = "", task: str = "", action: str = "", result: str = "", lesson: str = "",
+              competencies: list[str] = [], achievements: list[str] = []):
+    """Save a new story in the bank. Only the user's own facts, in their words tidied up: never add a fact, number
+    or outcome they didn't give. `title`: a short name they'll recognise. `situation` (context, 1-2 sentences),
+    `task` (what was at stake, their responsibility), `action` (what THEY did, with "I"), `result` (outcome, with
+    numbers when they have them), `lesson` (what they learned or would do differently). `competencies`: the
+    questions it answers (see story.list's `coverage`; usually 2-3). `achievements`: ids of the master CV
+    achievements it tells (from cv.master.get)."""
+    return stories.view(stories.add(title, situation, task, action, result, lesson, competencies, achievements))
+
+
+@action("story.update")
+def story_update(story: str, title: Optional[str] = None, situation: Optional[str] = None,
+                 task: Optional[str] = None, action: Optional[str] = None, result: Optional[str] = None,
+                 lesson: Optional[str] = None, competencies: Optional[list[str]] = None,
+                 achievements: Optional[list[str]] = None):
+    """Change a story (id or title): only the fields given; lists replace the previous ones. Same rule as
+    story.add: only facts the user gave."""
+    return stories.view(stories.update(story, title=title, situation=situation, task=task, action=action,
+                                       result=result, lesson=lesson, competencies=competencies,
+                                       achievements=achievements))
+
+
+@action("story.delete", confirm=True)
+def story_delete(story: str):
+    """Delete a story from the bank (id or title). Its practice answers stay in the practice log."""
+    return stories.delete(story)
 
 
 @action("learning.agenda")

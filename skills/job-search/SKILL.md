@@ -79,3 +79,12 @@ the action from the project root:
   OK, `company.set_cv_summary` (that application only) or `cv.profile.update` (master, everywhere).
 - Import a CV file: `cv.import.parse {"file_path"}` (draft, not saved) → summarise → `cv.import.apply
   {"draft", "mode": "merge"}` (`"replace"` only if asked). AI actions need `OPENAI_API_KEY` in `.env`.
+
+## Interview prep and stories
+- `prep.get {"company"}` → the prep pack. Each exercise is `category` "technical" (reference solution, rubric,
+  scheduled as study sessions) or "story" (a "tell me about a time…" question: `stories` names the user's stories
+  that answer it; never write a model story).
+- Story bank: `story.list` (stories in Situation/Task/Action/Result + lesson, competencies, `gaps`), `story.add`,
+  `story.update`, `story.delete`. Only the user's own facts: ask one question at a time, never add a detail.
+- Grade every practice answer against its rubric and log it with `practice.record` (`story` = the story told,
+  for a story question).

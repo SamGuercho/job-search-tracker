@@ -1,4 +1,4 @@
-// Hash router: #/  ·  #/company/<id>  ·  #/cv[?company=<id>]  ·  #/cv/master  ·  #/today  ·  #/chat[/<id>][?q=…]  ·  #/analytics  ·  #/practice  ·  #/costs
+// Hash router: #/  ·  #/company/<id>  ·  #/cv[?company=<id>]  ·  #/cv/master  ·  #/today  ·  #/chat[/<id>][?q=…]  ·  #/analytics  ·  #/practice  ·  #/stories  ·  #/costs
 import { renderTracker } from "./views/tracker.js";
 import { renderCompany } from "./views/company.js";
 import { renderCvBuilder } from "./views/cv.js";
@@ -6,6 +6,7 @@ import { renderMasterCv } from "./views/master.js";
 import { renderChat } from "./views/chat.js";
 import { renderAnalytics } from "./views/analytics.js";
 import { renderPractice } from "./views/practice.js";
+import { renderStories } from "./views/stories.js";
 import { renderCosts } from "./views/costs.js";
 import { renderToday } from "./views/today.js";
 import { renderProfile } from "./views/profile.js";
@@ -23,6 +24,7 @@ const routes = [
   { pattern: /^\/chat(?:\/([\w-]+))?$/, nav: "chat", view: () => renderChat },
   { pattern: /^\/analytics$/, nav: "analytics", view: () => renderAnalytics },
   { pattern: /^\/practice$/, nav: "practice", view: () => renderPractice },
+  { pattern: /^\/stories$/, nav: "stories", view: () => renderStories },
   { pattern: /^\/costs$/, nav: "costs", view: () => renderCosts },
   { pattern: /^\/profile$/, nav: "profile", view: () => renderProfile },
 ];
@@ -58,7 +60,7 @@ const versionLine = () => {
 // Phones: "More" in the tab bar lists the pages that have no tab
 document.querySelector(".tab-more")?.addEventListener("click", () => {
   const pages = [["#/cv", "CV builder", "A tailored CV for an application"], ["#/cv/master", "Master CV", "Your achievements and their wordings"],
-    ["#/analytics", "Analytics", "How your search is going"], ["#/costs", "Costs", "What the AI features cost"],
+    ["#/stories", "Stories", "Your stories for “Tell me about a time…”"], ["#/analytics", "Analytics", "How your search is going"], ["#/costs", "Costs", "What the AI features cost"],
     ["#/profile", "Profile", "Your name and LinkedIn"]];
   const close = modal("More", h("div", {}, h("div", { class: "more-list" }, pages.map(([href, label, note]) =>
     h("a", { href, onclick: () => close() }, h("b", {}, label), h("span", { class: "small muted" }, note))),

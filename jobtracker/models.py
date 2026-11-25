@@ -424,6 +424,9 @@ class RubricPoint(BaseModel):
 
 class Exercise(BaseModel):
     title: str
+    # technical: has a correct answer (reference solution, learn/check sessions). story: a "tell me about a time…"
+    # question answered with one of the user's true stories (stories.json): no model answer, never scheduled.
+    category: Literal["technical", "story"] = "technical"
     kind: str            # coding, SQL, system design, case study, behavioral…
     difficulty: Literal["easy", "medium", "hard"]
     capability: str = ""  # the broad skill it trains ("SQL", "Statistics"…), for progress over time ("" = older preps)
@@ -435,6 +438,17 @@ class Exercise(BaseModel):
     strong_answer: str   # what a strong answer looks like, in a few lines
     common_mistakes: list[str]
     estimated_min: int = 0  # minutes a focused session needs to learn the notion and do the exercise (0 = older preps)
+    competency: str = ""    # story questions: what it tests ("Conflict", "Failure"…)
+    stories: list[str] = []  # story questions: titles of the user's stories that answer it ([] = none fits yet)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _older_behavioral_is_story(cls, data):
+        """Preps written before the split: a behavioral exercise is a story question."""
+        if isinstance(data, dict) and "category" not in data and \
+                str(data.get("kind", "")).lower().startswith(("behav", "story")):
+            data = {**data, "category": "story"}
+        return data
 
 
 class PrepResult(BaseModel):
@@ -482,11 +496,34 @@ class PracticeAttempt(BaseModel):
     feedback: str = ""
     source: Literal["practice", "interview"] = "practice"  # interview: graded from a real interview's recording
     recording_id: str = ""
+    story_id: str = ""          # the story the user told (story questions)
 
 
 class PracticeBook(BaseModel):
     attempts: list[PracticeAttempt] = []
     targets: dict[str, int] = {}   # capability -> target score /10 the user aims for
+
+
+# ------------------------------------------------------------------- stories
+# The story bank: the user's true stories for "tell me about a time…" questions, written once in the STAR shape
+# and reused in every prep, practice and mock interview (services/stories.py). Only the user's own facts.
+
+class Story(BaseModel):
+    id: str = Field(default_factory=new_id)
+    title: str                   # short name the user recognises: "Elasticsearch migration at Cybersixgill"
+    situation: str = ""          # the context, in one or two sentences
+    task: str = ""               # what was at stake, the user's responsibility
+    action: str = ""             # what the user did themselves ("I…")
+    result: str = ""             # the outcome, with numbers when possible
+    lesson: str = ""             # what they learned, or would do differently
+    competencies: list[str] = []  # the questions it answers: "Conflict", "Failure", "Leadership"…
+    achievements: list[str] = []  # master CV achievement (bullet) ids it is the story of
+    created_at: str = Field(default_factory=lambda: datetime.now().isoformat(timespec="seconds"))
+    updated_at: str = Field(default_factory=lambda: datetime.now().isoformat(timespec="seconds"))
+
+
+class StoryBook(BaseModel):
+    stories: list[Story] = []
 
 
 # ------------------------------------------------------------------ learning

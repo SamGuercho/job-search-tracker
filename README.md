@@ -153,8 +153,20 @@ prep pack: likely interview process, topics, your angle, exercises with solution
 to ask (also saved as `Interview_Prep.md`). **Practice with the assistant** then quizzes you and grades your
 answers with the rubrics. Codex runs with your ChatGPT plan, not API billing: setup in the home-server guide.
 
+### Stories (for "tell me about a time…" questions)
+Behavioral questions ("Tell me about a disagreement with your manager", "…a project that failed") have no right
+answer: the interviewer wants a true story from your past, told well. The **Stories** page keeps yours, written
+once in the STAR shape (Situation, Task, Action, Result, plus the lesson), each tagged with the questions it
+answers and linked to the master CV achievements it tells. It shows which common questions have no story yet;
+tap one to write it with the assistant, which asks you one question at a time and only uses what you say.
+
+A prep has **technical exercises** (a reference solution, a rubric, scheduled as study sessions) and **story
+questions** (no model answer: the prep names which of your stories fits, how to tell it, and what this
+interviewer listens for). Story questions are never scheduled as study sessions; practising one grades how you
+told your story and records it on the story.
+
 ### Study plan: learn, then check
-Under the prep, **📅 Schedule my prep** turns each exercise into a topic to learn, with an estimated time: a
+Under the prep, **📅 Schedule my prep** turns each technical exercise into a topic to learn, with an estimated time: a
 **learn** session (the assistant teaches the notion, then gives the exercise and grades it), **check 1** one or two
 days later, and **check 2** three or four days after check 1. A 3rd check is added only when check 2 scores below
 7/10 or drops 2 points below check 1. Checks ask new questions, never the exercise again, and must cover the

@@ -26,7 +26,7 @@ from datetime import date, datetime, time, timedelta
 
 from ..models import Course, LearningBook, PracticeAttempt, StudyHours, StudySession
 from ..storage import UserDocument
-from . import calendar, companies, practice, prep, profile
+from . import calendar, companies, practice, prep, profile, stories
 
 store = UserDocument("learning.json", LearningBook)
 
@@ -301,6 +301,8 @@ def propose(company: str, exercises: list[str] | None = None) -> dict:
     planner = Planner(h)
     proposed, skipped = [], []
     for e in p.result.exercises:
+        if e.category == "story":  # nothing to learn: the user prepares their story (Stories page)
+            continue
         if wanted is not None and e.title.lower() not in wanted and e.topic.lower() not in wanted:
             continue
         if e.title in taken:
@@ -474,7 +476,7 @@ def suggest(a: PracticeAttempt) -> dict | None:
     """A course of checks when the answer shows a new notion: first answer on the topic below 7, or the first
     7+ after lower scores (it may be luck)."""
     key = topic_key(a.topic, a.exercise)
-    if not key:
+    if not key or stories.is_story_attempt(a):  # a story is improved by retelling it, not by spaced checks
         return None
     before = [x for x in practice.store.load().attempts if x.id != a.id and topic_key(x.topic, x.exercise) == key]
     if not before and a.score < GOOD:

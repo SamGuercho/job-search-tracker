@@ -14,6 +14,7 @@ export async function renderCompany(root, id) {
   let review = null;   // last AI review of the summary, kept across re-renders
   let network = await call("linkedin.contacts", { company: id }).catch(() => null);  // LinkedIn contacts there
   let courses = await call("learning.courses", { company: id }).catch(() => []);   // study sessions for this prep
+  const bank = (await call("story.list").catch(() => null))?.stories ?? null;  // the user's stories (null: not loaded)
   let proposal = null;  // slots proposed, not accepted yet
 
   const save = async (fields, msg = "Saved") => {
@@ -344,7 +345,7 @@ export async function renderCompany(root, id) {
       h("div", { class: "row" }, h("h2", { style: "margin:0" }, "Interview prep"), h("span", { class: "spacer" }), language, start),
       info.premium && !running && h("p", { class: "small muted", style: "margin:4px 0 0; text-align:right" }, "Covered by your ChatGPT plan: no API cost."),
       !p && h("p", { class: "muted" }, info.premium
-        ? "Research on the company, the likely interview process, and exercises with solutions and grading rubrics. Takes a few minutes."
+        ? "Research on the company, the likely interview process, technical exercises with solutions and grading rubrics, and the story questions to expect. Takes a few minutes."
         : "No prep yet. Ask an AI assistant connected to the tracker (MCP) to write one with prep.brief and prep.save."),
       running && h("p", {}, `⏳ Being prepared by ${run.by} since ${run.requested_at.slice(11, 16)}. This takes a few minutes: you can leave this page.`),
       run?.status === "error" && h("div", { class: "result warn card" }, "The last preparation failed: ", run.error),
@@ -401,7 +402,7 @@ export async function renderCompany(root, id) {
       h("div", { class: "row" }, h("h2", { style: "margin:0" }, "Study plan"), h("span", { class: "spacer" }),
         !proposal && h("button", { class: active.length ? "" : "primary", onclick: schedule }, active.length ? "Schedule the rest" : "📅 Schedule my prep")),
       !proposal && !active.length && h("p", { class: "small muted" },
-        "Each exercise becomes a topic to learn: a learn session (its estimated time), then check 1 a day or two later and check 2 three to four days after it, in your free study time",
+        "Each technical exercise becomes a topic to learn (story questions are prepared in Stories): a learn session (its estimated time), then check 1 a day or two later and check 2 three to four days after it, in your free study time",
         due ? " before the interview." : ".", " ", h("a", { href: "#/profile" }, "Your hours ›")),
       proposed, booked);
   };
@@ -426,6 +427,18 @@ export async function renderCompany(root, id) {
   const prepBody = (p) => {
     const r = p.result;
     const byTitle = scores();
+    const numbered = r.exercises.map((e, i) => ({ e, n: i + 1 }));
+    const technical = numbered.filter(({ e }) => e.category !== "story");
+    const told = numbered.filter(({ e }) => e.category === "story");
+    // The stories for a story question: those the prep named (if they still exist), else the user's stories tagged
+    // with its competency (written after the prep)
+    const storiesFor = (e) => {
+      if (!bank) return { titles: e.stories || [], guessed: false };
+      const named = (e.stories || []).filter((t) => bank.some((b) => b.title.toLowerCase() === t.toLowerCase()));
+      if (named.length) return { titles: named, guessed: false };
+      const want = (e.competency || "").toLowerCase();
+      return { titles: want ? bank.filter((b) => b.competencies.some((c) => c.toLowerCase() === want)).map((b) => b.title) : [], guessed: true };
+    };
     const latest = !p.versions.length || p.id === p.versions[p.versions.length - 1].id;
     const practice = (i, e) => h("a", {
       class: "btn", href: chatHref(`Let's practice exercise ${i} ("${e.title}") of my ${company.name} interview prep. Give me the exercise, then grade my answer with the rubric.`),
@@ -438,19 +451,41 @@ export async function renderCompany(root, id) {
       section("Likely interview process", markdown(r.interview_process)),
       section("Focus topics", h("ul", {}, r.focus_topics.map((t) => h("li", { dir: "auto" }, t)))),
       section("Your angle", markdown(r.candidate_angle)),
-      h("h3", {}, `Exercises (${r.exercises.length})`),
-      r.exercises.map((e, n) => h("details", { class: "exercise" },
-        h("summary", {}, h("b", {}, `${n + 1}. ${e.title}`), h("span", { class: "small muted" }, ` · ${e.kind} · ${e.difficulty} `),
+      technical.length > 0 && h("h3", {}, `Technical exercises (${technical.length})`),
+      technical.map(({ e, n }) => h("details", { class: "exercise" },
+        h("summary", {}, h("b", {}, `${n}. ${e.title}`), h("span", { class: "small muted" }, ` · ${e.kind} · ${e.difficulty} `),
           scoreBadge(byTitle[e.title])),
         h("div", { class: "md" },
           h("p", { class: "small muted" }, h("i", {}, "Why they'd ask it: "), e.why),
           markdown(e.prompt),
-          h("div", { class: "row" }, practice(n + 1, e)),
+          h("div", { class: "row" }, practice(n, e)),
           h("details", {}, h("summary", { class: "small" }, "Solution, rubric and strong answer"),
             markdown(e.solution),
             h("p", { class: "md-h" }, "Rubric (10 points)"),
             h("ul", {}, e.rubric.map((pt) => h("li", { dir: "auto" }, `${pt.point} (${pt.points})`))),
             h("p", { class: "md-h" }, "Strong answer"), markdown(e.strong_answer),
+            h("p", { class: "md-h" }, "Common mistakes"), h("ul", {}, e.common_mistakes.map((m) => h("li", { dir: "auto" }, m))))))),
+      told.length > 0 && [h("h3", { style: "margin-top:14px" }, `Story questions (${told.length})`),
+        h("p", { class: "small muted" }, "“Tell me about a time…”: answered with one of your true stories, not a solution to learn. ", h("a", { href: "#/stories" }, "Your stories ›"))],
+      told.map(({ e, n }) => h("details", { class: "exercise" },
+        h("summary", {}, h("b", {}, `${n}. ${e.title}`), h("span", { class: "small muted" }, ` · ${e.competency || e.kind} `),
+          storiesFor(e).titles.length ? h("span", { class: "chip ok" }, "story ready") : h("span", { class: "chip unknown" }, "no story yet"),
+          scoreBadge(byTitle[e.title])),
+        h("div", { class: "md" },
+          h("p", { class: "small muted" }, h("i", {}, "Why they'd ask it: "), e.why),
+          markdown(e.prompt),
+          h("p", {}, h("b", {}, "Your story: "), storiesFor(e).titles.length
+            ? [storiesFor(e).titles.map((t, i) => [i ? ", " : "", h("a", { href: "#/stories" }, t)]),
+              storiesFor(e).guessed && h("span", { class: "small muted" }, ` (tagged “${e.competency}”)`)]
+            : ["none fits yet. ", h("a", { href: chatHref(`Help me write a story for this ${company.name} interview question: "${e.prompt}". Ask me one question at a time, then save it in my story bank.`) }, "Write it with the assistant →")]),
+          h("div", { class: "row" }, h("a", {
+            class: "btn", href: chatHref(`Ask me story question ${n} ("${e.title}") of my ${company.name} interview prep, as the interviewer would. I'll answer with my story; then grade how I told it with the rubric and record it.`),
+          }, "Practice with the assistant")),
+          h("details", {}, h("summary", { class: "small" }, "How to answer and what they listen for"),
+            markdown(e.solution),
+            h("p", { class: "md-h" }, "What they listen for (10 points)"),
+            h("ul", {}, e.rubric.map((pt) => h("li", { dir: "auto" }, `${pt.point} (${pt.points})`))),
+            h("p", { class: "md-h" }, "A strong answer"), markdown(e.strong_answer),
             h("p", { class: "md-h" }, "Common mistakes"), h("ul", {}, e.common_mistakes.map((m) => h("li", { dir: "auto" }, m))))))),
       practiceLog.length > 0 && section(`Your practice (${practiceLog.length})`, h("ul", {}, practiceLog.slice(0, 15).map((a) => h("li", {},
         h("b", {}, `${a.score}/10`), ` · ${a.exercise} · ${a.at.slice(0, 10)}`,
