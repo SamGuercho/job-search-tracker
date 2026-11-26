@@ -203,7 +203,11 @@ class Education(BaseModel):
     location: str = ""
     start: str = ""
     end: str = ""
-    details: str = ""
+    details: str = ""            # one item per line (thesis, GPA, honours…): each printed on its own line
+    details_inline: bool = False  # True: printed on the header line instead, "Degree, School • details   dates"
+
+    def detail_lines(self) -> list[str]:
+        return [line.strip() for line in self.details.splitlines() if line.strip()]
 
 
 class SkillGroup(BaseModel):

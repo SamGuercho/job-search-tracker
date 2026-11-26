@@ -58,6 +58,17 @@ def entry_layout(title: str, org: str, when: str, font: str = FONT) -> str:
     return "title_dates" if _fits(font, when, (title, True, False)) else "org_dates"
 
 
+def _education_parts(ed) -> tuple[str, str, list[str]]:
+    """An education entry's header title, its organisation part, and the detail lines printed under it. Details
+    "on the same line" (details_inline) join the organisation part ("School (City) • GPA 92 • Thesis: …")."""
+    title = ed.degree or ed.school
+    org = (ed.school + (f" ({ed.location})" if ed.location else "")) if ed.degree else ed.location
+    details = ed.detail_lines() if hasattr(ed, "detail_lines") else [d for d in ed.details.splitlines() if d.strip()]
+    if getattr(ed, "details_inline", False) and details:
+        return title, " • ".join([org, *details] if org else details), []
+    return title, org, details
+
+
 def entry_fits(title: str, org: str, when: str, font: str = FONT) -> bool:
     """Do "**Title**, *Organisation*" and the right-aligned dates share one line?"""
     return entry_layout(title, org, when, font) == "one"
@@ -144,11 +155,10 @@ class ElegantTemplate:
         if cv.education:
             self._heading(doc, "Education")
             for i, ed in enumerate(cv.education):
-                org = ed.school + (f" ({ed.location})" if ed.location else "")
-                self._entry(doc, ed.degree or ed.school, org if ed.degree else ed.location,
-                            dates(ed.start, ed.end), before=0 if i == 0 else 2)
-                if ed.details:
-                    self._run(self._para(doc), ed.details)
+                title, org, below = _education_parts(ed)
+                self._entry(doc, title, org, dates(ed.start, ed.end), before=0 if i == 0 else 2)
+                for line in below:  # one detail per line
+                    self._run(self._para(doc), line)
 
     def _section_languages(self, doc, cv):
         if cv.languages:
@@ -241,8 +251,8 @@ class ElegantTemplate:
             if entries:
                 h += heading + sum((0 if i == 0 else 6) + entry_head(e) + bullets(e.bullets) for i, e in enumerate(entries))
         if cv.education:
-            h += heading + sum(head(ed.degree or ed.school, ed.school if ed.degree else ed.location, dates(ed.start, ed.end))
-                               + 2 + (lines(ed.details, CHARS_PER_LINE) * LINE_PT if ed.details else 0)
+            h += heading + sum(head(*_education_parts(ed)[:2], dates(ed.start, ed.end)) + 2
+                               + sum(lines(line, CHARS_PER_LINE) * LINE_PT for line in _education_parts(ed)[2])
                                for ed in cv.education)
         if cv.languages:
             h += heading + LINE_PT

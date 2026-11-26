@@ -147,6 +147,7 @@ Rules:
   keywords are used to pick bullets whose text contains the words a job description asks for.
   Prefer the spelling of the existing vocabulary below when the same term appears.
 - Group skills as in the CV (e.g. "Programming", "Tools"); if ungrouped, use one group named "Skills".
+- Education `details` (thesis, GPA, honours, relevant courses): one item per line, separated by a newline.
 - Spoken languages go in `languages` (e.g. "French (Native)"), not in skills.
 - Put a profile/summary paragraph in profile.summary if there is one.
 

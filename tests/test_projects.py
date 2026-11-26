@@ -95,6 +95,22 @@ class EntryLayoutTests(unittest.TestCase):
         i = paras.index(title)
         self.assertEqual(paras[i + 1], "Technion (Haifa)\t2014 - 2016")
 
+    def test_details_one_per_line_or_on_the_degree_line(self):
+        reset()
+        edu = {"school": "Technion", "degree": "MSc Data Science", "location": "Haifa", "start": "2016", "end": "2018",
+               "details": "GPA 92/100\n\nThesis: demand forecasting"}
+        master_cv.set_education([edu])
+        r = cv_builder.generate_cv(["SQL"], company_name="Edu", export_pdf=False)
+        paras = [p.text.replace("\u00a0", " ") for p in Document(str(TMP / "out" / r["docx"])).paragraphs]
+        i = paras.index("MSc Data Science, Technion (Haifa)\t2016 - 2018")
+        self.assertEqual(paras[i + 1:i + 3], ["GPA 92/100", "Thesis: demand forecasting"])  # each on its own line
+
+        master_cv.set_education([{**edu, "details_inline": True}])
+        r = cv_builder.generate_cv(["SQL"], company_name="Edu", export_pdf=False)
+        paras = [p.text.replace("\u00a0", " ") for p in Document(str(TMP / "out" / r["docx"])).paragraphs]
+        self.assertIn("MSc Data Science, Technion (Haifa) • GPA 92/100 • Thesis: demand forecasting\t2016 - 2018", paras)
+        self.assertNotIn("GPA 92/100", paras)
+
     def test_without_font_files_counts_characters(self):
         self.assertTrue(entry_fits("MSc Data Science", "Université Paris-Saclay (Paris)", "2016 - 2018", "No Such Font"))
         self.assertFalse(entry_fits("x" * 80, "y" * 60, "2016 - 2018", "No Such Font"))

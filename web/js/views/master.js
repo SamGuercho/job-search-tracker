@@ -401,6 +401,42 @@ export async function renderMasterCv(root) {
         h("button", { class: "primary", onclick: () => attempt(() => call(saveAction, { [key]: items }), `${title} saved`) }, `Save ${title.toLowerCase()}`)));
   };
 
+  // Education: header fields on one row; details below, one item per line, printed under the degree or on its line.
+  const educationEditor = () => {
+    const items = cv.education;
+    const rows = h("div", { class: "stack" });
+    const input = (item, k, label, flex = 1, max = "") => h("input", {
+      placeholder: label, value: item[k] || "", style: `flex:${flex}; min-width:0${max ? `; max-width:${max}` : ""}`,
+      oninput: (e) => (item[k] = e.target.value),
+    });
+    const draw = () => mount(rows, items.map((item, i) => h("div", { class: "edu-row stack-tight" },
+      h("div", { class: "row" },
+        input(item, "degree", "Degree", 2), input(item, "school", "School", 2), input(item, "location", "Location", 1, "160px"),
+        input(item, "start", "Start", 1, "90px"), input(item, "end", "End", 1, "90px"),
+        h("button", { class: "ghost icon danger", title: "Remove", onclick: () => { items.splice(i, 1); draw(); } }, "✕")),
+      h("div", { class: "row", style: "align-items:flex-start" },
+        h("textarea", {
+          rows: Math.max(2, (item.details || "").split("\n").length), style: "flex:1",
+          placeholder: "Details (optional), one per line: Thesis: …, GPA 92/100, Dean's list…",
+          oninput: (e) => (item.details = e.target.value),
+        }, item.details || ""),
+        h("select", {
+          "aria-label": "Where the details go", style: "width:auto",
+          onchange: (e) => (item.details_inline = e.target.value === "inline"),
+        },
+          h("option", { value: "below", selected: !item.details_inline }, "Each on its own line"),
+          h("option", { value: "inline", selected: !!item.details_inline }, "On the degree's line"))))));
+    draw();
+    return h("div", { class: "card" },
+      h("p", { class: "small muted", style: "margin-top:0" }, "Details: one item per line. Each prints on its own line under the degree, "
+        + "or all of them on the degree's line (“Degree, School • GPA 92 • Thesis: …”) when they fit before the dates."),
+      rows,
+      h("div", { class: "row", style: "margin-top:12px" },
+        h("button", { onclick: () => { items.push({ school: "", degree: "", location: "", start: "", end: "", details: "", details_inline: false }); draw(); } }, "+ Add"),
+        h("span", { class: "spacer" }),
+        h("button", { class: "primary", onclick: () => attempt(() => call("cv.education.set", { items }), "Education saved") }, "Save education")));
+  };
+
   const languages = () => {
     const input = h("input", { value: joinList(cv.languages), placeholder: "French (Native), English (Fluent)" });
     return h("div", { class: "card" },
@@ -512,9 +548,7 @@ export async function renderMasterCv(root) {
       newExperience(), cv.experiences.map(experience)),
     projects: fold("projects", "Projects", SECTIONS.projects[2](), newProject(), cv.projects.map(project)),
     education: fold("education", "Education", `${cv.education.length} ${cv.education.length === 1 ? "entry" : "entries"}`,
-      listEditor("Education", cv.education,
-        [["degree", "Degree"], ["school", "School"], ["location", "Location"], ["start", "Start"], ["end", "End"], ["details", "Details"]],
-        { school: "", degree: "", location: "", start: "", end: "", details: "" }, "cv.education.set", "items")),
+      educationEditor()),
     languages: fold("languages", "Languages", cv.languages.join(" · ") || "none yet", languages()),
   });
   const sectionsBox = h("div", { class: "stack" });
