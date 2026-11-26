@@ -182,6 +182,7 @@ export function matchPanel(m) {
       h("span", { class: "spacer" }),
       h("span", { class: "small muted", title: "Requirements read with AI are more complete" }, m.ai_used ? "Requirements read with AI" : "Requirements from your keywords")),
     m.covered.length > 0 && h("div", {}, h("div", { class: "small muted" }, `In this CV (${m.covered.length})`), chips(terms(m.covered), "ok")),
+    m.reword?.length > 0 && h("div", {}, h("div", { class: "small muted" }, `Gaps fixable with a variant (${m.reword.length}): this CV says it with other words, an ATS looks for the job's word`), chips(terms(m.reword), "warn")),
     m.cut.length > 0 && h("div", {}, h("div", { class: "small muted" }, `In your master CV, not in this one (${m.cut.length}): pin or shorten bullets to bring them back`), chips(terms(m.cut), "warn")),
     m.missing.length > 0 && h("div", {}, h("div", { class: "small muted" }, `Not in your CV (${m.missing.length}): don't claim it`), chips(terms(m.missing), "bad")));
 }

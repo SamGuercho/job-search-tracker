@@ -57,8 +57,19 @@ For each confirmed group:
 2. ⏸ Tell the user the cost; run again with `--yes` only after they agree.
 3. Grade the rubric of each result in `evals/local/runs/baseline-*/results.json` ("verdict": "yes" | "no", and a
    one-line "reason"), honestly, from the reply and tool calls only. Then `eval report baseline`.
-4. The new cases must **fail** here (they reproduce the flagged behavior). If one passes, the case doesn't capture
-   the problem: fix the case (it's a new one, so: add a variant) or tell the user the flag may be noise.
+4. The new cases must **fail** here (they reproduce the flagged behavior). If one passes, first find out whether
+   the code already changed since the flagged turn (`source.date`): `git log --since=<that date> -- jobtracker/
+   skills/` for changes to the prompt, tools or services involved. Never "fix" something already fixed, and never
+   bend a case until it fails on fixed code.
+   - Relevant changes since: check the case reproduces the flag on the code of that time. Make a worktree at the
+     last commit before the turn (`git worktree add ../jt-at-flag <commit>`), run only that case from there
+     (`cd ../jt-at-flag && <repo>/.venv/bin/python -m jobtracker eval run --label at-flag --cases <id>`, ⏸ cost),
+     then remove the worktree. Fails there and passes now → **already fixed** by that commit: no fix in step 4,
+     the case stays frozen as a regression test, and in step 6 resolve its flags with `--fixed-in <that commit>`.
+     Passes there too → the case doesn't capture the problem: fix it as below.
+   - No relevant change: the case doesn't capture the problem: fix the case (it's a new one, so: add a variant)
+     or tell the user the flag may be noise.
+   ⏸ Tell the user which cases are already fixed (and by which commit) before going on.
 
 ## 4. Fix
 

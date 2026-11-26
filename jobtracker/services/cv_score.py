@@ -4,9 +4,11 @@ The requirements come from jd_match (kept on the company as `job_match`, so scor
 side is the text of the generated Word file itself, so the score reflects what a recruiter reads: bullets cut
 to fit one page and manual edits count.
 
-  score  - % of the requirements written in this CV (required ones weigh double)
-  best   - % your master CV covers: the most a tailored CV can reach
-Each requirement is `covered` (in this CV), `cut` (in your master CV, not in this CV) or `missing`.
+  score  - % of the requirements written in this CV with the job's word or a form of it, as an ATS searches
+           (required ones weigh double)
+  best   - % your master CV covers: the most a tailored CV can reach (rewording included)
+Each requirement is `covered` (in this CV, the job's word), `reword` (in this CV with other words only: an ATS
+misses it until a bullet uses the job's word), `cut` (in your master CV, not in this CV) or `missing`.
 """
 from __future__ import annotations
 
@@ -21,7 +23,8 @@ from ..models import Company, JobMatch, MatchScore, Requirement
 from . import companies, jd_match, master_cv
 
 REQUIRED_WEIGHT = 2
-MATCH_VERSION = 1  # bump when matching changes, so kept requirements are read again (1: education counts)
+MATCH_VERSION = 2  # bump when matching changes, so kept requirements are read again (1: education counts,
+                   # 2: AI maps only same/synonym/instance terms)
 
 
 def text_hash(text: str) -> str:
@@ -66,18 +69,28 @@ def docx_text(path: Path) -> str:
 
 
 def score(job: JobMatch, cv_text: str) -> MatchScore | None:
-    def written(r: Requirement) -> bool:
-        return any(master_cv.keyword_pattern(t).search(cv_text) for t in [r.term, *r.keywords])
+    lines = [line for line in cv_text.splitlines() if line.strip()]
 
-    covered, cut, missing = [], [], []
+    def literal(r: Requirement) -> bool:
+        """The job's word (or a form of it) is in the CV; a degree requirement is met by the degree written."""
+        if any(master_cv.written_in(r.term, line) for line in lines):
+            return True
+        return bool(jd_match.degree_mentions(r.term)) and any(master_cv.keyword_pattern(k).search(cv_text)
+                                                             for k in r.keywords)
+
+    def other_words(r: Requirement) -> bool:
+        return any(master_cv.keyword_pattern(k).search(cv_text) for k in r.keywords)
+
+    covered, reword, cut, missing = [], [], [], []
     for r in job.requirements:
-        (covered if written(r) else cut if r.keywords else missing).append(r)
+        (covered if literal(r) else reword if other_words(r) else cut if r.keywords else missing).append(r)
     weight = lambda rs: sum(REQUIRED_WEIGHT if r.required else 1 for r in rs)
     total = weight(job.requirements)
     if not total:
         return None
-    return MatchScore(score=round(100 * weight(covered) / total), best=round(100 * weight(covered + cut) / total),
-                      covered=covered, cut=cut, missing=missing, ai_used=job.ai_used)
+    return MatchScore(score=round(100 * weight(covered) / total),
+                      best=round(100 * weight(covered + reword + cut) / total),
+                      covered=covered, reword=reword, cut=cut, missing=missing, ai_used=job.ai_used)
 
 
 def for_company(ref: str, use_ai: bool = False) -> dict:

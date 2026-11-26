@@ -160,5 +160,77 @@ class ShareTargetTests(unittest.TestCase):
         self.assertNotIn("go=", r.headers["location"])  # never sent automatically from outside the app
 
 
+LINKEDIN_PAGE = """Skip to main content
+Home
+My Network
+Jobs
+3 notifications
+Try Premium for $0
+Data Analyst
+Acme · Tel Aviv · 2 days ago
+Edikted
+Share
+Show more options
+Retail Data Analyst
+Los Angeles, CA · 1 week ago · Over 200 people clicked apply
+Promoted by hirer · Responses managed off LinkedIn
+On-site
+Full-time
+Apply
+Save
+Save Retail Data Analyst at Edikted
+Tailor my resume
+About the job
+Edikted is a Gen Z fashion brand.
+Responsibilities:
+Analyze sales data to optimize stock replenishment.
+Premium service mindset matters here.
+… more
+Requirements added by the job poster
+* Bachelor's Degree
+* 1+ years of work experience with Microsoft Excel
+Set alert for similar jobs
+About the company
+Edikted
+12,345 followers
+Follow"""
+
+
+class LinkedInTextTests(unittest.TestCase):
+    """A LinkedIn job page sent from the browser (or pasted whole) keeps the job only."""
+
+    def setUp(self):
+        reset()
+
+    def test_keeps_the_top_card_the_job_and_the_posters_requirements(self):
+        text = jobs.clean_posting(LINKEDIN_PAGE, "https://www.linkedin.com/jobs/view/1",
+                                  "(3) Retail Data Analyst | Edikted | LinkedIn")
+        self.assertTrue(text.startswith("Retail Data Analyst\nEdikted · Los Angeles, CA · On-site · Full-time"))
+        self.assertIn("Analyze sales data to optimize stock replenishment.", text)
+        self.assertIn("Premium service mindset matters here.", text)  # a job line starting like a LinkedIn section
+        self.assertIn("Requirements added by the job poster\n* Bachelor's Degree", text)
+        for noise in ("Save", "Tailor my resume", "clicked apply", "… more", "Set alert", "followers", "My Network",
+                      "Acme", "Promoted"):
+            self.assertNotIn(noise, text)
+
+    def test_a_paste_without_link_or_title_is_recognised(self):
+        text = jobs.clean_posting(LINKEDIN_PAGE)
+        self.assertTrue(text.startswith("Retail Data Analyst\nEdikted · Los Angeles, CA"), text[:80])
+        self.assertNotIn("Tailor my resume", text)
+
+    def test_other_text_is_left_alone(self):
+        plain = "About the job\nWe need SQL.\nSave money on cloud costs."
+        self.assertEqual(jobs.clean_posting(plain), plain)
+        self.assertEqual(registry.run("job.clean_text", {"text": plain})["text"], plain)
+
+    def test_a_new_application_stores_the_job_only(self):
+        r = registry.run("workflow.new_application", {"name": "Edikted", "job_description": LINKEDIN_PAGE,
+                                                       "job_url": "https://www.linkedin.com/jobs/view/1",
+                                                       "generate_cv": False})
+        stored = registry.run("company.get", {"id": r["company"]["id"]})["job_description"]
+        self.assertNotIn("Tailor my resume", stored)
+        self.assertIn("About the job", stored)
+
+
 if __name__ == "__main__":
     unittest.main()

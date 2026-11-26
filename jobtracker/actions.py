@@ -1031,10 +1031,14 @@ def cv_keywords_list():
 def cv_keywords_match_job(text: str, use_ai: bool = True, company: Optional[str] = None):
     """Best way to pick CV keywords: match a job description against the master CV. Returns `matches`
     (job requirement -> terms written in your CV that cover it, via exact words, synonym groups and,
-    if an OpenAI key is set, AI mapping), `gaps` (requirements nothing in your CV covers) and
-    `keywords` (ready to pass to cv.generate).
+    if an OpenAI key is set, AI mapping: same thing, synonym or concrete instance only), `reword` (gaps
+    fixable with a variant: the CV says it with OTHER words, but an ATS searches the job's word or a form of it,
+    so each needs a wording of one of its `reword_bullets` that uses the job's word: cv.variant.draft), `gaps`
+    (outright gaps: nothing in your CV says it) and `keywords` (ready to pass to cv.generate).
+    A LinkedIn page pasted whole is reduced to the job.
     Give `company` when `text` is that application's job description: the requirements are kept for its
     match score (cv.match_score)."""
+    text = jobs.clean_posting(text, companies.resolve(company).job_url if company else "")
     result = jd_match.match_job_description(text, use_ai)
     if company:
         cv_score.remember(companies.resolve(company).id, text, result)
@@ -1135,6 +1139,14 @@ def job_remember_board(url: str, platform: Literal["greenhouse", "lever", "ashby
     return {"site": jobs.site_of(url), "platform": platform, "account": account}
 
 
+@action("job.clean_text")
+def job_clean_text(text: str, url: str = "", title: str = ""):
+    """The job alone from a page's text sent from the user's browser or pasted: on LinkedIn, the top card,
+    "About the job" and "Requirements added by the job poster", without the site's buttons, counts and
+    similar jobs. Other text comes back unchanged."""
+    return {"text": jobs.clean_posting(text, url, title), "linkedin": jobs.is_linkedin(text, url)}
+
+
 @action("job.fetch_url")
 def job_fetch_url(url: str):
     """Read a job posting from a link and return its text (to then match it or create the company): through the
@@ -1202,11 +1214,14 @@ def workflow_new_application(name: str, job_description: str = "", position: str
                              generate_cv: bool = True):
     """One-shot for agents: create (or reuse, by name) the company, store the job description,
     match it against the master CV (cv.keywords.match_job, merged with `keywords`), and generate the tailored CV.
-    Returns the company, `covered` requirements, `gaps` (requirements the CV doesn't cover) and the CV files.
+    Returns the company, `covered` requirements, `reword` (gaps fixable with a variant: the CV says it with other
+    words, an ATS misses them; propose a wording with the job's word, cv.variant.draft on one of its bullets),
+    `gaps` (outright gaps: nothing in the CV says it) and the CV files. A LinkedIn page pasted whole is reduced to the job.
     Fill work_model, job_url (the posting link), salary_posted and the source when you know them; the job
     description is saved as Job_Description.md next to the CV. Never marks the application as applied.
     When the CV's summary doesn't fit the job, it is reviewed and its rewrite comes back in `proposals` (in the
     chat: already shown to the user for approval)."""
+    job_description = jobs.clean_posting(job_description, job_url)
     match = jd_match.match_job_description(job_description) if job_description else None
     merged = list(dict.fromkeys([*keywords, *(match["keywords"] if match else [])]))
     details = dict(position=position, location=location, website=website, seniority=seniority,
@@ -1224,7 +1239,10 @@ def workflow_new_application(name: str, job_description: str = "", position: str
         cv_score.remember(company.id, job_description, match)
     result = {"company": company.view(), "keywords": merged}
     if match:
-        result["covered"] = [{"requirement": m.jd_term, "cv_terms": m.keywords} for m in match["matches"]]
+        result["covered"] = [{"requirement": m.jd_term, "cv_terms": m.keywords} for m in match["matches"]
+                             if not m.reword]
+        result["reword"] = [{"requirement": m.jd_term, "cv_terms": m.keywords, "required": m.must_have,
+                             "bullets": m.reword_bullets} for m in match["reword"]]
         result["gaps"] = [{"requirement": g.jd_term, "required": g.must_have} for g in match["gaps"]]
     if generate_cv:
         required = [k for m in (match["matches"] if match else []) if m.must_have for k in m.keywords]

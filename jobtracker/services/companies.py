@@ -45,7 +45,15 @@ def find_by_name(name: str) -> Company | None:
 
 # ---------------------------------------------------------------- companies
 
+def _clean_job_description(fields: dict, url: str = "") -> None:
+    """A job description pasted or sent with the site around it (LinkedIn's buttons, similar jobs…) keeps the job."""
+    if fields.get("job_description"):
+        from . import jobs
+        fields["job_description"] = jobs.clean_posting(fields["job_description"], fields.get("job_url") or url)
+
+
 def create_company(**fields) -> Company:
+    _clean_job_description(fields)
     if not fields.get("salary_expectation"):  # the profile's expectation, until set for this application
         from . import profile
         fields["salary_expectation"] = profile.settings().salary_expectation
@@ -62,6 +70,7 @@ def create_company(**fields) -> Company:
 def update_company(company_id: str, fetch_logo: bool = True, **fields) -> Company:
     with store.transaction() as book:
         company = _find(book, company_id)
+        _clean_job_description(fields, company.job_url)
         updated = company.model_validate({**company.model_dump(), **fields})
         _save_job_description(updated)
         book.companies[book.companies.index(company)] = updated

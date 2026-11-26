@@ -197,6 +197,55 @@ def keyword_pattern(keyword: str) -> re.Pattern:
     return re.compile(rf"(?<![\w]){kw}{plural}(?![\w])", re.IGNORECASE)
 
 
+# Word families: an ATS finds a job's word in a CV when it is written there, or a form of it ("analysis",
+# "analyze", "analytics"; "replenish", "replenishment"). A synonym ("KPI Reporting" for "retail performance
+# tracking") is not found: the bullet needs a wording that uses the job's word.
+_SUFFIXES = sorted(["izations", "isations", "ization", "isation", "ations", "ation", "ments", "ment", "ities", "ings",
+                    "ness", "tics", "ical", "ally", "ence", "ance", "ions", "ion", "ity", "ing", "ers", "ist", "ize",
+                    "ise", "ate", "ive", "ous", "tic", "sis", "ies", "ied", "ed", "es", "er", "al", "ly", "ze",
+                    "se", "st", "s", "y", "e"], key=len, reverse=True)
+FILLER_WORDS = {"a", "an", "and", "or", "of", "in", "on", "with", "the", "to", "for", "using", "use", "based",
+                "experience", "experienced", "proficiency", "proficient", "knowledge", "strong", "skills", "skill",
+                "ability", "familiarity", "understanding", "working", "solid", "good", "excellent", "hands",
+                "etc", "e.g", "such", "as", "related", "relevant", "least"}
+
+
+def stem(word: str) -> str:
+    """'analysis', 'analyze', 'analytics' -> 'analy'; 'management', 'manager', 'managing' -> 'manag'.
+    Short words and acronyms only lose a plural ('KPIs' -> 'kpi'; 'data' stays apart from 'database')."""
+    w = word.lower()
+    if len(w) <= 4 or not w.isalpha():
+        return w[:-1] if len(w) > 3 and w.endswith("s") and w[-2] != "s" else w
+    for _ in range(3):
+        cut = next((s for s in _SUFFIXES if w.endswith(s) and len(w) - len(s) >= 4), None)
+        if not cut:
+            break
+        w = w[:-len(cut)]
+    if len(w) >= 6 and w.endswith(("yz", "ys", "iz")):  # "analyz(ed)" ~ "analysis", "optimiz(ing)" ~ "optimize"
+        w = w[:-2]
+    if len(w) >= 5 and w[-1] == w[-2] and w[-1] not in "aeiou":  # "shipp" -> "ship", "fulfill" -> "fulfil"
+        w = w[:-1]
+    return w
+
+
+def word_stems(text: str, drop_filler: bool = False) -> set[str]:
+    words = re.findall(r"[A-Za-z0-9][A-Za-z0-9+#]*", text or "")
+    return {stem(w) for w in words if not (drop_filler and w.lower() in FILLER_WORDS)}
+
+
+def written_in(term: str, text: str) -> bool:
+    """Is the job's term (or a form of each of its words) written in this text? 'Excel/Google Sheets': either.
+    'data analysis' is found in 'analyzed sales data'; 'supply chain' is not found in 'operational data'."""
+    if keyword_pattern(term).search(text or ""):
+        return True
+    have = word_stems(text)
+    for alternative in re.split(r"\s*/\s*|\s+or\s+", term):
+        wanted = word_stems(alternative, drop_filler=True)
+        if wanted and wanted <= have:
+            return True
+    return False
+
+
 def extract_keywords(text: str) -> list[str]:
     """Return the known keywords that appear in a job description, most frequent first."""
     hits = []

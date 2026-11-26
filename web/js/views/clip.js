@@ -21,6 +21,12 @@ export async function renderClip(root, params) {
     return mount(root, h("div", { class: "card empty" }, h("h2", {}, "Nothing to add"),
       h("p", { class: "muted" }, "This link doesn't contain a job. Use “Send to Ezri” from a job page, or paste the job in the assistant.")));
   }
+  // A whole LinkedIn page (or another site's buttons around the job): keep the job alone, shown before you confirm.
+  if (clip.text.trim()) {
+    const cleaned = await call("job.clean_text", { text: clip.text, url: clip.url, title: clip.title }).catch(() => null);
+    if (cleaned?.text) clip.text = cleaned.text;
+    if (cleaned?.linkedin) clip.title = clip.title.replace(/^\(\d+\)\s*/, "").replace(/\s*\|\s*LinkedIn\s*$/i, "");
+  }
   const add = async () => {
     if (clip.greenhouse && clip.url) {  // the page told us its job board: next links from this site go through its API
       await call("job.remember_board", { url: clip.url, platform: "greenhouse", account: clip.greenhouse }).catch(() => null);
@@ -51,7 +57,10 @@ export function bookmarklet() {
     + `const all=ld.flatMap(d=>Array.isArray(d)?d:(d&&d['@graph'])||[d]).filter(Boolean);`
     + `const job=all.find(d=>[].concat(d['@type']).includes('JobPosting'));`
     + `const div=document.createElement('div');div.innerHTML=job&&job.description?String(job.description):'';`
-    + `const text=(div.innerText||document.body.innerText||'').replace(/\\n{3,}/g,'\\n\\n').slice(0,15000);`
+    + `let text=(div.innerText||document.body.innerText||'').replace(/\\n{3,}/g,'\\n\\n');`
+    // LinkedIn: the job list and the company blurb around the job could push it past the limit; keep the top card on
+    + `if(!div.innerText&&/(^|\\.)linkedin\\.com$/.test(location.hostname)){const a=text.search(/\\nAbout the job\\n/),e=text.search(/\\nAbout the company\\n/);if(a>=0)text=text.slice(Math.max(0,a-3000),e>a?e:undefined)}`
+    + `text=text.slice(0,15000);`
     + `const gh=(document.documentElement.innerHTML.match(/greenhouse\\.io\\/embed\\/job_(?:board(?:\\/js)?|app)\\?for=([A-Za-z0-9_-]+)/)||[])[1]||'';`
     + `const d=btoa(unescape(encodeURIComponent(JSON.stringify({u:location.href,t:(job&&job.title)||document.title,x:text,g:gh})))).replace(/\\+/g,'-').replace(/\\//g,'_').replace(/=+$/,'');`
     + `window.open('${origin}/#/clip?d='+d,'_blank')}catch(e){alert('Send to Ezri: '+e.message)}})()`;

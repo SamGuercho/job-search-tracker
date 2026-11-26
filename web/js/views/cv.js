@@ -79,17 +79,57 @@ export async function renderCvBuilder(root, params) {
   };
 
   const SOURCE = { exact: "same word", synonym: "synonym", ai: "AI" };
+  const reqRow = (m) => h("div", { class: "req" },
+    h("span", { class: "req-term" }, m.must_have ? h("b", {}, m.jd_term) : m.jd_term),
+    h("span", { class: "muted" }, "→"),
+    h("span", { class: "chips" }, m.keywords.map((k) => h("span", { class: `chip ${m.reword ? "warn" : "on"}` }, k))),
+    h("span", { class: "small muted" }, `${m.bullets} bullet${m.bullets === 1 ? "" : "s"}${m.in_skills ? " + skills" : ""} · ${SOURCE[m.source]}`));
+
+  // A resolvable gap: the CV says it with other words (a synonym, a tool of that kind), but an ATS looks for the
+  // job's word. Propose a wording of the bullet that uses it.
+  const rewordRow = (m) => {
+    const out = h("div", { class: "stack-tight" });
+    const bullet = m.reword_bullets?.[0];
+    const draft = async (btn) => {
+      btn.disabled = true;
+      btn.textContent = "Drafting…";
+      const r = await attempt(() => call("cv.variant.draft", { bullet_id: bullet.id, keywords: [m.jd_term] }));
+      btn.disabled = false;
+      btn.textContent = "Propose again";
+      if (!r) return;
+      mount(out,
+        h("div", { class: "small muted" }, `Today: ${r.original}`),
+        r.drafts.map((d) => h("div", { class: "draft row" },
+          h("div", { style: "flex:1" }, d.lead && h("b", {}, `${d.lead} `), d.text,
+            !d.covers.length && h("span", { class: "small", style: "color:var(--amber)" }, ` (doesn't use “${m.jd_term}”)`)),
+          h("button", {
+            class: "small", onclick: async (e) => {
+              if (await attempt(() => call("cv.variant.add", { bullet_id: bullet.id, text: d.text, lead: d.lead, keywords: d.keywords }),
+                "Wording kept: match again to see it covered")) e.target.disabled = true;
+            },
+          }, "Keep"))),
+        !r.drafts.length && h("p", { class: "small muted" }, "No true wording found with this word: skip it, or add the facts in the master CV."));
+    };
+    return h("div", {}, h("div", { class: "req" },
+      h("span", { class: "req-term" }, m.must_have ? h("b", {}, `${m.jd_term} (required)`) : m.jd_term),
+      h("span", { class: "small muted" }, "your CV says"),
+      h("span", { class: "chips" }, m.keywords.map((k) => h("span", { class: "chip warn" }, k))),
+      bullet && info.llm_available && h("button", { class: "small", onclick: (e) => draft(e.target) }, "Propose a variant"),
+      bullet && !info.llm_available && h("span", { class: "small muted" }, `(add a wording with “${m.jd_term}” in the master CV)`),
+      !bullet && h("span", { class: "small muted" }, `(only in your skills: write “${m.jd_term}” there too)`)), out);
+  };
+
   const drawAnalysis = (r) => mount(analysisBox, h("div", { class: "analysis stack-tight" },
     r.ai_error && h("p", { class: "small", style: "color:var(--amber)" }, `AI step skipped: ${r.ai_error}`),
     !r.ai_used && !r.ai_error && h("p", { class: "small muted" }, "Exact words and synonyms only (add an OpenAI key for smarter matching)."),
-    h("div", { class: "small muted" }, `Covered by your CV (${r.matches.length})`),
-    r.matches.map((m) => h("div", { class: "req" },
-      h("span", { class: "req-term" }, m.must_have ? h("b", {}, m.jd_term) : m.jd_term),
-      h("span", { class: "muted" }, "→"),
-      h("span", { class: "chips" }, m.keywords.map((k) => h("span", { class: "chip on" }, k))),
-      h("span", { class: "small muted" }, `${m.bullets} bullet${m.bullets === 1 ? "" : "s"}${m.in_skills ? " + skills" : ""} · ${SOURCE[m.source]}`))),
+    h("div", { class: "small muted" }, `Written as in the job (${r.matches.filter((m) => !m.reword).length})`),
+    r.matches.filter((m) => !m.reword).map(reqRow),
+    (r.reword?.length || r.gaps.length) > 0 && h("div", { style: "margin-top:8px" }, h("b", { class: "small" }, `Gaps (${(r.reword?.length || 0) + r.gaps.length})`)),
+    r.reword?.length > 0 && [
+      h("div", { class: "small", style: "color:var(--amber)" }, `Fixable with a variant (${r.reword.length}): your CV says it with other words, but an ATS looks for the job's word. Add a wording of the bullet that uses it`),
+      r.reword.map(rewordRow)],
     r.gaps.length > 0 && [
-      h("div", { class: "small", style: "color:var(--red); margin-top:8px" }, `Not in your CV (${r.gaps.length}): reword a true bullet to include them, or skip`),
+      h("div", { class: "small", style: "color:var(--red); margin-top:8px" }, `Not in your CV (${r.gaps.length}): add it only if it's true (a new bullet or a wording of one), else skip`),
       h("div", { class: "chips" }, r.gaps.map((g) => h("span", { class: "chip bad", title: g.must_have ? "Required" : "" }, g.must_have ? `${g.jd_term} (required)` : g.jd_term)))],
   ));
 

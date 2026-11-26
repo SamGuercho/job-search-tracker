@@ -82,6 +82,102 @@ def _text(fragment: str) -> str:
     return "\n".join(line for line in lines if line)
 
 
+# ------------------------------------------------------------------- LinkedIn page text -> the job only
+# A LinkedIn job page read in the user's browser (the "Send to Ezri" bookmark, a paste of the whole page) carries
+# the whole site: navigation, "Save", "Over 200 applicants", "Tailor my resume", similar jobs, the company blurb…
+# Only the top card (title, company, location, work model), "About the job" and "Requirements added by the job
+# poster" describe the job; the rest pollutes the keywords.
+
+_LI_ABOUT = re.compile(r"^(about the job|about this job)$", re.I)
+_LI_POSTER = re.compile(r"^(requirements?|qualifications?|skills?) added by the job poster$", re.I)
+_LI_END = re.compile(
+    r"^(set alert for similar jobs|job search faster with premium|about the company|company photos|"
+    r"benefits found in job post|people you can reach out to|meet the hiring team|show more jobs?|similar jobs|"
+    r"more jobs|people also viewed|looking for talent\?|interested in working with us in the future\?|"
+    r"see how you compare|trending employee content|recent posts|explore premium|get the linkedin app|"
+    r"how you match|your job search|jobs you may be interested in|about|accessibility|"
+    r"use ai to assess how you fit|am i a good fit for this job\?|show match details|"
+    r"premium|exclusive job seeker insights|\S+(?: \S+){0,3} is hiring)$",
+    re.I)
+_LI_NOISE = re.compile(
+    r"^(save|saved|share|apply|easy apply|applied|show more options|tailor my resume|show more|show less|"
+    r"see more|see less|… ?more|\.\.\. ?more|… ?see more|more|less|promoted|promoted by hirer|"
+    r"responses managed off linkedin|actively reviewing applicants|reposted.*|save .* at .*|"
+    r"message|follow|following|report this job|retry premium.*|try premium.*|"
+    r"\d+ notifications?|home|my network|jobs|messaging|notifications|me|for business|"
+    r"skip to (main content|search)|\d+[+]? applicants|over \d+ (applicants|people clicked apply))$",
+    re.I)
+_LI_WORK = re.compile(r"^(on-site|onsite|hybrid|remote|full-time|part-time|contract|temporary|internship|"
+                      r"freelance|volunteer|entry level|mid-senior level|associate|director|executive)$", re.I)
+_LI_META = re.compile(r"\b(ago|applicants|clicked apply|people|reposted)\b", re.I)
+
+
+def is_linkedin(text: str, url: str = "") -> bool:
+    """A LinkedIn job page (by its link, or by the page's own headings and buttons)."""
+    if "linkedin.com" in site_of(url or ""):
+        return True
+    lines = {line.strip().lower() for line in text.splitlines()}
+    marks = sum(bool(s) for s in (
+        lines & {"about the job"},
+        any(_LI_POSTER.match(line) for line in lines),
+        lines & {"easy apply", "tailor my resume", "show more options", "set alert for similar jobs", "about the company",
+                 "promoted by hirer", "responses managed off linkedin"},
+        any(re.search(r"\b(applicants|people clicked apply)\b", line) for line in lines)))
+    return marks >= 2
+
+
+def _section(lines: list[str], start: int) -> list[str]:
+    """The lines after a heading, up to the next LinkedIn section; buttons and "… more" dropped."""
+    out = []
+    for line in lines[start + 1:]:
+        if _LI_END.match(line) or _LI_POSTER.match(line) or _LI_ABOUT.match(line):
+            break
+        if not _LI_NOISE.match(line):
+            out.append(line)
+    return out
+
+
+def clean_linkedin(text: str, title: str = "") -> str:
+    """The job alone from a LinkedIn page's text: top card, "About the job", "Requirements added by the job
+    poster". Text that isn't a LinkedIn page (no "About the job" heading) comes back as it was."""
+    lines = [re.sub(r"[ \t ]+", " ", line).strip() for line in (text or "").splitlines()]
+    lines = [line for line in lines if line]
+    about = next((i for i, line in enumerate(lines) if _LI_ABOUT.match(line)), None)
+    if about is None:
+        return text
+    body = _section(lines, about)
+    poster = next((i for i, line in enumerate(lines) if _LI_POSTER.match(line)), None)
+    asked = _section(lines, poster) if poster is not None else []
+
+    # Top card: document title "Retail Data Analyst | Edikted | LinkedIn" names the job and the company;
+    # the meta line "Los Angeles, CA · 1 week ago · Over 200 applicants" starts with the location.
+    parts = [p.strip() for p in re.split(r"\s+\|\s+", re.sub(r"^\(\d+\)\s*", "", title or "")) if p.strip()]
+    parts = [p for p in parts if p.lower() != "linkedin"]
+    job_title, company = (parts + ["", ""])[:2]
+    head = lines[:about]
+    location = ""
+    for i, line in reversed(list(enumerate(head))):  # the last one: a search page lists other jobs above
+        if " · " in line and _LI_META.search(line):
+            location = line.split(" · ")[0].strip()
+            # a paste has no page title: the top card is "<company>", buttons, "<job title>", then this line
+            before = [x for x in head[:i] if not _LI_NOISE.match(x) and not _LI_WORK.match(x)]
+            job_title = job_title or (before[-1] if before else "")
+            company = company or (before[-2] if len(before) > 1 else "")
+            break
+    work = list(dict.fromkeys(w for line in head for w in re.split(r"\s+·\s+|\s{2,}", line) if _LI_WORK.match(w.strip())))
+    top = [job_title, " · ".join(p for p in (company, location, *work) if p)]
+    out = "\n".join(p for p in top if p)
+    out += ("\n\n" if out else "") + "About the job\n" + "\n".join(body)
+    if asked:
+        out += "\n\nRequirements added by the job poster\n" + "\n".join(asked)
+    return out.strip()
+
+
+def clean_posting(text: str, url: str = "", title: str = "") -> str:
+    """A job description as sent from the user's browser or pasted, without the site around it (LinkedIn)."""
+    return clean_linkedin(text, title) if is_linkedin(text, url) else text
+
+
 def _result(url: str, title: str, company: str, location: str, text: str, via: str) -> dict:
     head = [title, f"Company: {company}" if company else "", f"Location: {location}" if location else ""]
     body = "\n".join(p for p in head if p) + "\n\n" + text.strip()

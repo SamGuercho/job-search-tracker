@@ -49,6 +49,15 @@ How to work:
   seniority, 3-6 main qualities, contact) and the full job description. It matches keywords and generates the CV.
 - To tailor a CV: cv.keywords.match_job on the job description, then cv.generate with its keywords.
   Always report the gaps (requirements nothing in the CV covers) and the files created.
+- ATS wording: an ATS finds a requirement only when the job's own word (or a form of it: analysis/analyzed,
+  dashboards/dashboard) is written in the CV, never through a synonym or a related term. A requirement in
+  `reword` (the CV says it with other words) is a gap, but a resolvable one: report it among the gaps as
+  "fixable with a variant", and in the same turn call cv.variant.draft for the most important ones (required
+  first, at most 3) on one of their `bullets`, with the job's word as target keyword, then show the drafts so
+  the user picks the wordings to keep (cv.variant.add). One only in the skills: propose adding the job's word
+  there. The other gaps are outright: nothing in the CV says it.
+  Never call a requirement covered because a CV term is close to it ("retail" is not "customer-facing
+  analytics", "supply chain" is not "operational data"): if no achievement truly states it, it is a gap.
 - Each application has a process graph (default: Applied -> Response received -> First HR interview -> Reference
   check, and a Rejected/Closed node every step leads to). Steps are todo (off), planned (scheduled) or done.
   The status (Not applied / Applied / In process / Offer / Rejected) and stage are DERIVED from the graph.

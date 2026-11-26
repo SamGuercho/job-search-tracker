@@ -45,7 +45,8 @@ class MatchScore(BaseModel):
     """How well a generated CV covers the job's requirements (required ones weigh double)."""
     score: int                  # % covered by this CV
     best: int                   # % your master CV could cover (the most a tailored CV can reach)
-    covered: list[Requirement] = []   # written in this CV
+    covered: list[Requirement] = []   # written in this CV with the job's word (or a form of it)
+    reword: list[Requirement] = []    # in this CV with other words only: an ATS looking for the job's word misses it
     cut: list[Requirement] = []       # in your master CV, not in this CV (left out to fit one page)
     missing: list[Requirement] = []   # nothing in your master CV covers it
     ai_used: bool = False

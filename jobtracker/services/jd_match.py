@@ -4,8 +4,14 @@ For every requirement of the job description, find the terms *written in your
 CV* that cover it, in three passes:
   1. exact    - a known keyword appears in the job description
   2. synonym  - the job description uses another term of a synonym group
-  3. ai       - the LLM maps requirements to your CV terms (optional, needs a key)
-Requirements nothing covers are returned as gaps (bullets to reword).
+  3. ai       - the LLM maps requirements to your CV terms (optional, needs a key): the same thing, a synonym or
+                 a concrete instance only; "related" terms are dropped (precision over recall: a missed gap hurts
+                 more than a false one, which the user dismisses)
+Requirements nothing covers are returned as gaps.
+A covered requirement is `literal` when the job's own word (or a form of it) is written in the CV: that is what
+an ATS looks for. Covered only through other words (a synonym, an instance), it is still a gap, but a resolvable
+one (`reword`): a wording of one of `reword_bullets` that uses the job's word (cv.variant.draft) closes it.
+When the model isn't sure a CV term means the same thing, it is an outright gap.
 """
 from __future__ import annotations
 
@@ -28,6 +34,9 @@ class Match(BaseModel):
     bullets: int = 0           # bullets containing at least one of the keywords
     in_skills: bool = False
     in_education: bool = False
+    literal: bool = False      # the job's word (or a form of it) is written in the CV, as an ATS expects
+    reword: bool = False       # covered with other words only: a bullet needs a wording with the job's word
+    reword_bullets: list[dict] = []  # {id, text}: the bullets that say it with other words (to draft a variant)
 
 
 # Degrees: "M.Sc.", "Master's", "MS" all name the same level. Levels are ranked: a higher degree covers a lower one.
@@ -57,23 +66,43 @@ def degree_mentions(text: str) -> dict[int, str]:
     return out
 
 
+class _AITerm(BaseModel):
+    term: str
+    relation: Literal["same", "synonym", "instance", "related"]
+
+
 class _AIRequirement(BaseModel):
     requirement: str
     must_have: bool
-    cv_terms: list[str]
+    cv_terms: list[_AITerm]
 
 
 class _AIResult(BaseModel):
     requirements: list[_AIRequirement]
 
 
-AI_INSTRUCTIONS = """You compare a job description with a candidate's CV terms.
-1. List the 10 to 25 most important requirements of the job: skills, tools, methods, domains, qualifications,
-   soft skills. Write each as a short term of 1 to 4 words AS WORDED IN THE JOB DESCRIPTION
-   (e.g. "large language models", "vector databases", "Kubernetes"). must_have = explicitly required.
-2. For each requirement, cv_terms = the terms from the CV TERMS list below that are the same thing, a synonym or
-   abbreviation, or a concrete instance of it (e.g. "vector databases" -> "Pinecone"). Copy them exactly from the
-   list. Be strict: no loosely related terms. Empty list if the CV does not cover it.
+AI_INSTRUCTIONS = """You compare a job description with a candidate's CV terms, the way an ATS and a recruiter would.
+1. List the 10 to 25 most important requirements of the job: skills, tools, methods, domains (industries, business
+   areas), qualifications, soft skills. Write each as the keyword an ATS would search, 1 to 4 words, AS WORDED IN
+   THE JOB DESCRIPTION: a noun phrase without the verb ("dashboards", not "develop and maintain dashboards";
+   "replenishment", "supply chain", "large language models", "Kubernetes"). must_have = explicitly required.
+2. For each requirement, cv_terms = the terms from the CV TERMS list below that cover it, copied exactly, each
+   with its relation:
+   - "same": the job's word itself or a form of it (dashboards -> "dashboard", analysis -> "Data Analysis")
+   - "synonym": another name for exactly the same thing (large language models -> "LLM", BI -> "Business Intelligence")
+   - "instance": a concrete tool or method that IS one of what the job names (vector databases -> "Pinecone",
+     data visualization tools -> "Tableau")
+   - "related": anything else (a broader field, an adjacent activity, a generic term). These are dropped.
+   Precision matters more than recall: a requirement wrongly marked as covered hides a real gap from the
+   candidate, while a false gap is simply dismissed. Use "synonym" or "instance" only when you are sure the CV
+   term means exactly that; if you hesitate, it is "related" (an outright gap).
+   NOT covered, so "related" or nothing:
+   - a domain by an activity or a generic term: retail -> "customer-facing analytics", "B2B";
+     supply chain -> "operational data"; inventory management -> "operational data", "Process Optimization"
+   - a specific task by a vague catch-all: replenishment -> "practical solutions"; store managers -> "Communication"
+   - a skill by a different skill: data analysis -> "Analytical & Critical Thinking"
+   - every tool of the CV for one tool: Excel -> "Git", "PostgreSQL"
+   Empty list if the CV does not cover it.
 
 CV TERMS: {terms}"""
 
@@ -107,6 +136,11 @@ class _CV:
     def has(self, term: str) -> bool:
         return bool(self.in_bullets(term) or self.in_skills(term) or self.in_education(term))
 
+    def literal(self, jd_term: str) -> bool:
+        """The job's own word (or a form of each of its words) is written in one bullet, skill or degree."""
+        texts = [f"{w.lead} {w.text}" for b in self.bullets for w in b.wordings()] + self.skills + self.education
+        return any(master_cv.written_in(jd_term, t) for t in texts)
+
     def degree_for(self, text: str) -> str:
         """The user's degree that meets a requirement naming degree levels ("Bachelor's or Master's": the lowest
         named), as written on the CV; "" if none does (or the text names no degree)."""
@@ -132,7 +166,8 @@ def match_job_description(text: str, use_ai: bool = True) -> dict:
         key = re.sub(r"[\s\-]+", " ", jd_term.strip().lower())  # "Retrieval-Augmented" == "Retrieval Augmented"
         if key in matches:
             m = matches[key]
-            m.keywords = master_cv._clean_keywords(m.keywords + keywords)
+            if not (m.source == "exact" and m.keywords):  # written as in the job: other terms would only add noise
+                m.keywords = master_cv._clean_keywords(m.keywords + keywords)
             m.must_have = m.must_have or must_have
         else:
             matches[key] = Match(jd_term=jd_term.strip(), keywords=master_cv._clean_keywords(keywords),
@@ -166,38 +201,57 @@ def match_job_description(text: str, use_ai: bool = True) -> dict:
             result = llm.structured(AI_INSTRUCTIONS.format(terms=", ".join(terms)), text, _AIResult)
             ai_used = True
             for r in result.requirements:
-                kws = [allowed[t.strip().lower()] for t in r.cv_terms if t.strip().lower() in allowed]
+                kws = [allowed[t.term.strip().lower()] for t in r.cv_terms
+                       if t.relation != "related" and t.term.strip().lower() in allowed]
                 add(r.requirement, kws, "ai", r.must_have)
         except llm.LLMUnavailable as e:
             ai_error = str(e)
 
     for m in matches.values():
-        if not m.keywords:  # "Master's degree in a quantitative field" (AI): met by the user's degree
+        by_degree = False
+        if not m.keywords or (degree_mentions(m.jd_term) and cv.degree_for(m.jd_term)):
+            # "Master's degree in a quantitative field", "BA/BSc": met by the user's degree at that level or above
             degree = cv.degree_for(m.jd_term)
-            m.keywords = [degree] if degree else []
-        m.bullets = sum(any(master_cv.in_text(k, w) for k in m.keywords for w in b.wordings()) for b in cv.bullets)
+            m.keywords, by_degree = ([degree], True) if degree else (m.keywords, False)
+        carrying = [b for b in cv.bullets if any(master_cv.in_text(k, w) for k in m.keywords for w in b.wordings())]
+        m.bullets = len(carrying)
         m.in_skills = any(cv.in_skills(k) for k in m.keywords)
         m.in_education = any(cv.in_education(k) for k in m.keywords)
+        if m.keywords:
+            m.literal = by_degree or (m.source == "exact" and m.jd_term in m.keywords) or cv.literal(m.jd_term)
+            m.reword = not m.literal
+            m.reword_bullets = [{"id": b.id, "text": f"{b.lead} {b.text}".strip()} for b in carrying[:3]] if m.reword else []
 
-    # With AI, drop word-level rows that an AI requirement already shows ("LLM" inside "large language models").
-    ai_sets = [{k.lower() for k in m.keywords} for m in matches.values() if m.source == "ai" and m.keywords]
+    # With AI, drop word-level rows that an AI requirement already shows ("LLM" inside "large language models"),
+    # unless that requirement needs rewording while the word-level row is written as in the job.
+    ai_sets = [({k.lower() for k in m.keywords}, m.literal) for m in matches.values() if m.source == "ai" and m.keywords]
     for key, m in list(matches.items()):
-        if m.source != "ai" and m.keywords and any({k.lower() for k in m.keywords} <= s for s in ai_sets):
+        if m.source != "ai" and m.keywords and any({k.lower() for k in m.keywords} <= s and (lit or not m.literal)
+                                                   for s, lit in ai_sets):
             del matches[key]
 
-    # A gap that is part of, or a synonym of, a covered requirement is not a real gap ("Agents" vs "AI Agents").
-    covered = [m.jd_term.lower() for m in matches.values() if m.keywords]
+    # The job names it twice ("Machine Learning" and "ML") and one of its wordings is written: nothing to reword.
+    literal_sets = [{k.lower() for k in m.keywords} for m in matches.values() if m.literal]
+    for key, m in list(matches.items()):
+        if m.reword and m.source == "synonym" and any({k.lower() for k in m.keywords} <= s for s in literal_sets):
+            del matches[key]
+
+    # A gap that is part of, or a synonym of, a requirement written as in the job is not a real gap ("Agents" vs
+    # "AI Agents"). Covered with other words doesn't count: "retail" stays a gap next to "retail performance".
+    covered = [m.jd_term.lower() for m in matches.values() if m.keywords and m.literal]
     group_of = {t.lower(): i for i, g in enumerate(cv.cv.synonyms) for t in g}
-    covered_terms = covered + [k.lower() for m in matches.values() for k in m.keywords]
+    covered_terms = covered + [k.lower() for m in matches.values() if m.literal for k in m.keywords]
     covered_groups = {group_of[c] for c in covered_terms if c in group_of}
     for key, m in list(matches.items()):
         term = m.jd_term.lower()
         if not m.keywords and (any(term in c for c in covered) or group_of.get(term) in covered_groups):
             del matches[key]
 
-    ordered = sorted(matches.values(), key=lambda m: (not m.keywords, not m.must_have, -m.bullets, m.jd_term.lower()))
+    ordered = sorted(matches.values(), key=lambda m: (not m.keywords, m.reword, not m.must_have, -m.bullets,
+                                                      m.jd_term.lower()))
     return {
-        "matches": [m for m in ordered if m.keywords],
+        "matches": [m for m in ordered if m.keywords],          # covered: written as in the job, then `reword` ones
+        "reword": [m for m in ordered if m.reword],             # covered with other words: needs a wording
         "gaps": [m for m in ordered if not m.keywords],
         "keywords": master_cv._clean_keywords([k for m in ordered for k in m.keywords]),
         "required": master_cv._clean_keywords([k for m in ordered if m.must_have for k in m.keywords]),
