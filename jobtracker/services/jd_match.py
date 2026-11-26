@@ -112,7 +112,7 @@ class _CV:
 
     def __init__(self):
         self.cv = master_cv.get_master()
-        self.bullets = [b for e in self.cv.experiences for b in e.bullets]
+        self.bullets = [b for e in self.cv.bullet_owners() for b in e.bullets]  # experiences and projects
         self.skills = [i for g in self.cv.skills for i in g.items]
         self.education = [" ".join(x for x in (e.degree, e.school, e.details) if x) for e in self.cv.education]
         # the user's degrees by level: {rank: the degree as written on the CV ("MSc Data Science")}

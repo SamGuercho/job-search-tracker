@@ -13,7 +13,7 @@ from pydantic import BaseModel
 
 from .. import config, users
 from ..cv_templates import get_template
-from ..models import Education, GeneratedDocument, Profile, SkillGroup
+from ..models import DEFAULT_SECTIONS, Education, GeneratedDocument, Profile, SkillGroup
 from . import companies, master_cv, pdf
 from .files import archive_previous, output_folder
 
@@ -23,7 +23,7 @@ MAX_PDF_ITERATIONS = 12
 
 class TailoredBullet(BaseModel):
     id: str                 # achievement id
-    experience_id: str
+    experience_id: str      # the experience or project it belongs to
     variant_id: str = ""    # "" = main wording
     wordings: int = 1       # how many wordings the achievement has
     text: str
@@ -48,16 +48,31 @@ class TailoredExperience(BaseModel):
     bullets: list[TailoredBullet] = []
 
 
+class TailoredProject(BaseModel):
+    id: str
+    name: str
+    role: str = ""
+    link: str = ""
+    start: str = ""
+    end: str = ""
+    bullets: list[TailoredBullet] = []
+
+
 class TailoredCV(BaseModel):
     keywords: list[str]
     required: list[str] = []
     profile: Profile
     experiences: list[TailoredExperience]
+    projects: list[TailoredProject] = []
+    sections: list[str] = DEFAULT_SECTIONS   # the order of the sections on the page (master CV's choice)
     education: list[Education]
     skills: list[SkillGroup]
     languages: list[str] = []
     removed: list[TailoredBullet] = []
     unmatched_keywords: list[str] = []
+
+    def bullet_owners(self) -> list[TailoredExperience | TailoredProject]:
+        return [*self.experiences, *self.projects]
 
 
 # ------------------------------------------------------------- 1. selection
@@ -70,6 +85,7 @@ def select_bullets(keywords: list[str], keep_unmatched_roles: bool = True,
                    include: list[str] | None = None) -> TailoredCV:
     """Take every achievement once, in the wording most relevant to the job; trimming to the page comes later.
 
+    Projects' achievements compete exactly like experiences'.
     Greedy coverage ranks them: repeatedly take the achievement whose best wording covers the most keywords
     not covered yet (`required` keywords weigh double; priority breaks ties). Achievements that match only
     already-covered keywords are `redundant`; those matching no keyword are `fallback` (main wording) and are
@@ -92,8 +108,8 @@ def select_bullets(keywords: list[str], keep_unmatched_roles: bool = True,
         skills.append(SkillGroup(id=g.id, name=g.name, items=hits + [i for i in g.items if i not in hits]))
 
     # Every wording's matches, per achievement
-    options = {}   # achievement id -> (experience, bullet, [(wording, matched)])
-    for exp in cv.experiences:
+    options = {}   # achievement id -> (experience or project, bullet, [(wording, matched)])
+    for exp in cv.bullet_owners():
         for b in exp.bullets:
             options[b.id] = (exp, b, [(w, master_cv.bullet_matches(w, keywords)) for w in b.wordings()])
 
@@ -142,18 +158,22 @@ def select_bullets(keywords: list[str], keep_unmatched_roles: bool = True,
         if bid in chosen:
             chosen[bid].pinned = chosen[bid].forced = True
 
-    experiences = []
-    for exp in cv.experiences:
-        bullets = [chosen[b.id] for b in exp.bullets if b.id in chosen]  # CV order, not pick order
-        if not keep_unmatched_roles and bullets and all(b.fallback and not b.forced for b in bullets):
-            continue
-        experiences.append(TailoredExperience(
-            **exp.model_dump(include={"id", "company", "role", "location", "start", "end"}), bullets=bullets))
+    def tailored(owners, model, fields):
+        out = []
+        for o in owners:
+            bullets = [chosen[b.id] for b in o.bullets if b.id in chosen]  # CV order, not pick order
+            if not keep_unmatched_roles and bullets and all(b.fallback and not b.forced for b in bullets):
+                continue
+            out.append(model(**o.model_dump(include=fields), bullets=bullets))
+        return out
+
+    experiences = tailored(cv.experiences, TailoredExperience, {"id", "company", "role", "location", "start", "end"})
+    projects = tailored(cv.projects, TailoredProject, {"id", "name", "role", "link", "start", "end"})
 
     covered |= skill_covered
     return TailoredCV(
         keywords=keywords, required=list(required or []), profile=cv.profile, experiences=experiences,
-        education=cv.education, skills=skills, languages=cv.languages,
+        projects=projects, sections=cv.sections, education=cv.education, skills=skills, languages=cv.languages,
         unmatched_keywords=[k for k in keywords if k.lower() not in covered],
     )
 
@@ -204,9 +224,10 @@ def use_summary(cv: TailoredCV, company, keywords: list[str] | None = None) -> d
 
 def _remove_weakest(cv: TailoredCV) -> TailoredBullet | None:
     """Drop the least useful bullet: those matching no keyword first, then those only repeating covered
-    keywords, then the smallest coverage gain and priority, avoiding emptying a role, latest in the CV."""
+    keywords, then the smallest coverage gain and priority, avoiding emptying a role or project, latest in the CV
+    (projects come after experiences)."""
     candidates = []
-    for ei, exp in enumerate(cv.experiences):
+    for ei, exp in enumerate(cv.bullet_owners()):
         for bi, b in enumerate(exp.bullets):
             if b.pinned:
                 continue
@@ -302,7 +323,7 @@ def generate_cv(keywords: list[str], company_id: str | None = None, company_name
         "pages": pages,
         "estimated_pages": round(tpl.estimate_pages(cv), 2),
         "pdf_engine": engine,
-        "kept": [b.model_dump() for e in cv.experiences for b in e.bullets],
+        "kept": [b.model_dump() for e in cv.bullet_owners() for b in e.bullets],
         "removed": [b.model_dump() for b in cv.removed],
         "unmatched_keywords": cv.unmatched_keywords,
         "match": match.model_dump() if match else None,   # how much of the job's requirements this CV covers

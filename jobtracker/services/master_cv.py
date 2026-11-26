@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import re
 
-from ..models import Bullet, Education, Experience, MasterCV, Profile, SkillGroup, Variant
+from ..models import Bullet, Education, Experience, MasterCV, Profile, Project, SkillGroup, Variant, normalize_sections
 from ..storage import UserDocument
 from .companies import NotFound
 
@@ -21,8 +21,23 @@ def _find_experience(cv: MasterCV, experience_id: str) -> Experience:
     raise NotFound(f"Experience {experience_id!r} not found")
 
 
-def _find_bullet(cv: MasterCV, bullet_id: str) -> tuple[Experience, Bullet]:
-    for e in cv.experiences:
+def _find_project(cv: MasterCV, project_id: str) -> Project:
+    for p in cv.projects:
+        if p.id == project_id:
+            return p
+    raise NotFound(f"Project {project_id!r} not found")
+
+
+def _find_owner(cv: MasterCV, owner_id: str) -> Experience | Project:
+    """The experience or project with this id (both hold achievements)."""
+    for o in cv.bullet_owners():
+        if o.id == owner_id:
+            return o
+    raise NotFound(f"Experience or project {owner_id!r} not found")
+
+
+def _find_bullet(cv: MasterCV, bullet_id: str) -> tuple[Experience | Project, Bullet]:
+    for e in cv.bullet_owners():
         for b in e.bullets:
             if b.id == bullet_id:
                 return e, b
@@ -83,14 +98,56 @@ def move_experience(experience_id: str, offset: int) -> None:
         cv.experiences.insert(j, cv.experiences.pop(i))
 
 
+# ----------------------------------------------------------------- projects
+
+def add_project(name: str, role: str = "", link: str = "", start: str = "", end: str = "",
+                position: int | None = None) -> Project:
+    project = Project(name=name, role=role, link=link.strip(), start=start, end=end)
+    with store.transaction() as cv:
+        cv.projects.insert(len(cv.projects) if position is None else position, project)
+    return project
+
+
+def update_project(project_id: str, **fields) -> Project:
+    fields.pop("bullets", None)  # bullets have their own actions
+    with store.transaction() as cv:
+        project = _find_project(cv, project_id)
+        for k, v in fields.items():
+            setattr(project, k, v.strip() if k == "link" and isinstance(v, str) else v)
+    return project
+
+
+def delete_project(project_id: str) -> None:
+    with store.transaction() as cv:
+        cv.projects.remove(_find_project(cv, project_id))
+
+
+def move_project(project_id: str, offset: int) -> None:
+    with store.transaction() as cv:
+        project = _find_project(cv, project_id)
+        i = cv.projects.index(project)
+        j = max(0, min(len(cv.projects) - 1, i + offset))
+        cv.projects.insert(j, cv.projects.pop(i))
+
+
+# ------------------------------------------------------------- section order
+
+def set_sections(sections: list[str]) -> list[str]:
+    """The order of the CV's sections (summary, skills, experience, projects, education, languages).
+    Unknown names are dropped; a missing section goes back where the default order puts it."""
+    with store.transaction() as cv:
+        cv.sections = normalize_sections(sections)
+    return cv.sections
+
+
 # ------------------------------------------------------------------ bullets
 
 def add_bullet(experience_id: str, text: str, keywords: list[str] | None = None,
                pinned: bool = False, priority: int = 0, lead: str = "", group: str = "") -> Bullet:
     bullet = Bullet(text=text, keywords=_clean_keywords(keywords or []), pinned=pinned,
                     priority=priority, lead=lead, group=group)
-    with store.transaction() as cv:
-        _find_experience(cv, experience_id).bullets.append(bullet)
+    with store.transaction() as cv:  # experience_id: an experience's or a project's id
+        _find_owner(cv, experience_id).bullets.append(bullet)
     return bullet
 
 
@@ -105,7 +162,7 @@ def update_bullet(bullet_id: str, **fields) -> Bullet:
 
 
 def _find_variant(cv: MasterCV, variant_id: str) -> tuple[Bullet, Variant]:
-    for e in cv.experiences:
+    for e in cv.bullet_owners():
         for b in e.bullets:
             for v in b.variants:
                 if v.id == variant_id:
@@ -180,9 +237,9 @@ def set_extra_keywords(keywords: list[str]) -> list[str]:
 # ----------------------------------------------------------------- keywords
 
 def keyword_vocabulary() -> list[str]:
-    """Every keyword known to the master CV (bullet tags, skills, extras), sorted."""
+    """Every keyword known to the master CV (experience and project bullet tags, skills, extras), sorted."""
     cv = get_master()
-    words = [k for e in cv.experiences for b in e.bullets for w in b.wordings() for k in w.keywords]
+    words = [k for e in cv.bullet_owners() for b in e.bullets for w in b.wordings() for k in w.keywords]
     words += [i for g in cv.skills for i in g.items]
     words += cv.extra_keywords
     return sorted(_clean_keywords(words), key=str.lower)
@@ -275,6 +332,7 @@ def detect_keywords(text: str, lead: str = "") -> list[str]:
 
 def missing_tags() -> list[dict]:
     """Tags that don't appear in their bullet's text (they would never be matched)."""
-    return [{"bullet_id": b.id, "wording_id": w.id, "experience": e.company, "text": w.text, "missing": miss}
-            for e in get_master().experiences for b in e.bullets for w in b.wordings()
+    return [{"bullet_id": b.id, "wording_id": w.id, "experience": getattr(e, "company", None) or e.name,
+             "text": w.text, "missing": miss}
+            for e in get_master().bullet_owners() for b in e.bullets for w in b.wordings()
             if (miss := [k for k in w.keywords if not in_text(k, w)])]

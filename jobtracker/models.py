@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field, computed_field, model_validator
+from pydantic import BaseModel, Field, computed_field, field_validator, model_validator
 
 from .models_base import new_id, today  # noqa: E402  (re-exported)
 from .process import STATUSES, Process, default_process, from_legacy  # noqa: E402, F401  (STATUSES re-exported)
@@ -184,6 +184,18 @@ class Experience(BaseModel):
     bullets: list[Bullet] = []
 
 
+class Project(BaseModel):
+    """Important work done outside a company (personal, academic, freelance, open source): an experience
+    without an employer. Its bullets are achievements like an experience's (keywords, wordings, pinned)."""
+    id: str = Field(default_factory=new_id)
+    name: str
+    role: str = ""         # optional role or context, e.g. "Master's thesis", "Open-source maintainer"
+    link: str = ""         # optional URL (repository, demo, paper)
+    start: str = ""
+    end: str = ""
+    bullets: list[Bullet] = []
+
+
 class Education(BaseModel):
     id: str = Field(default_factory=new_id)
     school: str
@@ -345,10 +357,30 @@ class Headline(BaseModel):
     default: bool = False      # used when no variant fits a job better
 
 
+# The CV's sections below the header (name, title, contacts), in their default order. Templates render them in
+# the master CV's `sections` order; a section with nothing in it is skipped.
+CV_SECTIONS = {"summary": "Summary", "skills": "Skills", "experience": "Professional Experience",
+               "projects": "Projects", "education": "Education", "languages": "Languages"}
+DEFAULT_SECTIONS = list(CV_SECTIONS)
+
+
+def normalize_sections(sections: list[str]) -> list[str]:
+    """Known sections once each, in the given order; a missing one goes back right after the section that
+    precedes it by default (so a section added later, like projects, lands under experience)."""
+    out = list(dict.fromkeys(s for s in sections if s in CV_SECTIONS))
+    for i, s in enumerate(DEFAULT_SECTIONS):
+        if s not in out:
+            before = next((b for b in reversed(DEFAULT_SECTIONS[:i]) if b in out), None)
+            out.insert(out.index(before) + 1 if before else 0, s)
+    return out
+
+
 class MasterCV(BaseModel):
     profile: Profile = Field(default_factory=Profile)
     headlines: list[Headline] = []   # title variants; profile.title/summary mirror the default one
     experiences: list[Experience] = []
+    projects: list[Project] = []     # work outside a company: personal, academic, freelance, open source
+    sections: list[str] = Field(default_factory=lambda: list(DEFAULT_SECTIONS))  # order on the CV page
     education: list[Education] = []
     skills: list[SkillGroup] = []
     languages: list[str] = []   # e.g. "French (Native)"
@@ -363,6 +395,15 @@ class MasterCV(BaseModel):
             self.headlines = [Headline(id="main", title=self.profile.title or "Title", summary=self.profile.summary,
                                        default=True)]
         return self
+
+    @field_validator("sections")
+    @classmethod
+    def _known_sections(cls, v: list[str]) -> list[str]:
+        return normalize_sections(v)
+
+    def bullet_owners(self) -> list[Experience | Project]:
+        """Everything that holds achievements: experiences, then projects."""
+        return [*self.experiences, *self.projects]
 
 
 # --------------------------------------------------------------------- chats

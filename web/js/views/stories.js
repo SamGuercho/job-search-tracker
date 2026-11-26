@@ -39,9 +39,10 @@ export async function renderStories(root) {
       return chip;
     }));
     const linked = new Set(s.achievements);
-    const achievementPicker = cv && cv.experiences.some((e) => e.bullets.length) && h("details", { open: linked.size > 0 },
+    const owners = cv ? [...cv.experiences, ...(cv.projects || []).map((pr) => ({ ...pr, company: pr.name }))] : [];
+    const achievementPicker = owners.some((e) => e.bullets.length) && h("details", { open: linked.size > 0 },
       h("summary", { class: "small" }, "Achievements of your master CV this story tells"),
-      h("div", { class: "stack-tight", style: "max-height:260px;overflow:auto;margin-top:6px" }, cv.experiences.filter((e) => e.bullets.length).map((e) => [
+      h("div", { class: "stack-tight", style: "max-height:260px;overflow:auto;margin-top:6px" }, owners.filter((e) => e.bullets.length).map((e) => [
         h("div", { class: "small muted", style: "margin-top:8px" }, h("b", {}, e.company), e.role ? ` · ${e.role}` : ""),
         e.bullets.map((b) => h("label", { class: "row small", style: "align-items:flex-start;gap:8px" },
           h("input", { type: "checkbox", checked: linked.has(b.id), onchange: (ev) => (ev.target.checked ? linked.add(b.id) : linked.delete(b.id)) }),

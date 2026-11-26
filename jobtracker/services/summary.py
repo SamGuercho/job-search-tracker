@@ -70,6 +70,9 @@ def _cv_text() -> str:
     for e in cv.experiences:
         lines.append(f"\n{e.role} at {e.company} ({e.start}-{e.end}, {e.location})")
         lines += [f"- {w.lead} {w.text}".strip() for b in e.bullets for w in b.wordings()]
+    for pr in cv.projects:
+        lines.append(f"\nProject: {pr.name}" + (f", {pr.role}" if pr.role else "") + f" ({pr.start}-{pr.end})")
+        lines += [f"- {w.lead} {w.text}".strip() for b in pr.bullets for w in b.wordings()]
     lines += [f"{g.name}: {', '.join(g.items)}" for g in cv.skills]
     lines += [f"Education: {ed.degree}, {ed.school} ({ed.start}-{ed.end}) {ed.details}" for ed in cv.education]
     lines.append(f"Languages: {', '.join(cv.languages)}")

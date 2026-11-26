@@ -165,7 +165,11 @@ export async function renderCvBuilder(root, params) {
   const drawPreview = () => {
     const p = state.preview;
     if (!p) return mount(previewBox, h("p", { class: "muted" }, "Add keywords to see which bullet points will be used."));
-    const all = p.experiences.flatMap((e) => e.bullets);
+    // Experiences and projects, in the CV's section order
+    const blocks = { experience: p.experiences.map((e) => ({ ...e, heading: `${e.role} · ${e.company}` })),
+      projects: (p.projects || []).map((pr) => ({ ...pr, heading: `Project · ${pr.name}${pr.role ? ` (${pr.role})` : ""}` })) };
+    const owners = (p.sections || ["experience", "projects"]).flatMap((s) => blocks[s] || []);
+    const all = owners.flatMap((e) => e.bullets);
     const count = (f) => all.filter(f).length;
     mount(previewBox,
       h("div", { class: "legend", style: "margin-bottom:10px" },
@@ -175,8 +179,8 @@ export async function renderCvBuilder(root, params) {
         h("span", { class: "l-cut" }, `cut to fit 1 page (${p.removed.length})`)),
       p.unmatched_keywords.length > 0 && h("p", { class: "small", style: "color:var(--amber)" },
         `Not written in any bullet: ${p.unmatched_keywords.join(", ")}. Rewrite a bullet in the Master CV to include it.`),
-      p.experiences.map((e) => h("div", { class: "preview-exp" },
-        h("h3", {}, `${e.role} · ${e.company}`),
+      owners.map((e) => h("div", { class: "preview-exp" },
+        h("h3", {}, e.heading),
         e.bullets.map((b) => h("div", { class: `bullet ${b.fallback ? "fallback" : ""} ${b.redundant ? "redundant" : ""}`, title: b.matched.length ? `Matches: ${b.matched.join(", ")}` : "" },
           b.group && h("div", { class: "small", style: "color:var(--accent); font-style:italic" }, b.group),
           b.lead && h("b", {}, `${b.lead} `), highlight(b.text, b.matched), b.pinned && !b.forced ? " 📌" : "",

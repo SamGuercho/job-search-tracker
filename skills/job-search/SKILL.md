@@ -69,6 +69,12 @@ the action from the project root:
 
 ## Master CV
 - `cv.master.get` to read it. Achievements: `cv.bullet.add {"experience_id", "text", "keywords", "lead", "group", "priority"}`.
+- Projects (important work outside a company: personal, academic, freelance, open source) are their own section:
+  `cv.project.add {"name", "role", "link", "start", "end"}` (role/context, link and dates optional), then
+  `cv.bullet.add` with the project's id as `experience_id`. Their achievements take part in matching, wordings and
+  one-page trimming like experience ones. Work done for an employer stays an experience.
+- Section order on the CV page is the user's choice: `cv.sections.set {"sections": ["summary", "skills",
+  "experience", "projects", "education", "languages"]}` (that is the default; generated CVs follow it).
 - An achievement can have several wordings; a CV uses one of them. To target a new keyword, add a wording to the
   existing achievement (`cv.variant.draft` → show the drafts → `cv.variant.add` the chosen one), never a near-duplicate.
 - Title at the top of a CV: always the job's title (the application's position) unless `company.set_cv_title`

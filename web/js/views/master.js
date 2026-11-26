@@ -1,5 +1,5 @@
-// Master CV editor: profile, experiences + achievements (with alternative wordings), education, skills.
-// Bullets and experiences save automatically when a field loses focus.
+// Master CV editor: profile, page layout (section order), experiences and projects + achievements (with alternative
+// wordings), education, skills. Bullets, experiences and projects save automatically when a field loses focus.
 import { call, fileUrl } from "../api.js";
 import { attempt, confirmSheet, field, h, joinList, keywordPattern, mount, promptSheet, readForm, sendPdfButton, splitList } from "../ui.js";
 import { openImport } from "./import.js";
@@ -68,23 +68,140 @@ export async function renderMasterCv(root) {
     return h("div", { class: "card" }, h("h2", {}, "Profile"), form);
   };
 
-  // ------------------------------------------------------------ experiences
-  const experience = (exp, i) => {
+  // ------------------------------------------------------------ page layout
+  // A miniature page: the sections as blocks in their order on the CV. Drag a block (mouse or finger) or use its
+  // arrows; the order saves on drop. The header (name, title, contacts) always stays on top.
+  const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
+  const SECTIONS = {
+    summary: ["Summary", () => (cv.profile.summary ? 1 + Math.ceil(cv.profile.summary.length / 130) : 0),
+      () => (cv.profile.summary ? "" : "no summary")],
+    skills: ["Skills", () => { const n = cv.skills.reduce((t, g) => t + g.items.length, 0); return n ? 1 + Math.ceil(n / 12) : 0; },
+      () => `${cv.skills.reduce((t, g) => t + g.items.length, 0)} skills`],
+    experience: ["Professional Experience", () => cv.experiences.reduce((t, e) => t + 1 + e.bullets.length, 0),
+      () => `${plural(cv.experiences.length, "role")} · ${plural(cv.experiences.reduce((t, e) => t + e.bullets.length, 0), "achievement")}`],
+    projects: ["Projects", () => cv.projects.reduce((t, p) => t + 1 + p.bullets.length, 0),
+      () => `${plural(cv.projects.length, "project")} · ${plural(cv.projects.reduce((t, p) => t + p.bullets.length, 0), "achievement")}`],
+    education: ["Education", () => cv.education.reduce((t, e) => t + 1 + (e.details ? 1 : 0), 0), () => `${cv.education.length} entries`],
+    languages: ["Languages", () => (cv.languages.length ? 1 : 0), () => cv.languages.join(" · ")],
+  };
+
+  const layoutCard = () => {
+    let order = [...cv.sections];
+    const page = h("div", { class: "mini-page", role: "list", "aria-label": "CV sections, top to bottom" });
+    const status = h("span", { class: "small muted", role: "status" });
+
+    const save = async (next) => {
+      if (next.join() === order.join()) return draw();
+      const previous = order;
+      order = next;
+      draw();
+      status.textContent = "Saving…";
+      const saved = await attempt(() => call("cv.sections.set", { sections: next }));
+      status.textContent = saved ? "Order saved: every new CV follows it." : "";
+      order = saved || previous;
+      if (saved) cv.sections = saved;
+      draw();
+    };
+    const shift = (i, by) => {
+      const next = [...order];
+      next.splice(i + by, 0, ...next.splice(i, 1));
+      save(next);
+    };
+
+    // Pointer events cover mouse, pen and touch: the block follows the pointer between its neighbours. Listened on
+    // the document, since moving the block in the page drops a pointer capture.
+    const drag = (block) => (e) => {
+      if (e.button > 0 || e.target.closest("button")) return;
+      e.preventDefault();
+      block.classList.add("dragging");
+      const move = (ev) => {
+        if (ev.pointerId !== e.pointerId) return;
+        const others = [...page.querySelectorAll(".mini-block")].filter((b) => b !== block);
+        const before = others.find((b) => { const r = b.getBoundingClientRect(); return ev.clientY < r.top + r.height / 2; });
+        if (before) { if (block.nextElementSibling !== before) page.insertBefore(block, before); }
+        else if (page.lastElementChild !== block) page.append(block);
+      };
+      const drop = (ev) => {
+        if (ev.pointerId !== e.pointerId) return;
+        for (const [type, fn] of listeners) document.removeEventListener(type, fn);
+        block.classList.remove("dragging");
+        save([...page.querySelectorAll(".mini-block")].map((b) => b.dataset.section));
+      };
+      const listeners = [["pointermove", move], ["pointerup", drop], ["pointercancel", drop]];
+      for (const [type, fn] of listeners) document.addEventListener(type, fn);
+    };
+
+    const blockFor = (name, i) => {
+      const [label, lines, detail] = SECTIONS[name];
+      const n = lines();
+      const block = h("div", {
+        class: `mini-block ${n ? "" : "is-empty"}`, role: "listitem", "data-section": name,
+        title: n ? "Drag to move this section" : "Empty: not printed until it has content",
+      },
+        h("div", { class: "mini-grip", "aria-hidden": "true" }, "⋮⋮"),
+        h("div", { class: "mini-body" },
+          h("div", { class: "mini-title" }, label),
+          h("div", { class: "mini-lines", "aria-hidden": "true" },
+            Array.from({ length: Math.min(n, 8) }, (_, k) => h("i", { style: `width:${k % 3 === 2 ? 62 : 92}%` }))),
+          h("div", { class: "mini-detail" }, n ? detail() : "empty: not printed")),
+        h("div", { class: "mini-arrows" },
+          h("button", { class: "ghost icon", disabled: i === 0, "aria-label": `Move ${label} up`, onclick: () => shift(i, -1) }, "↑"),
+          h("button", { class: "ghost icon", disabled: i === order.length - 1, "aria-label": `Move ${label} down`, onclick: () => shift(i, 1) }, "↓")));
+      block.addEventListener("pointerdown", drag(block));
+      return block;
+    };
+
+    const header = h("div", { class: "mini-header", "aria-hidden": "true" },
+      h("div", { class: "mini-name" }, cv.profile.name || "Your name"), h("i"), h("i", { class: "short" }));
+    const draw = () => mount(page, order.map(blockFor));
+    draw();
+    return h("div", { class: "card layout-card" },
+      h("div", { class: "layout-side" },
+        h("h2", {}, "Page layout"),
+        h("p", { class: "small muted" }, "The order of the sections on your CV. Drag a block to move it (or use its arrows): "
+          + "every CV you create follows this order. Empty sections are left out."),
+        status),
+      h("div", { class: "mini-sheet" }, header, page));
+  };
+
+  // ------------------------------------------------- experiences and projects
+  // A project is an experience without an employer: same achievements, wordings and keywords.
+  const KINDS = {
+    experience: {
+      fields: [["company", "Company"], ["role", "Role"], ["location", "Location"], ["start", "Start"], ["end", "End"]],
+      title: (o) => `${o.role || "Role"} · ${o.company}`, name: (o) => o.company,
+      list: () => cv.experiences, action: "cv.experience", saved: "Experience saved", deleted: "Experience deleted",
+    },
+    project: {
+      fields: [["name", "Project name"], ["role", "Role or context"], ["link", "Link"], ["start", "Start"], ["end", "End"]],
+      title: (o) => `${o.name}${o.role ? ` · ${o.role}` : ""}`, name: (o) => o.name,
+      list: () => cv.projects, action: "cv.project", saved: "Project saved", deleted: "Project deleted",
+    },
+  };
+
+  const experience = (exp, i) => ownerCard("experience", exp, i);
+  const project = (pr, i) => ownerCard("project", pr, i);
+
+  const ownerCard = (kind, exp, i) => {
+    const k = KINDS[kind];
     const header = h("div", { class: "form-grid" },
-      ["company", "role", "location", "start", "end"].map((k) => field(k[0].toUpperCase() + k.slice(1), h("input", { name: k, value: exp[k] }))));
+      k.fields.map(([name, label]) => field(label, h("input", {
+        name, value: exp[name], ...(name === "link" ? { inputmode: "url", placeholder: "github.com/you/project (optional)" } : {}),
+        ...(name === "role" && kind === "project" ? { placeholder: "Personal, Master's thesis, Freelance… (optional)" } : {}),
+      }))));
     header.addEventListener("change", () =>
-      attempt(() => call("cv.experience.update", { id: exp.id, fields: readForm(header) }), "Experience saved"));
+      attempt(() => call(`${k.action}.update`, { id: exp.id, fields: readForm(header) }), k.saved));
 
     return h("div", { class: "card exp-card" },
       h("div", { class: "row", style: "margin-bottom:10px" },
-        h("h2", { style: "margin:0" }, `${exp.role || "Role"} · ${exp.company}`),
+        h("h2", { style: "margin:0" }, k.title(exp)),
         h("span", { class: "spacer" }),
-        h("button", { class: "icon", disabled: i === 0, title: "Move up", onclick: () => move(exp.id, -1) }, "↑"),
-        h("button", { class: "icon", disabled: i === cv.experiences.length - 1, title: "Move down", onclick: () => move(exp.id, 1) }, "↓"),
+        h("button", { class: "icon", disabled: i === 0, title: "Move up", onclick: () => move(kind, exp.id, -1) }, "↑"),
+        h("button", { class: "icon", disabled: i === k.list().length - 1, title: "Move down", onclick: () => move(kind, exp.id, 1) }, "↓"),
         h("button", {
           class: "danger icon", onclick: async () => {
-            if (await confirmSheet(`Its ${exp.bullets.length} achievements are deleted too.`, { title: `Delete ${exp.company}?`, ok: "Delete", danger: true }) &&
-              await attempt(() => call("cv.experience.delete", { id: exp.id }), "Experience deleted")) reload();
+            if (await confirmSheet(`Its ${exp.bullets.length} achievements are deleted too.`, { title: `Delete ${k.name(exp)}?`, ok: "Delete", danger: true }) &&
+              await attempt(() => call(`${k.action}.delete`, { id: exp.id }), k.deleted)) reload();
           },
         }, "Delete")),
       header,
@@ -220,7 +337,7 @@ export async function renderMasterCv(root) {
     const b = await attempt(() => call("cv.bullet.add", { experience_id: experienceId, text: "New bullet point: describe an achievement with a number." }));
     if (b) await reload();
   };
-  const move = async (id, offset) => { if (await attempt(() => call("cv.experience.move", { id, offset }))) reload(); };
+  const move = async (kind, id, offset) => { if (await attempt(() => call(`${KINDS[kind].action}.move`, { id, offset }))) reload(); };
 
   const newExperience = () => {
     const form = h("form", { class: "row" },
@@ -232,6 +349,22 @@ export async function renderMasterCv(root) {
       if (await attempt(() => call("cv.experience.add", { ...readForm(form), position: 0 }), "Experience added")) reload();
     });
     return h("div", { class: "card" }, form);
+  };
+
+  const newProject = () => {
+    const form = h("form", { class: "row" },
+      h("input", { name: "name", placeholder: "Project name", required: true, style: "max-width:240px" }),
+      h("input", { name: "role", placeholder: "Role or context (optional)", style: "max-width:240px" }),
+      h("button", { type: "submit" }, "+ Add project"));
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      if (await attempt(() => call("cv.project.add", readForm(form)), "Project added")) reload();
+    });
+    return h("div", { class: "card" },
+      h("h2", {}, "Projects"),
+      h("p", { class: "small muted" }, "Important work done outside a company: personal, academic, freelance, open source. "
+        + "Their achievements are matched to jobs, reworded and trimmed exactly like experience ones."),
+      form);
   };
 
   // ------------------------------------------------------- education/skills
@@ -309,11 +442,11 @@ export async function renderMasterCv(root) {
   }, "📄 Create general CV");
 
   function render() {
-    const bullets = cv.experiences.reduce((n, e) => n + e.bullets.length, 0);
+    const bullets = [...cv.experiences, ...cv.projects].reduce((n, e) => n + e.bullets.length, 0);
     mount(root,
       h("div", { class: "page-head" },
         h("div", {}, h("h1", {}, "Master CV"),
-          h("div", { class: "sub muted" }, `${cv.experiences.length} experiences · ${bullets} bullet points. Tag each bullet with the keywords it proves.`)),
+          h("div", { class: "sub muted" }, `${cv.experiences.length} experiences · ${cv.projects.length} project${cv.projects.length === 1 ? "" : "s"} · ${bullets} bullet points. Tag each bullet with the keywords it proves.`)),
         h("div", { class: "row" },
           h("button", { onclick: () => openImport(reload) }, "Import from CV file"),
           generalBtn,
@@ -322,8 +455,11 @@ export async function renderMasterCv(root) {
         generalResult,
         profile(),
         headlinesCard(),
+        layoutCard(),
         newExperience(),
         cv.experiences.map(experience),
+        newProject(),
+        cv.projects.map(project),
         h("div", { class: "grid cols-2" },
           listEditor("Education", cv.education,
             [["degree", "Degree"], ["school", "School"], ["location", "Location"], ["start", "Start"], ["end", "End"], ["details", "Details"]],

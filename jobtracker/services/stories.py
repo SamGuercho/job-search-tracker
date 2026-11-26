@@ -58,9 +58,10 @@ def _clean_competencies(names: list[str]) -> list[str]:
 def _achievements() -> dict[str, dict]:
     """Every master CV achievement by id: its text and the experience it belongs to."""
     out = {}
-    for e in master_cv.get_master().experiences:
+    for e in master_cv.get_master().bullet_owners():  # experiences and projects
         for b in e.bullets:
-            out[b.id] = {"id": b.id, "text": f"{b.lead} {b.text}".strip(), "experience": e.company, "role": e.role}
+            out[b.id] = {"id": b.id, "text": f"{b.lead} {b.text}".strip(),
+                         "experience": getattr(e, "company", None) or e.name, "role": e.role}
     return out
 
 

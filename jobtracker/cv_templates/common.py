@@ -1,6 +1,8 @@
 """Helpers shared by the Word templates."""
 from __future__ import annotations
 
+import re
+
 from docx.opc.constants import RELATIONSHIP_TYPE
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
@@ -46,6 +48,11 @@ def hyperlink(paragraph, url: str, text: str, color: str = "0563C1"):
     run.append(t)
     link.append(run)
     paragraph._p.append(link)
+
+
+def link_label(value: str) -> str:
+    """A link as printed on a CV: "github.com/me/repo" (no scheme, no "www.", no trailing slash)."""
+    return re.sub(r"^(?:https?://)?(?:www\.)?", "", value.strip()).rstrip("/")
 
 
 def url(value: str) -> str:

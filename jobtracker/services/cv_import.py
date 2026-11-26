@@ -13,7 +13,7 @@ from docx import Document
 from pydantic import BaseModel
 from pypdf import PdfReader
 
-from ..models import Bullet, Education, Experience, MasterCV, Profile, SkillGroup
+from ..models import Bullet, Education, Experience, MasterCV, Profile, Project, SkillGroup
 from . import llm, master_cv
 
 SUPPORTED = {".docx", ".pdf", ".txt", ".md"}
@@ -82,6 +82,15 @@ class _Experience(BaseModel):
     bullets: list[_Bullet]
 
 
+class _Project(BaseModel):
+    name: str
+    role: str
+    link: str
+    start: str
+    end: str
+    bullets: list[_Bullet]
+
+
 class _Education(BaseModel):
     school: str
     degree: str
@@ -110,6 +119,7 @@ class _Profile(BaseModel):
 class _ParsedCV(BaseModel):
     profile: _Profile
     experiences: list[_Experience]
+    projects: list[_Project]
     education: list[_Education]
     skills: list[_Skills]
     languages: list[str]
@@ -125,6 +135,10 @@ Rules:
   If there is no label, lead is "".
 - A URL in <angle brackets> is the target of the link text before it (e.g. "LinkedIn <https://...>" -> profile.linkedin is the URL).
 - If bullets sit under a project sub-heading inside a job, put that heading in each bullet's `group`; else group "".
+- A separate "Projects" section (personal, academic, freelance, open-source, side projects: work NOT done for an
+  employer) goes in `projects`, never in `experiences`: `name` = the project's name, `role` = the role or context
+  if written (e.g. "Master's thesis", "Maintainer"), `link` = its URL if any, dates as written, and its lines as
+  bullets (same rules as experience bullets). Projects listed inside a job stay in that experience (as `group`).
 - For each bullet, list as keywords the important terms that are LITERALLY WRITTEN in that bullet (label or text):
   tools, technologies, methods, domains, skills (e.g. "SQL", "LangGraph", "LLM-as-a-Judge", "GDPR").
   Copy them as they appear (a plural may be singularised). Never add a concept that is not written in the bullet:
@@ -154,6 +168,8 @@ def parse_cv(text: str) -> MasterCV:
         profile=Profile(**parsed.profile.model_dump()),
         experiences=[Experience(**e.model_dump(exclude={"bullets"}), bullets=[_bullet(b) for b in e.bullets])
                      for e in parsed.experiences],
+        projects=[Project(**p.model_dump(exclude={"bullets"}), bullets=[_bullet(b) for b in p.bullets])
+                  for p in parsed.projects],
         education=[Education(**e.model_dump()) for e in parsed.education],
         skills=[SkillGroup(**s.model_dump()) for s in parsed.skills],
         languages=parsed.languages,
@@ -163,13 +179,13 @@ def parse_cv(text: str) -> MasterCV:
 # ------------------------------------------------------------------- 3. apply
 
 def apply_import(draft: MasterCV, mode: ImportMode = "merge") -> MasterCV:
-    """`replace` overwrites the master CV (extra keywords are kept).
-    `merge` fills empty profile fields, adds experiences/education not already
-    present (same company+role / school+degree; new bullets are appended to
+    """`replace` overwrites the master CV (extra keywords, synonyms and section order are kept).
+    `merge` fills empty profile fields, adds experiences/projects/education not already
+    present (same company+role / project name / school+degree; new bullets are appended to
     existing ones) and merges skill groups by name."""
     with master_cv.store.transaction() as cv:
         if mode == "replace":
-            cv.profile, cv.experiences = draft.profile, draft.experiences
+            cv.profile, cv.experiences, cv.projects = draft.profile, draft.experiences, draft.projects
             cv.education, cv.skills, cv.languages = draft.education, draft.skills, draft.languages
             return cv
 
@@ -178,14 +194,18 @@ def apply_import(draft: MasterCV, mode: ImportMode = "merge") -> MasterCV:
                 setattr(cv.profile, field, value)
 
         key = lambda *parts: tuple(p.strip().lower() for p in parts)
-        experiences = {key(e.company, e.role): e for e in cv.experiences}
-        for exp in draft.experiences:
-            existing = experiences.get(key(exp.company, exp.role))
-            if existing is None:
-                cv.experiences.append(exp)
-                continue
-            known = {b.text.strip().lower() for b in existing.bullets}
-            existing.bullets += [b for b in exp.bullets if b.text.strip().lower() not in known]
+        def merge(have: list, new: list, ident) -> None:
+            by_key = {ident(o): o for o in have}
+            for o in new:
+                existing = by_key.get(ident(o))
+                if existing is None:
+                    have.append(o)
+                    continue
+                known = {b.text.strip().lower() for b in existing.bullets}
+                existing.bullets += [b for b in o.bullets if b.text.strip().lower() not in known]
+
+        merge(cv.experiences, draft.experiences, lambda e: key(e.company, e.role))
+        merge(cv.projects, draft.projects, lambda p: key(p.name))
 
         schools = {key(e.school, e.degree) for e in cv.education}
         cv.education += [e for e in draft.education if key(e.school, e.degree) not in schools]

@@ -45,7 +45,7 @@ _NUMBER = re.compile(r"\d+(?:[.,]\d+)?")
 
 def draft_variants(bullet_id: str, keywords: list[str], count: int = 3, facts: str = "") -> dict:
     cv = master_cv.get_master()
-    bullet = next((b for e in cv.experiences for b in e.bullets if b.id == bullet_id), None)
+    bullet = next((b for e in cv.bullet_owners() for b in e.bullets if b.id == bullet_id), None)
     if bullet is None:
         raise master_cv.NotFound(f"Achievement {bullet_id!r} not found")
 

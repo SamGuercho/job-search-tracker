@@ -24,6 +24,7 @@ from .models import (
     Experience,
     MasterCV,
     Profile,
+    Project,
     SkillGroup,
     SourceType,
     StudyHours,
@@ -80,6 +81,7 @@ CompanyPatch = partial(Company, exclude={"id", "status", "process", "documents",
 StepPatch = partial(Node, exclude={"id"})
 ProfilePatch = partial(Profile)
 ExperiencePatch = partial(Experience, exclude={"id", "bullets"})
+ProjectPatch = partial(Project, exclude={"id", "bullets"})
 BulletPatch = partial(Bullet, exclude={"id", "variants"})
 VariantPatch = partial(Variant, exclude={"id"})
 
@@ -784,7 +786,8 @@ def process_reset(company: str):
 
 @action("cv.master.get")
 def cv_master_get():
-    """The whole master CV: profile, experiences with their tagged bullets, education, skills."""
+    """The whole master CV: profile, experiences and projects with their tagged bullets, education, skills,
+    languages, and `sections` (the order of the CV's sections on the page)."""
     return master_cv.get_master()
 
 
@@ -921,10 +924,51 @@ def cv_experience_move(id: str, offset: int):
     return {"moved": id}
 
 
+@action("cv.project.add")
+def cv_project_add(name: str, role: str = "", link: str = "", start: str = "", end: str = "",
+                   position: Optional[int] = None):
+    """Add a project to the master CV's Projects section: important work done outside a company (personal,
+    academic, freelance, open source). `role` = optional role or context ("Master's thesis", "Maintainer"),
+    `link` = optional URL (repository, demo, paper). Its bullets are added with cv.bullet.add (experience_id =
+    the project's id) and work like an experience's: keywords, wordings, matching, one-page trimming."""
+    return master_cv.add_project(name, role, link, start, end, position)
+
+
+@action("cv.project.update")
+def cv_project_update(id: str, fields: ProjectPatch):
+    """Update a project's name, role/context, link or dates."""
+    return master_cv.update_project(id, **_patch(fields))
+
+
+@action("cv.project.delete", confirm=True)
+def cv_project_delete(id: str):
+    """Delete a project and all its bullets."""
+    master_cv.delete_project(id)
+    return {"deleted": id}
+
+
+@action("cv.project.move")
+def cv_project_move(id: str, offset: int):
+    """Reorder projects (-1 = up, +1 = down)."""
+    master_cv.move_project(id, offset)
+    return {"moved": id}
+
+
+@action("cv.sections.set")
+def cv_sections_set(sections: list[str]):
+    """Set the order of the CV's sections below the header, e.g. ["summary", "skills", "projects", "experience",
+    "education", "languages"] to put Projects above Professional Experience. Names: summary, skills, experience,
+    projects, education, languages: give all six. Every generated CV follows it (default: Projects right under
+    Professional Experience); a section left out goes back right after the one it follows by default; an empty
+    section is not printed."""
+    return master_cv.set_sections(sections)
+
+
 @action("cv.bullet.add", confirm=True)
 def cv_bullet_add(experience_id: str, text: str, keywords: list[str] = [], pinned: bool = False,
                   priority: int = 0, lead: str = "", group: str = ""):
-    """Add a bullet point under an experience. `keywords` tag it for matching job descriptions;
+    """Add a bullet point under an experience or a project (`experience_id` = either one's id).
+    `keywords` tag it for matching job descriptions;
     `pinned` bullets are always included; higher `priority` bullets are kept longer when trimming to one page.
     Optional `lead` is a bold label shown before the text ("Copilot:"); `group` puts the bullet under a
     project sub-heading inside the experience."""
@@ -996,8 +1040,9 @@ def cv_skills_set(groups: list[SkillGroup]):
 @action("cv.import.parse")
 def cv_import_parse(file_path: Optional[str] = None, text: Optional[str] = None):
     """Read an existing CV (.docx, .pdf, .txt: give `file_path`, or paste `text`) and structure it
-    with the LLM into a draft master CV (profile, experiences with keyword-tagged bullets, education,
-    skills). Nothing is saved: review the draft, then call cv.import.apply."""
+    with the LLM into a draft master CV (profile, experiences and projects with keyword-tagged bullets,
+    education, skills; a "Projects" section lands in projects). Nothing is saved: review the draft, then call
+    cv.import.apply."""
     if not (file_path or text):
         raise ValueError("Give file_path or text")
     if file_path:
@@ -1007,7 +1052,8 @@ def cv_import_parse(file_path: Optional[str] = None, text: Optional[str] = None)
     draft = cv_import.parse_cv(text or cv_import.extract_text(path))
     return {"draft": draft, "stats": {
         "experiences": len(draft.experiences),
-        "bullets": sum(len(e.bullets) for e in draft.experiences),
+        "projects": len(draft.projects),
+        "bullets": sum(len(e.bullets) for e in draft.bullet_owners()),
         "education": len(draft.education),
         "skills": sum(len(g.items) for g in draft.skills)}}
 
@@ -1015,7 +1061,7 @@ def cv_import_parse(file_path: Optional[str] = None, text: Optional[str] = None)
 @action("cv.import.apply", confirm=True)
 def cv_import_apply(draft: MasterCV, mode: ImportMode = "merge"):
     """Save a draft from cv.import.parse into the master CV. `merge` adds what is new and fills empty
-    profile fields; `replace` overwrites profile, experiences, education and skills."""
+    profile fields; `replace` overwrites profile, experiences, projects, education and skills."""
     return cv_import.apply_import(draft, mode)
 
 

@@ -151,7 +151,12 @@ How to work:
   No contacts imported (linkedin.status)? Point to Profile → "Update my LinkedIn contacts".
 - LinkedIn vs CV: linkedin.check lists differences between the LinkedIn profile and the master CV. LinkedIn can't
   be edited from here: give the exact text to paste on LinkedIn, or (with the user's OK) fix the master CV.
-- The master CV is a set of achievements; each can have several wordings (variants) emphasising different
+- The master CV is a set of achievements, under experiences (jobs) or projects (important work outside a company:
+  personal, academic, freelance, open source; cv.project.add with a name, optional role/context, link, dates;
+  their achievements use cv.bullet.add with the project's id and are matched, worded and trimmed like any other).
+  Work done for an employer is an experience, never a project. The order of the CV's sections (summary, skills,
+  experience, projects, education, languages) is the user's: cv.sections.set (default: projects under experience).
+  Each achievement can have several wordings (variants) emphasising different
   keywords. A CV uses at most one wording per achievement, so never create a near-duplicate achievement to get
   a keyword: add a wording to the existing achievement instead (cv.variant.draft, then cv.variant.add).
 - Growing the master CV:

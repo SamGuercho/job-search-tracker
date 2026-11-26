@@ -1,6 +1,7 @@
 """Elegant serif template: STIX Two Text, name and position in small
-capitals, "•"-separated contact line, Summary → Skills (inline) → Professional Experience → Education,
-"Role, Company" headers with right-aligned dates, black rules under section titles."""
+capitals, "•"-separated contact line, then the sections in the master CV's order (default Summary → Skills (inline)
+→ Professional Experience → Projects → Education → Languages), "Role, Company" headers with right-aligned dates,
+black rules under section titles."""
 from __future__ import annotations
 
 import math
@@ -11,8 +12,9 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_TAB_ALIGNMENT
 from docx.oxml.ns import qn
 from docx.shared import Cm, Pt, RGBColor
 
+from ..models import DEFAULT_SECTIONS
 from ..textstyle import plain_dashes
-from .common import bottom_border, dates, grouped, hyperlink, url
+from .common import bottom_border, dates, grouped, hyperlink, link_label, url
 
 FONT = "STIX Two Text"   # ships with macOS; Word/LibreOffice fall back to a serif elsewhere
 INK = RGBColor(0x1A, 0x1A, 0x1A)
@@ -65,34 +67,45 @@ class ElegantTemplate:
                 self._run(contact, " • ")
             hyperlink(contact, url(link), label, color=LINK)
 
-        if p.summary:
-            self._heading(doc, "Summary", first=True)
-            self._run(self._para(doc, justify=True), p.summary)
+        self._first = True
+        for name in getattr(cv, "sections", None) or DEFAULT_SECTIONS:
+            getattr(self, f"_section_{name}")(doc, cv)
 
-        if cv.skills:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        doc.save(str(path))
+
+    # ------------------------------------------------------------ sections
+    # One method per section name (models.CV_SECTIONS); each adds nothing when its section is empty.
+
+    def _section_summary(self, doc, cv):
+        if cv.profile.summary:
+            self._heading(doc, "Summary")
+            self._run(self._para(doc, justify=True), cv.profile.summary)
+
+    def _section_skills(self, doc, cv):
+        if any(g.items for g in cv.skills):
             self._heading(doc, "Skills")
             self._run(self._para(doc, justify=True),
                       " • ".join(f"{g.name}: {', '.join(g.items)}" for g in cv.skills if g.items))
 
+    def _section_experience(self, doc, cv):
         if cv.experiences:
             self._heading(doc, "Professional Experience")
             for i, exp in enumerate(cv.experiences):
                 org = exp.company + (f" ({exp.location})" if exp.location else "")
                 self._entry(doc, exp.role or exp.company, org if exp.role else exp.location,
                             dates(exp.start, exp.end), before=0 if i == 0 else 6)
-                for group, bullets in grouped(exp.bullets):
-                    if group:
-                        self._run(self._para(doc, before=2, keep=True), group, bold=True, italic=True)
-                    for b in bullets:
-                        bp = doc.add_paragraph(style="List Bullet")
-                        f = bp.paragraph_format
-                        f.left_indent, f.first_line_indent = Cm(0.635), Cm(-0.4)  # text at the bullet's built-in tab
-                        f.line_spacing = LINE_SPACING
-                        bp.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-                        if b.lead:
-                            self._run(bp, b.lead.rstrip() + " ", bold=True)
-                        self._run(bp, b.text)
+                self._bullets(doc, exp.bullets)
 
+    def _section_projects(self, doc, cv):
+        projects = getattr(cv, "projects", [])
+        if projects:
+            self._heading(doc, "Projects")
+            for i, pr in enumerate(projects):
+                self._entry(doc, pr.name, pr.role, dates(pr.start, pr.end), before=0 if i == 0 else 6, link=pr.link)
+                self._bullets(doc, pr.bullets)
+
+    def _section_education(self, doc, cv):
         if cv.education:
             self._heading(doc, "Education")
             for i, ed in enumerate(cv.education):
@@ -102,12 +115,24 @@ class ElegantTemplate:
                 if ed.details:
                     self._run(self._para(doc), ed.details)
 
-        if cv.languages:  # last section, in the order of the master CV
+    def _section_languages(self, doc, cv):
+        if cv.languages:
             self._heading(doc, "Languages")
             self._run(self._para(doc), " • ".join(cv.languages))
 
-        path.parent.mkdir(parents=True, exist_ok=True)
-        doc.save(str(path))
+    def _bullets(self, doc, bullets):
+        for group, items in grouped(bullets):
+            if group:
+                self._run(self._para(doc, before=2, keep=True), group, bold=True, italic=True)
+            for b in items:
+                bp = doc.add_paragraph(style="List Bullet")
+                f = bp.paragraph_format
+                f.left_indent, f.first_line_indent = Cm(0.635), Cm(-0.4)  # text at the bullet's built-in tab
+                f.line_spacing = LINE_SPACING
+                bp.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+                if b.lead:
+                    self._run(bp, b.lead.rstrip() + " ", bold=True)
+                self._run(bp, b.text)
 
     # ------------------------------------------------------------- helpers
 
@@ -127,19 +152,24 @@ class ElegantTemplate:
             run.font.small_caps = True
         return run
 
-    def _heading(self, doc, text, first=False):
-        para = self._para(doc, before=0 if first else 10, after=2, keep=True)
+    def _heading(self, doc, text):
+        """A section title; the first one on the page sits right under the contact line."""
+        para = self._para(doc, before=0 if self._first else 10, after=2, keep=True)
+        self._first = False
         self._run(para, text.upper(), size=HEAD_PT, bold=True)
         bottom_border(para, "000000", space=1)
 
-    def _entry(self, doc, title, org, when, before=0):
-        """**Title**, *Organisation*  ................  dates"""
+    def _entry(self, doc, title, org, when, before=0, link=""):
+        """**Title**, *Organisation* • link  ................  dates"""
         para = self._para(doc, before=before, keep=True)
         para.paragraph_format.tab_stops.add_tab_stop(self.width, WD_TAB_ALIGNMENT.RIGHT)
         self._run(para, title, bold=True)
         if org:
             self._run(para, ", ")
             self._run(para, org, italic=True)
+        if link:
+            self._run(para, " • ")
+            hyperlink(para, url(link), link_label(link), color=LINK)
         if when:
             self._run(para, f"\t{when}")
 
@@ -150,17 +180,16 @@ class ElegantTemplate:
         p = cv.profile
         h = NAME_PT * 1.1 + (TITLE_PT * 1.1 if p.title else 0) + LINE_PT + 2
         heading = 10 + HEAD_PT * 1.1 + 2 + 2
+        bullets = lambda items: sum(((2 + LINE_PT) if group else 0)
+                                    + sum(lines(f"{b.lead} {b.text}", BULLET_CHARS_PER_LINE) * LINE_PT for b in bs)
+                                    for group, bs in grouped(items))
         if p.summary:
             h += heading + lines(p.summary, CHARS_PER_LINE) * LINE_PT
-        if cv.skills:
+        if any(g.items for g in cv.skills):
             h += heading + lines(" • ".join(f"{g.name}: {', '.join(g.items)}" for g in cv.skills), CHARS_PER_LINE) * LINE_PT
-        if cv.experiences:
-            h += heading
-            for i, exp in enumerate(cv.experiences):
-                h += (0 if i == 0 else 6) + LINE_PT
-                for group, bullets in grouped(exp.bullets):
-                    h += (2 + LINE_PT) if group else 0
-                    h += sum(lines(f"{b.lead} {b.text}", BULLET_CHARS_PER_LINE) * LINE_PT for b in bullets)
+        for entries in (cv.experiences, getattr(cv, "projects", [])):
+            if entries:
+                h += heading + sum((0 if i == 0 else 6) + LINE_PT + bullets(e.bullets) for i, e in enumerate(entries))
         if cv.education:
             h += heading + sum(LINE_PT + 2 + (lines(ed.details, CHARS_PER_LINE) * LINE_PT if ed.details else 0)
                                for ed in cv.education)
