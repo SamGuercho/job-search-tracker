@@ -5,9 +5,16 @@ import unittest
 from docx import Document
 
 from jobtracker import registry
-from jobtracker.models import DEFAULT_SECTIONS, MasterCV
-from jobtracker.services import cv_builder, jd_match, master_cv
+from jobtracker.cv_templates.elegant import entry_fits
+from jobtracker.models import DEFAULT_SECTIONS, JobMatch, MasterCV, Requirement
+from jobtracker.services import companies, cv_builder, jd_match, keyword_stats, master_cv
 from tests.test_core import TMP, reset  # sets the temp data/output env vars first
+
+
+def no_applications():
+    """Keyword history starts empty (the seed has example applications)."""
+    for c in companies.list_companies():
+        companies.delete_company(c.id)
 
 
 def headings(docx_path) -> list[str]:
@@ -35,9 +42,50 @@ class SectionOrderModelTests(unittest.TestCase):
         self.assertEqual(cv.sections, ["summary", "experience", "projects", "skills", "education", "languages"])
 
 
+class KeywordImportanceTests(unittest.TestCase):
+    def setUp(self):
+        reset()
+        no_applications()
+
+    def test_counts_once_per_application_and_finds_strong_and_missing(self):
+        companies.create_company(name="A", keywords=["Python", "SQL"])
+        b = companies.create_company(name="B", keywords=["python"])
+        with companies.store.transaction() as book:
+            c = next(x for x in book.companies if x.id == b.id)
+            c.job_match = JobMatch(text_hash="x", requirements=[
+                Requirement(term="Python", keywords=["Python"], required=True),
+                Requirement(term="Rust", keywords=[], required=True)])
+        companies.create_company(name="C", keywords=["SQL", "Tableau"])
+        rows = {r["keyword"].lower(): r for r in keyword_stats.stats()}
+        self.assertEqual((rows["python"]["applications"], rows["python"]["required"]), (2, 1))
+        self.assertEqual(rows["sql"]["applications"], 2)
+        self.assertEqual(keyword_stats.strong_keywords(), {"python", "sql"})
+        report = registry.run("cv.keywords.importance", {})
+        self.assertEqual(report["applications"], 3)
+        self.assertEqual([r["keyword"] for r in report["missing"]], ["Rust"])  # asked, nowhere in the CV
+
+
+class EntryLayoutTests(unittest.TestCase):
+    def test_long_header_puts_the_organisation_on_its_own_line(self):
+        self.assertTrue(entry_fits("MSc Data Science", "Université Paris-Saclay (Paris)", "2016 - 2018"))
+        long_degree = "Master of Science in Industrial Engineering and Management, specialisation Operations Research"
+        self.assertFalse(entry_fits(long_degree, "Technion - Israel Institute of Technology (Haifa)", "2016 - 2018"))
+
+    def test_rendered_two_lines_when_too_long(self):
+        reset()
+        long_degree = "Master of Science in Industrial Engineering and Management, specialisation Operations Research"
+        master_cv.set_education([{"school": "Technion - Israel Institute of Technology", "degree": long_degree,
+                                  "location": "Haifa", "start": "2016", "end": "2018"}])
+        r = cv_builder.generate_cv(["SQL"], company_name="Edu", export_pdf=False)
+        paras = [p.text for p in Document(str(TMP / "out" / r["docx"])).paragraphs]
+        i = paras.index(f"{long_degree}\t2016 - 2018")
+        self.assertEqual(paras[i + 1], "Technion - Israel Institute of Technology (Haifa)")
+
+
 class ProjectTests(unittest.TestCase):
     def setUp(self):
         reset()
+        no_applications()
         self.project = registry.run("cv.project.add", {"name": "Open Recipes", "role": "Open-source maintainer",
                                                        "link": " https://github.com/ada/recipes/ ", "start": "2023"})
         self.bullet = registry.run("cv.bullet.add", {
@@ -105,7 +153,10 @@ class ProjectTests(unittest.TestCase):
         order = headings(doc)
         self.assertLess(order.index("PROFESSIONAL EXPERIENCE"), order.index("PROJECTS"))
         text = "\n".join(p.text for p in Document(str(doc)).paragraphs)
-        self.assertIn("Open Recipes, Open-source maintainer • github.com/ada/recipes", text)
+        self.assertIn("Open Recipes, Open-source maintainer", text)   # the name is the link: no extra link text
+        self.assertNotIn("github.com/ada/recipes", text)
+        links = [r.target_ref for r in Document(str(doc)).part.rels.values() if "hyperlink" in r.reltype]
+        self.assertIn("https://github.com/ada/recipes/", links)
         self.assertIn("Built a Kubernetes operator used by 40 teams.", text)
 
         chosen = ["summary", "projects", "experience", "skills", "education", "languages"]
@@ -117,6 +168,59 @@ class ProjectTests(unittest.TestCase):
                     if t in order]
         self.assertEqual(order, expected)
         self.assertLess(order.index("PROJECTS"), order.index("PROFESSIONAL EXPERIENCE"))
+
+    def test_project_matching_nothing_is_left_out_of_a_job_cv(self):
+        side = master_cv.add_project("Garden robot", role="Personal")
+        robot = master_cv.add_bullet(side.id, "Built a watering robot for my balcony.")
+        cv = cv_builder.select_bullets(["Kubernetes"])
+        self.assertEqual([p.name for p in cv.projects], ["Open Recipes"])
+        self.assertEqual([p.name for p in cv.left_out], ["Garden robot"])
+        self.assertIn("Built a watering robot for my balcony.", [b.text for b in cv.removed])
+        self.assertEqual(len(cv.experiences), 3)  # experiences keep their unmatched roles
+        forced = cv_builder.select_bullets(["Kubernetes"], include=[robot.id])
+        self.assertIn("Garden robot", [p.name for p in forced.projects])
+
+    def test_project_repeating_experience_is_cut_before_any_experience_bullet(self):
+        dup = master_cv.add_bullet(self.project["id"], "Wrote Python scripts for the recipe importer.", ["Python"])
+        cv = cv_builder.select_bullets(["Python", "Kubernetes"])
+        first = cv_builder._remove_weakest(cv)
+        self.assertEqual(first.id, dup.id)            # Python is proven by experience: the project goes first
+        self.assertTrue(first.project and not first.unique)
+        k8s = next(b for b in cv.projects[0].bullets if b.id == self.bullet["id"])
+        self.assertEqual(k8s.unique, ["Kubernetes"])  # only the project proves it
+        while (b := cv_builder._remove_weakest(cv)) and b.id != self.bullet["id"]:
+            self.assertFalse(b.project)               # every experience bullet goes before it
+        self.assertEqual(cv.left_out[-1].name, "Open Recipes")  # emptied: the project leaves the CV
+
+    def test_low_importance_unique_keyword_does_not_protect(self):
+        for name, kws in (("A", ["Python", "SQL"]), ("B", ["Python", "SQL"]), ("C", ["Python"])):
+            companies.create_company(name=name, keywords=kws)
+        for k in ("Python", "SQL", "Kubernetes"):
+            self.assertIn(k.lower(), keyword_stats.importance() | {"kubernetes": 0})
+        cv = cv_builder.select_bullets(["Python", "SQL", "Kubernetes"])
+        b = cv.projects[0].bullets[0]
+        self.assertEqual(b.unique, [])  # never asked before, below the job's median: experience first
+        cv = cv_builder.select_bullets(["Python", "SQL", "Kubernetes"], required=["Kubernetes"])
+        self.assertEqual(cv.projects[0].bullets[0].unique, ["Kubernetes"])  # required by this job: kept
+
+    def test_general_cv_keeps_projects_proving_a_strong_keyword(self):
+        cv = cv_builder.select_bullets([], everything=True)
+        self.assertEqual(cv.projects[0].bullets[0].unique, [])  # no history: nothing is strong yet
+        for name in ("A", "B"):
+            companies.create_company(name=name, keywords=["Kubernetes"])
+        cv = cv_builder.select_bullets([], everything=True)
+        self.assertEqual(cv.projects[0].bullets[0].unique, ["Kubernetes"])
+
+    def test_full_master_cv_cuts_nothing(self):
+        for i in range(40):
+            master_cv.add_bullet(self.project["id"], f"Another detail number {i} written to fill a long page of text.")
+        r = cv_builder.generate_full(export_pdf=False)
+        self.assertEqual(r["removed"], [])
+        self.assertTrue(r["docx"].endswith("-Full.docx"))
+        self.assertGreater(r["estimated_pages"], 1)
+        general = cv_builder.generate_general(export_pdf=False)
+        self.assertTrue(general["removed"])         # the general CV still fits one page
+        self.assertNotEqual(general["docx"], r["docx"])
 
     def test_empty_projects_section_is_not_printed(self):
         registry.run("cv.project.delete", {"id": self.project["id"]})

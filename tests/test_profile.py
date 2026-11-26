@@ -43,6 +43,11 @@ class ProfileTests(unittest.TestCase):
         self.assertIn("LinkedIn • GitHub • Website", contact.text)
         targets = [rel.target_ref for rel in doc.part.rels.values() if "hyperlink" in rel.reltype]
         self.assertIn("https://github.com/ada", targets)
+        registry.run("profile.update", {"email": "ada@example.com", "phone": "+44 1", "location": "London"})
+        cv = master_cv.get_master().profile   # the Profile page fills the CV header
+        self.assertEqual((cv.email, cv.phone, cv.location), ("ada@example.com", "+44 1", "London"))
+        p = registry.run("profile.get", {})
+        self.assertEqual((p["phone"], p["location"]), ("+44 1", "London"))
         registry.run("profile.update", {"github": ""})  # "" removes it
         self.assertEqual(master_cv.get_master().profile.github, "")
 

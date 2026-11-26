@@ -46,6 +46,7 @@ from .services import (
     headlines,
     jd_match,
     jobs,
+    keyword_stats,
     learning,
     linkedin,
     llm,
@@ -834,8 +835,8 @@ def company_set_cv_headline(company: str, headline_id: str = ""):
 
 @action("profile.get")
 def profile_get():
-    """The user: name (first and last), greeting name, LinkedIn, GitHub, personal website,
-    email, what they look for (target roles, seniority, locations,
+    """The user: name (first and last), greeting name, email, phone, location, LinkedIn, GitHub, personal website
+    (the CV header), what they look for (target roles, seniority, locations,
     work models, max commute), salary expectation, notice period, start date, interview language, weekly goals."""
     return profile.get()
 
@@ -844,23 +845,25 @@ def profile_get():
 def profile_update(first_name: Optional[str] = None, last_name: Optional[str] = None, name: Optional[str] = None,
                    preferred_name: Optional[str] = None, linkedin: Optional[str] = None,
                    github: Optional[str] = None, website: Optional[str] = None,
+                   email: Optional[str] = None, phone: Optional[str] = None, location: Optional[str] = None,
                    target_roles: Optional[list[str]] = None, seniority: Optional[str] = None,
                    locations: Optional[list[str]] = None, work_models: Optional[list[WorkModel]] = None,
                    max_commute_min: Optional[int] = None, salary_expectation: Optional[str] = None,
                    notice_period: Optional[str] = None, available_from: Optional[str] = None,
                    interview_language: Optional[str] = None, goals: Optional[WeeklyGoals] = None,
                    study: Optional[StudyHours] = None):
-    """Change the user's profile (only the fields given): first and last name, LinkedIn, GitHub and personal
-    website (the master CV header's: the links print after the contact line, LinkedIn then GitHub then website;
-    "" removes one; the names name the CV files, first-last-position-company; `name` = a full name, split at the first
-    space, prefer first_name and last_name), greeting name,
+    """Change the user's profile (only the fields given): first and last name, email, phone, location (where they
+    live, on the CV), LinkedIn, GitHub and personal website: every CV's header (the links print after the contact
+    line, LinkedIn then GitHub then website; "" removes one); the names name the CV files,
+    first-last-position-company; `name` = a full name, split at the first space, prefer first_name and
+    last_name), greeting name,
     what they look for (target roles, seniority, locations, work models, max commute: jobs outside get a
     warning), salary expectation (default for new applications), notice period, available from (YYYY-MM-DD),
     interview prep language, weekly goals (applications, practice answers), and `study`: working hours (never
     used for study), study hours on work days, weekend days (Python weekdays, Monday = 0; default Friday and
     Saturday), whether they're free to study on weekends and when, and the most study per day (minutes)."""
     return profile.update(first_name=first_name, last_name=last_name, name=name, linkedin=linkedin,
-                          github=github, website=website,
+                          github=github, website=website, email=email, phone=phone, location=location,
                           preferred_name=preferred_name, target_roles=target_roles,
                           seniority=seniority, locations=locations, work_models=work_models,
                           max_commute_min=max_commute_min, salary_expectation=salary_expectation,
@@ -886,7 +889,8 @@ def company_referral(company: str, referee: Optional[str] = None, asked: bool = 
 
 @action("cv.profile.update", confirm=True)
 def cv_profile_update(fields: ProfilePatch):
-    """Update the CV header/profile (first_name and last_name: `name` follows them; contacts).
+    """Update the CV header/profile (first_name and last_name: `name` follows them; contacts). For name, contacts
+    and links prefer profile.update (the Profile page, where the user edits them; same data).
     The title and summary are title variants (cv.headline.*):
     a title/summary given here changes the default variant."""
     changes = _patch(fields)
@@ -1163,6 +1167,23 @@ def cv_generate_general(template: Optional[str] = None):
     """Generate a general CV (Word + PDF), not tailored to any job: e.g. for a headhunter or networking.
     All achievements in their main wording, cut to one page by priority. Saved in the "Master CV" folder."""
     return cv_builder.generate_general(template)
+
+
+@action("cv.generate_full")
+def cv_generate_full(template: Optional[str] = None):
+    """Generate the WHOLE master CV (Word + PDF) to proofread it: every achievement in its main wording and every
+    project, nothing cut, several pages if needed. Not for sending: use cv.generate_general for a one-page CV.
+    Saved in the "Master CV" folder with "-Full" in its name."""
+    return cv_builder.generate_full(template)
+
+
+@action("cv.keywords.importance")
+def cv_keywords_importance(limit: int = 30):
+    """The keywords the user's applications asked for most (`applications` = how many jobs asked for it,
+    `required` = how many required it), `strong` ones (asked often: they decide which project achievements are kept
+    on a CV), and `missing`: often asked for but written nowhere in the master CV (gaps worth an achievement or a
+    wording, if the user truly has that experience)."""
+    return keyword_stats.report(limit)
 
 
 @action("cv.generate")

@@ -61,7 +61,7 @@ const versionLine = () => {
 document.querySelector(".tab-more")?.addEventListener("click", () => {
   const pages = [["#/cv", "CV builder", "A tailored CV for an application"], ["#/cv/master", "Master CV", "Your achievements and their wordings"],
     ["#/stories", "Stories", "Your stories for “Tell me about a time…”"], ["#/analytics", "Analytics", "How your search is going"], ["#/costs", "Costs", "What the AI features cost"],
-    ["#/profile", "Profile", "Your name and LinkedIn"]];
+    ["#/profile", "Profile", "Your name, contacts and links"]];
   const close = modal("More", h("div", {}, h("div", { class: "more-list" }, pages.map(([href, label, note]) =>
     h("a", { href, onclick: () => close() }, h("b", {}, label), h("span", { class: "small muted" }, note))),
     h("a", { href: `webcal://${location.host}/api/calendar/interviews.ics`, onclick: () => close() },

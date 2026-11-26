@@ -1,8 +1,6 @@
 """Helpers shared by the Word templates."""
 from __future__ import annotations
 
-import re
-
 from docx.opc.constants import RELATIONSHIP_TYPE
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
@@ -31,13 +29,15 @@ def bottom_border(paragraph, color: str = "1F3A5F", space: int = 1) -> None:
     paragraph._p.get_or_add_pPr().append(borders)
 
 
-def hyperlink(paragraph, url: str, text: str, color: str = "0563C1"):
-    """Append a clickable, underlined link run to a paragraph."""
+def hyperlink(paragraph, url: str, text: str, color: str = "0563C1", bold: bool = False):
+    """Append a clickable, underlined link run to a paragraph (bold: e.g. a project's name)."""
     r_id = paragraph.part.relate_to(url, RELATIONSHIP_TYPE.HYPERLINK, is_external=True)
     link = OxmlElement("w:hyperlink")
     link.set(qn("r:id"), r_id)
     run = OxmlElement("w:r")
     props = OxmlElement("w:rPr")
+    if bold:
+        props.append(OxmlElement("w:b"))
     for tag, val in (("w:color", color), ("w:u", "single")):
         el = OxmlElement(tag)
         el.set(qn("w:val"), val)
@@ -48,11 +48,6 @@ def hyperlink(paragraph, url: str, text: str, color: str = "0563C1"):
     run.append(t)
     link.append(run)
     paragraph._p.append(link)
-
-
-def link_label(value: str) -> str:
-    """A link as printed on a CV: "github.com/me/repo" (no scheme, no "www.", no trailing slash)."""
-    return re.sub(r"^(?:https?://)?(?:www\.)?", "", value.strip()).rstrip("/")
 
 
 def url(value: str) -> str:

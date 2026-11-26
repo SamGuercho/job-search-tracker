@@ -167,7 +167,8 @@ export async function renderCvBuilder(root, params) {
     if (!p) return mount(previewBox, h("p", { class: "muted" }, "Add keywords to see which bullet points will be used."));
     // Experiences and projects, in the CV's section order
     const blocks = { experience: p.experiences.map((e) => ({ ...e, heading: `${e.role} · ${e.company}` })),
-      projects: (p.projects || []).map((pr) => ({ ...pr, heading: `Project · ${pr.name}${pr.role ? ` (${pr.role})` : ""}` })) };
+      projects: [...(p.projects || []).map((pr) => ({ ...pr, heading: `Project · ${pr.name}${pr.role ? ` (${pr.role})` : ""}` })),
+        ...(p.left_out || []).map((pr) => ({ ...pr, heading: `Project · ${pr.name}: left out of this CV (nothing in it fits the job, or professional experience covers it)` }))] };
     const owners = (p.sections || ["experience", "projects"]).flatMap((s) => blocks[s] || []);
     const all = owners.flatMap((e) => e.bullets);
     const count = (f) => all.filter(f).length;
@@ -187,8 +188,9 @@ export async function renderCvBuilder(root, params) {
           b.forced && h("div", { class: "row", style: "gap:6px; margin-top:4px" },
             h("span", { class: "chip on" }, "Forced in"),
             h("button", { class: "ghost small", onclick: () => setInclude(b.id, false) }, "Undo")),
-          (b.matched.length > 0 || b.wordings > 1) && h("div", { class: "small muted" },
+          (b.matched.length > 0 || b.wordings > 1 || (b.unique || []).length > 0) && h("div", { class: "small muted" },
             [b.matched.length && `matches: ${b.matched.join(", ")}`,
+             b.unique && b.unique.length > 0 && `kept: only this project proves ${b.unique.join(", ")}`,
              b.wordings > 1 && `wording ${b.variant_id ? "variant" : "main"} of ${b.wordings} (best for this job)`].filter(Boolean).join(" · ")))),
         p.removed.filter((b) => b.experience_id === e.id).map((b) => h("div", { class: "bullet cut" },
           h("span", { class: "cut-text" }, b.text), h("button", { class: "small", title: "Always keep this bullet in this CV, even if another one is cut", onclick: () => setInclude(b.id, true) }, "Include anyway"))))),

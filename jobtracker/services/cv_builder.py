@@ -8,13 +8,14 @@ Pipeline (each step is a separate function so an agent can call them alone):
 from __future__ import annotations
 
 import re
+from statistics import median
 
 from pydantic import BaseModel
 
 from .. import config, users
 from ..cv_templates import get_template
 from ..models import DEFAULT_SECTIONS, Education, GeneratedDocument, Profile, SkillGroup
-from . import companies, master_cv, pdf
+from . import companies, keyword_stats, master_cv, pdf
 from .files import archive_previous, output_folder
 
 MAX_PAGES = 1
@@ -36,6 +37,8 @@ class TailoredBullet(BaseModel):
     redundant: bool = False  # matches, but only keywords other bullets already cover
     fallback: bool = False   # matches none of the job's keywords: fills the page, cut first
     forced: bool = False     # included on purpose for this CV (the application's cv_include): never cut
+    project: bool = False    # a project's achievement: professional experience comes first when trimming
+    unique: list[str] = []   # (projects) important keywords no professional experience proves: kept the longest
 
 
 class TailoredExperience(BaseModel):
@@ -69,6 +72,7 @@ class TailoredCV(BaseModel):
     skills: list[SkillGroup]
     languages: list[str] = []
     removed: list[TailoredBullet] = []
+    left_out: list[TailoredProject] = []   # projects not on this CV (nothing relevant, or all cut); bullets in removed
     unmatched_keywords: list[str] = []
 
     def bullet_owners(self) -> list[TailoredExperience | TailoredProject]:
@@ -85,7 +89,12 @@ def select_bullets(keywords: list[str], keep_unmatched_roles: bool = True,
                    include: list[str] | None = None) -> TailoredCV:
     """Take every achievement once, in the wording most relevant to the job; trimming to the page comes later.
 
-    Projects' achievements compete exactly like experiences'.
+    Projects' achievements are picked like experiences', but professional experience has priority when trimming:
+    a project's achievement is kept the longest only when it proves an important keyword (`unique`) that no
+    professional experience does; otherwise it is cut before any experience's (see _remove_weakest). A project
+    whose achievements all match nothing is left out of a job's CV (into `removed`): projects have no minimum.
+    Important = required by the job, or asked for by the user's applications at least as often as the job's
+    median keyword (keyword_stats); for a general CV (no keywords), the user's strong keywords.
     Greedy coverage ranks them: repeatedly take the achievement whose best wording covers the most keywords
     not covered yet (`required` keywords weigh double; priority breaks ties). Achievements that match only
     already-covered keywords are `redundant`; those matching no keyword are `fallback` (main wording) and are
@@ -157,25 +166,56 @@ def select_bullets(keywords: list[str], keep_unmatched_roles: bool = True,
     for bid in include or []:  # an id that no longer exists is ignored
         if bid in chosen:
             chosen[bid].pinned = chosen[bid].forced = True
+    _mark_projects(cv, chosen, keywords, required_set)
 
-    def tailored(owners, model, fields):
+    removed: list[TailoredBullet] = []
+    left_out: list[TailoredProject] = []
+
+    def tailored(owners, model, fields, is_project=False):
         out = []
         for o in owners:
             bullets = [chosen[b.id] for b in o.bullets if b.id in chosen]  # CV order, not pick order
-            if not keep_unmatched_roles and bullets and all(b.fallback and not b.forced for b in bullets):
+            unmatched = bullets and all(b.fallback and not b.forced for b in bullets)
+            if unmatched and (is_project or not keep_unmatched_roles):
+                if is_project:  # nothing in it makes sense for this job: the project stays out (can be forced in)
+                    removed.extend(bullets)
+                    left_out.append(model(**o.model_dump(include=fields)))
                 continue
             out.append(model(**o.model_dump(include=fields), bullets=bullets))
         return out
 
     experiences = tailored(cv.experiences, TailoredExperience, {"id", "company", "role", "location", "start", "end"})
-    projects = tailored(cv.projects, TailoredProject, {"id", "name", "role", "link", "start", "end"})
+    projects = tailored(cv.projects, TailoredProject, {"id", "name", "role", "link", "start", "end"}, is_project=True)
 
     covered |= skill_covered
     return TailoredCV(
         keywords=keywords, required=list(required or []), profile=cv.profile, experiences=experiences,
         projects=projects, sections=cv.sections, education=cv.education, skills=skills, languages=cv.languages,
-        unmatched_keywords=[k for k in keywords if k.lower() not in covered],
+        unmatched_keywords=[k for k in keywords if k.lower() not in covered], removed=removed, left_out=left_out,
     )
+
+
+def _mark_projects(cv, chosen: dict[str, TailoredBullet], keywords: list[str], required: set[str]) -> None:
+    """Flag projects' achievements, and their `unique` keywords: important ones no professional experience proves."""
+    in_experience = lambda k: any(master_cv.in_text(k, w) for e in cv.experiences for b in e.bullets
+                                  for w in b.wordings())
+    history = keyword_stats.importance()
+    if keywords:  # a job's CV: required, or asked for at least as often as the job's median keyword
+        bar = median([history.get(k.lower(), 0) for k in keywords])
+        important = lambda k: k.lower() in required or history.get(k.lower(), 0) >= bar
+    else:  # general CV: the user's strong keywords
+        strong = keyword_stats.strong_keywords(history)
+        important = lambda k: k.lower() in strong
+    for p in cv.projects:
+        for b in p.bullets:
+            t = chosen.get(b.id)
+            if t is None:
+                continue
+            t.project = True
+            # what the chosen wording proves: the job's keywords it matches, or (general CV) its own written tags
+            wording = next((w for w in b.wordings() if (w.id if w is not b else "") == t.variant_id), b)
+            proves = t.matched or master_cv.bullet_matches(wording, wording.keywords)
+            t.unique = [k for k in proves if important(k) and not in_experience(k)]
 
 
 GENERAL_FOLDER = "Master CV"
@@ -197,6 +237,13 @@ def generate_general(template: str | None = None, export_pdf: bool = True) -> di
     """A CV for no job in particular (headhunters, networking): every achievement in its main wording,
     trimmed to one page by priority (pinned first, then highest priority). Saved in <output>/Master CV/."""
     return generate_cv([], company_name=GENERAL_FOLDER, template=template, export_pdf=export_pdf, everything=True)
+
+
+def generate_full(template: str | None = None, export_pdf: bool = True) -> dict:
+    """The whole master CV, to proofread it: every achievement in its main wording, every project, nothing cut,
+    as many pages as it takes. Saved next to the general CV, in <output>/Master CV/, with "-Full" in its name."""
+    return generate_cv([], company_name=GENERAL_FOLDER, template=template, export_pdf=export_pdf, everything=True,
+                       fit=False)
 
 
 def use_summary(cv: TailoredCV, company, keywords: list[str] | None = None) -> dict:
@@ -223,21 +270,27 @@ def use_summary(cv: TailoredCV, company, keywords: list[str] | None = None) -> d
 # ------------------------------------------------------------- 2. trimming
 
 def _remove_weakest(cv: TailoredCV) -> TailoredBullet | None:
-    """Drop the least useful bullet: those matching no keyword first, then those only repeating covered
-    keywords, then the smallest coverage gain and priority, avoiding emptying a role or project, latest in the CV
-    (projects come after experiences)."""
+    """Drop the least useful bullet. Professional experience comes first: projects' achievements are cut before any
+    experience's, except those proving an important keyword no experience does (`unique`), cut last. Within that:
+    those matching no keyword first, then those only repeating covered keywords, then the smallest coverage gain
+    and priority, avoiding emptying a role (a project may go entirely: it then leaves the CV), latest in the CV."""
     candidates = []
     for ei, exp in enumerate(cv.bullet_owners()):
         for bi, b in enumerate(exp.bullets):
             if b.pinned:
                 continue
-            key = (not b.fallback, not b.redundant, len(exp.bullets) == 1, b.gain, b.priority, len(b.matched), -ei, -bi)
+            tier = (2 if b.unique else 0) if b.project else 1
+            last_of_role = len(exp.bullets) == 1 and not b.project
+            key = (tier, not b.fallback, not b.redundant, last_of_role, b.gain, b.priority, len(b.matched), -ei, -bi)
             candidates.append((key, exp, b))
     if not candidates:
         return None
     _, exp, bullet = min(candidates, key=lambda c: c[0])
     exp.bullets.remove(bullet)
     cv.removed.append(bullet)
+    if bullet.project and not exp.bullets:
+        cv.projects.remove(exp)
+        cv.left_out.append(exp)
     return bullet
 
 
@@ -253,8 +306,9 @@ def fit_estimate(cv: TailoredCV, template_name: str | None = None, budget: float
 def generate_cv(keywords: list[str], company_id: str | None = None, company_name: str | None = None,
                 template: str | None = None, export_pdf: bool = True,
                 keep_unmatched_roles: bool = True, required: list[str] | None = None,
-                everything: bool = False, include: list[str] | None = None) -> dict:
-    """Create a one-page tailored CV (.docx + .pdf) in <output folder>/<Company>/.
+                everything: bool = False, include: list[str] | None = None, fit: bool = True) -> dict:
+    """Create a one-page tailored CV (.docx + .pdf) in <output folder>/<Company>/ (fit=False: nothing is cut,
+    any number of pages: generate_full).
     An existing CV with the same name is moved to <Company>/archive/ first.
 
     Give either an existing `company_id` (the files are attached to it) or a
@@ -272,11 +326,12 @@ def generate_cv(keywords: list[str], company_id: str | None = None, company_name
     headline = use_summary(cv, company, keywords)
     engine = pdf.available_engine() if export_pdf else None
     # With a real PDF check we can afford an optimistic estimate; otherwise be safe.
-    fit_estimate(cv, template, budget=1.05 if engine else 0.97)
+    if fit:
+        fit_estimate(cv, template, budget=1.05 if engine else 0.97)
 
     folder = output_folder(name)
     stem = cv_file_stem(cv.profile, (company.position if company else "") or cv.profile.title,
-                        "" if name == GENERAL_FOLDER else name)
+                        "" if name == GENERAL_FOLDER else name) + ("" if fit else "-Full")
     docx_path, pdf_path = folder / f"{stem}.docx", folder / f"{stem}.pdf"
     archive_previous(docx_path, pdf_path)
 
@@ -287,7 +342,7 @@ def generate_cv(keywords: list[str], company_id: str | None = None, company_name
             for _ in range(MAX_PDF_ITERATIONS):
                 pdf.convert(docx_path, pdf_path)
                 pages = pdf.page_count(pdf_path)
-                if pages <= MAX_PAGES or not _remove_weakest(cv):
+                if not fit or pages <= MAX_PAGES or not _remove_weakest(cv):
                     break
                 tpl.render(cv, docx_path)
             if pages and pages > MAX_PAGES:

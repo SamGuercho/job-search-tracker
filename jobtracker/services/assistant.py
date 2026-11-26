@@ -156,6 +156,10 @@ How to work:
   their achievements use cv.bullet.add with the project's id and are matched, worded and trimmed like any other).
   Work done for an employer is an experience, never a project. The order of the CV's sections (summary, skills,
   experience, projects, education, languages) is the user's: cv.sections.set (default: projects under experience).
+  On a CV, professional experience comes first: a project's achievement stays only if it proves an important keyword
+  (required by the job, or often asked for by the user's applications: cv.keywords.importance) that no experience
+  proves; a project with nothing relevant is left out. Name, contacts and links are edited with profile.update.
+  To proofread the whole master CV (every achievement, several pages): cv.generate_full.
   Each achievement can have several wordings (variants) emphasising different
   keywords. A CV uses at most one wording per achievement, so never create a near-duplicate achievement to get
   a keyword: add a wording to the existing achievement instead (cv.variant.draft, then cv.variant.add).

@@ -1,18 +1,15 @@
-// Master CV editor: profile, page layout (section order), experiences and projects + achievements (with alternative
+// Master CV editor (name and contacts are the Profile page's): page layout (section order), experiences and projects + achievements (with alternative
 // wordings), education, skills. Bullets, experiences and projects save automatically when a field loses focus.
 import { call, fileUrl } from "../api.js";
 import { attempt, confirmSheet, field, h, joinList, keywordPattern, mount, promptSheet, readForm, sendPdfButton, splitList } from "../ui.js";
 import { openImport } from "./import.js";
 
-const PROFILE_FIELDS = [
-  ["first_name", "First name"], ["last_name", "Last name"],
-  ["email", "Email"], ["phone", "Phone"], ["location", "Location"], ["linkedin", "LinkedIn URL"], ["github", "GitHub URL"], ["website", "Personal website"],
-];
 
 export async function renderMasterCv(root) {
-  let [cv, vocabulary, info] = await Promise.all([call("cv.master.get"), call("cv.keywords.list"), call("app.info")]);
+  const importance = () => call("cv.keywords.importance").catch(() => null);
+  let [cv, vocabulary, info, asked] = await Promise.all([call("cv.master.get"), call("cv.keywords.list"), call("app.info"), importance()]);
   const reload = async () => {
-    [cv, vocabulary] = await Promise.all([call("cv.master.get"), call("cv.keywords.list")]);
+    [cv, vocabulary, asked] = await Promise.all([call("cv.master.get"), call("cv.keywords.list"), importance()]);
     render();
   };
 
@@ -52,20 +49,6 @@ export async function renderMasterCv(root) {
         + "Each job's CV uses the title closest to the job's title (then the hint words); the default when none fits. "
         + "You can still adjust them for one application on its page."),
       cv.headlines.map(row));
-  };
-
-  // ---------------------------------------------------------------- profile
-  const profile = () => {
-    const p = cv.profile;
-    const form = h("form", { class: "form-grid" },
-      PROFILE_FIELDS.map(([k, label, placeholder]) =>
-        field(label, h("input", { name: k, value: p[k], placeholder: placeholder || "" }))),
-      h("div", { class: "row wide" }, h("span", { class: "spacer" }), h("button", { class: "primary", type: "submit" }, "Save profile")));
-    form.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      await attempt(() => call("cv.profile.update", { fields: readForm(form) }), "Profile saved");
-    });
-    return h("div", { class: "card" }, form);
   };
 
   // ------------------------------------------------------------ page layout
@@ -159,15 +142,18 @@ export async function renderMasterCv(root) {
       return block;
     };
 
-    const header = h("div", { class: "mini-header", "aria-hidden": "true" },
-      h("div", { class: "mini-name" }, cv.profile.name || "Your name"), h("i"), h("i", { class: "short" }));
+    // The header is the Profile page's (name, contacts, links): it opens there.
+    const header = h("a", { class: "mini-header", href: "#/profile", title: "Your name, contacts and links: edit them in your Profile" },
+      h("div", { class: "mini-name" }, cv.profile.name || "Your name"), h("i"), h("i", { class: "short" }),
+      h("div", { class: "mini-detail" }, "Name & contacts: in your Profile ↗"));
     const draw = () => mount(page, order.map(blockFor));
     draw();
     return h("div", { class: "card layout-card" },
       h("div", { class: "layout-side" },
         h("h2", {}, "Page layout"),
         h("p", { class: "small muted" }, "Your CV's sections in their order on the page. Click a section to edit it below; "
-          + "drag it (or use its arrows) to move it: every CV you create follows this order. Empty sections are left out."),
+          + "drag it (or use its arrows) to move it: every CV you create follows this order. Empty sections are left out. "
+          + "Your name, contacts and links at the top come from your ", h("a", { href: "#/profile" }, "Profile"), "."),
         h("div", { class: "row" },
           h("button", { class: "ghost small", onclick: () => setAll(true) }, "Expand all"),
           h("button", { class: "ghost small", onclick: () => setAll(false) }, "Collapse all")),
@@ -425,33 +411,59 @@ export async function renderMasterCv(root) {
         h("button", { class: "primary", onclick: () => attempt(() => call("cv.keywords.set_extra", { keywords: splitList(input.value) }), "Keywords saved") }, "Save")));
   };
 
-  // General CV (headhunters, networking): not tailored to a job. Lives outside render() so it survives re-renders.
+  // General CV (headhunters, networking): one page, not tailored to a job. Full master CV: every achievement and
+  // project, nothing cut, several pages: to proofread the master CV. Outside render() so they survive re-renders.
   const generalResult = h("div");
-  const generalBtn = h("button", {
-    class: "primary", onclick: async () => {
-      generalBtn.disabled = true;
-      generalBtn.textContent = "Creating Word + PDF…";
-      const r = await attempt(() => call("cv.generate_general"));
-      generalBtn.disabled = false;
-      generalBtn.textContent = "📄 Create general CV";
-      if (!r) return;
-      mount(generalResult, h("div", { class: `card result ${r.warnings.length ? "warn" : ""}` },
-        h("h3", {}, "General CV created"),
-        h("div", { class: "row" },
-          r.pdf && h("a", { class: "btn primary", href: fileUrl(r.pdf), target: "_blank" }, "Open PDF"),
-          r.pdf && sendPdfButton(fileUrl(r.pdf)),
-          r.docx && h("a", { class: "btn", href: fileUrl(r.docx) }, "Download Word"),
-          h("span", { class: "small muted" }, r.pages ? `${r.pages} page` : "")),
-        h("p", { class: "small muted" }, `Saved in ${r.folder}`),
-        r.removed.length > 0 && h("p", { class: "small" }, `${r.removed.length} lower-priority bullet(s) left out to fit one page. Raise a bullet's priority or pin it to keep it.`),
-        r.warnings.map((w) => h("p", { class: "small", style: "color:var(--amber)" }, `⚠ ${w}`))));
-    },
-  }, "📄 Create general CV");
+  const cvButton = (action, label, primary, done, cutNote) => {
+    const btn = h("button", {
+      class: primary ? "primary" : "", onclick: async () => {
+        btn.disabled = true;
+        btn.textContent = "Creating Word + PDF…";
+        const r = await attempt(() => call(action));
+        btn.disabled = false;
+        btn.textContent = label;
+        if (!r) return;
+        mount(generalResult, h("div", { class: `card result ${r.warnings.length ? "warn" : ""}` },
+          h("h3", {}, done),
+          h("div", { class: "row" },
+            r.pdf && h("a", { class: "btn primary", href: fileUrl(r.pdf), target: "_blank" }, "Open PDF"),
+            r.pdf && sendPdfButton(fileUrl(r.pdf)),
+            r.docx && h("a", { class: "btn", href: fileUrl(r.docx) }, "Download Word"),
+            h("span", { class: "small muted" }, r.pages ? plural(r.pages, "page") : "")),
+          h("p", { class: "small muted" }, `Saved in ${r.folder}`),
+          cutNote && r.removed.length > 0 && h("p", { class: "small" }, `${r.removed.length} lower-priority bullet(s) left out to fit one page. Raise a bullet's priority or pin it to keep it.`),
+          r.warnings.map((w) => h("p", { class: "small", style: "color:var(--amber)" }, `⚠ ${w}`))));
+      },
+    }, label);
+    return btn;
+  };
+  const generalBtn = cvButton("cv.generate_general", "📄 Create general CV", true, "General CV created (one page)", true);
+  generalBtn.title = "One page for no job in particular (headhunters, networking): the highest-priority achievements";
+  const fullBtn = cvButton("cv.generate_full", "📚 Full master CV", false, "Full master CV created: every achievement, nothing cut", false);
+  fullBtn.title = "Every achievement and project, nothing cut, as many pages as it takes: to proofread your master CV";
+
+  // The keywords the user's applications asked for most: the strong ones keep projects' achievements on a CV.
+  const askedKeywords = () => {
+    if (!asked || !asked.keywords.length) {
+      return h("div", { class: "card" }, h("p", { class: "small muted", style: "margin:0" },
+        "Nothing yet: once your applications have job descriptions matched (or CVs created), the keywords they ask for most show up here."));
+    }
+    const chip = (r) => h("span", {
+      class: `chip ${r.strong ? "on" : ""} ${r.in_cv ? "" : "bad"}`,
+      title: `${r.applications} of ${asked.applications} applications asked for it${r.required ? ` (${r.required} required it)` : ""}`
+        + (r.in_cv ? "" : " · not written in your master CV"),
+    }, `${r.keyword} · ${r.applications}`);
+    return h("div", { class: "card stack-tight" },
+      h("p", { class: "small muted", style: "margin:0" }, `Across ${plural(asked.applications, "application")}, how many jobs asked for each keyword. `
+        + "Highlighted = strong: a project's achievement that proves one your professional experience doesn't stays on your CVs. "
+        + "Red = asked for but written nowhere in your master CV (worth an achievement, if you truly have it)."),
+      h("div", { class: "chips" }, asked.keywords.map(chip)));
+  };
 
   // ------------------------------------------------------ collapsible sections
   // Every big section folds; which ones are open is remembered on this device (and survives re-renders).
   const OPEN_KEY = "ezri.masterCv.open";
-  const opened = new Set(JSON.parse(localStorage.getItem(OPEN_KEY) || "null") || ["profile"]);
+  const opened = new Set(JSON.parse(localStorage.getItem(OPEN_KEY) || "null") || []);
   const remember = () => localStorage.setItem(OPEN_KEY, JSON.stringify([...opened]));
   const fold = (id, title, meta, ...body) => {
     const el = h("details", { class: "fold", id: `cv-${id}`, open: opened.has(id) },
@@ -499,12 +511,14 @@ export async function renderMasterCv(root) {
         h("div", { class: "row" },
           h("button", { onclick: () => openImport(reload) }, "Import from CV file"),
           generalBtn,
+          fullBtn,
           h("a", { class: "btn", href: "#/cv" }, "CV for a specific job"))),
       h("div", { class: "stack" },
         generalResult,
         layoutCard(),
-        fold("profile", "Profile", cv.profile.name || "name and contacts", profile()),
         sectionsBox,
+        fold("asked", "Keywords your applications ask for", asked && asked.keywords.length
+          ? `${plural(asked.keywords.filter((r) => r.strong).length, "strong keyword")}` : "", askedKeywords()),
         fold("keywords", "Extra keywords to watch", plural(cv.extra_keywords.length, "keyword"), extraKeywords()),
         fold("synonyms", "Synonyms", plural(cv.synonyms.length, "group"), synonyms())));
     placeSections();

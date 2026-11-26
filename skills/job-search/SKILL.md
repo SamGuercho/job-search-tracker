@@ -73,6 +73,11 @@ the action from the project root:
   `cv.project.add {"name", "role", "link", "start", "end"}` (role/context, link and dates optional), then
   `cv.bullet.add` with the project's id as `experience_id`. Their achievements take part in matching, wordings and
   one-page trimming like experience ones. Work done for an employer stays an experience.
+- Professional experience has priority: a project's achievement is kept only when it proves an important keyword
+  (required, or often asked for by past applications: `cv.keywords.importance`) that no experience proves; a project
+  with nothing relevant to the job is left out.
+- `cv.generate_full`: the whole master CV (every achievement, several pages) to proofread it; not for sending.
+- Name, email, phone, location, LinkedIn, GitHub, website: `profile.update` (the Profile page; every CV's header).
 - Section order on the CV page is the user's choice: `cv.sections.set {"sections": ["summary", "skills",
   "experience", "projects", "education", "languages"]}` (that is the default; generated CVs follow it).
 - An achievement can have several wordings; a CV uses one of them. To target a new keyword, add a wording to the

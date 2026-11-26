@@ -1,7 +1,7 @@
-"""The person using the app: how to greet them, their LinkedIn, GitHub and website, and what they're looking for.
+"""The person using the app: who they are (name, contacts, links), how to greet them, and what they're looking for.
 
-First and last name, LinkedIn, GitHub and website are the master CV's (one place to edit them, on the CV header
-too); everything else lives in
+Name, email, phone, location, LinkedIn, GitHub and website are edited here (the Profile page) and printed in every
+CV's header: they are stored on the master CV profile, so the CV reads them from one place. Everything else lives in
 profile.json: the greeting name, target roles, places and work models (jobs outside them get a warning, see
 fit()), salary expectation (the default for new applications), notice period and start date, the default
 language of interview preps, weekly goals (shown on Today), and working and study hours (study sessions are
@@ -15,6 +15,8 @@ from . import master_cv
 
 store = UserDocument("profile.json", UserProfile)
 LIST_FIELDS = ("target_roles", "locations", "work_models")
+CONTACT_FIELDS = ("email", "phone", "location", "linkedin", "github", "website")  # the CV header's
+LINK_FIELDS = ("linkedin", "github", "website")
 
 
 def settings() -> UserProfile:
@@ -26,8 +28,7 @@ def get() -> dict:
     mine = store.load()
     greeting = mine.preferred_name.strip() or cv.first_name
     return {**mine.model_dump(), "name": cv.name, "first_name": cv.first_name, "last_name": cv.last_name,
-            "greeting": greeting, "linkedin": cv.linkedin, "github": cv.github, "website": cv.website,
-            "email": cv.email}
+            "greeting": greeting, **{k: getattr(cv, k) for k in CONTACT_FIELDS}}
 
 
 def _clean(value):
@@ -43,13 +44,14 @@ def _clean(value):
 
 
 def update(name: str | None = None, linkedin: str | None = None, first_name: str | None = None,
-           last_name: str | None = None, github: str | None = None, website: str | None = None, **fields) -> dict:
-    """Change any of: first and last name (or a full name, split at the first space), linkedin, github and
-    website (master CV header), and the UserProfile fields (None = unchanged)."""
+           last_name: str | None = None, github: str | None = None, website: str | None = None,
+           email: str | None = None, phone: str | None = None, location: str | None = None, **fields) -> dict:
+    """Change any of: first and last name (or a full name, split at the first space), email, phone, location,
+    linkedin, github and website (the CV header), and the UserProfile fields (None = unchanged)."""
     given = {"name": name, "first_name": first_name, "last_name": last_name, "linkedin": linkedin,
-             "github": github, "website": website}
+             "github": github, "website": website, "email": email, "phone": phone, "location": location}
     cv_changes = {k: _clean(v) for k, v in given.items() if v is not None}
-    for k in ("linkedin", "github", "website"):
+    for k in LINK_FIELDS:
         if cv_changes.get(k) and not cv_changes[k].startswith(("http://", "https://")):
             cv_changes[k] = "https://" + cv_changes[k].lstrip("/")
     if cv_changes:

@@ -14,7 +14,7 @@ from docx.shared import Cm, Pt, RGBColor
 
 from ..models import DEFAULT_SECTIONS
 from ..textstyle import plain_dashes
-from .common import bottom_border, dates, grouped, hyperlink, link_label, url
+from .common import bottom_border, dates, grouped, hyperlink, url
 
 FONT = "STIX Two Text"   # ships with macOS; Word/LibreOffice fall back to a serif elsewhere
 INK = RGBColor(0x1A, 0x1A, 0x1A)
@@ -28,6 +28,13 @@ USABLE_H_PT = (29.7 - 0.6 - 0.5) / 2.54 * 72
 LINE_PT = BODY_PT * 1.17 * LINE_SPACING
 CHARS_PER_LINE = 128          # full width at 10pt STIX Two Text
 BULLET_CHARS_PER_LINE = 120
+
+
+def entry_fits(title: str, org: str, when: str) -> bool:
+    """Do "**Title**, *Organisation*" and the right-aligned dates share one line? Bold letters are wider, italic
+    ones narrower; a few characters of air are kept between the text and the dates."""
+    width = len(title) * 1.1 + (len(", ") + len(org) * 0.95 if org else 0) + (len(when) + 4 if when else 0)
+    return width <= CHARS_PER_LINE * 0.95
 
 
 class ElegantTemplate:
@@ -161,18 +168,24 @@ class ElegantTemplate:
         bottom_border(para, "000000", space=1)
 
     def _entry(self, doc, title, org, when, before=0, link=""):
-        """**Title**, *Organisation* • link  ................  dates"""
+        """**Title**, *Organisation*  ................  dates   (a `link` makes the title itself clickable)
+
+        When the three don't fit on one line, the dates would be pushed alone to the next line, far right, leaving
+        a gap: the organisation then goes on its own line under the title instead (**Title** .... dates / *Org*)."""
         para = self._para(doc, before=before, keep=True)
         para.paragraph_format.tab_stops.add_tab_stop(self.width, WD_TAB_ALIGNMENT.RIGHT)
-        self._run(para, title, bold=True)
-        if org:
+        if link:
+            hyperlink(para, url(link), plain_dashes(title), color=LINK, bold=True)
+        else:
+            self._run(para, title, bold=True)
+        one_line = entry_fits(title, org, when)
+        if org and one_line:
             self._run(para, ", ")
             self._run(para, org, italic=True)
-        if link:
-            self._run(para, " • ")
-            hyperlink(para, url(link), link_label(link), color=LINK)
         if when:
             self._run(para, f"\t{when}")
+        if org and not one_line:
+            self._run(self._para(doc, keep=True), org, italic=True)
 
     # ----------------------------------------------------------- estimation
 
@@ -188,11 +201,15 @@ class ElegantTemplate:
             h += heading + lines(p.summary, CHARS_PER_LINE) * LINE_PT
         if any(g.items for g in cv.skills):
             h += heading + lines(" • ".join(f"{g.name}: {', '.join(g.items)}" for g in cv.skills), CHARS_PER_LINE) * LINE_PT
-        for entries in (cv.experiences, getattr(cv, "projects", [])):
+        head = lambda title, org, when: LINE_PT * (1 if not org or entry_fits(title, org, when) else 2)
+        exp_head = lambda e: head(e.role or e.company, e.company if e.role else e.location, dates(e.start, e.end))
+        pr_head = lambda pr: head(pr.name, pr.role, dates(pr.start, pr.end))
+        for entries, entry_head in ((cv.experiences, exp_head), (getattr(cv, "projects", []), pr_head)):
             if entries:
-                h += heading + sum((0 if i == 0 else 6) + LINE_PT + bullets(e.bullets) for i, e in enumerate(entries))
+                h += heading + sum((0 if i == 0 else 6) + entry_head(e) + bullets(e.bullets) for i, e in enumerate(entries))
         if cv.education:
-            h += heading + sum(LINE_PT + 2 + (lines(ed.details, CHARS_PER_LINE) * LINE_PT if ed.details else 0)
+            h += heading + sum(head(ed.degree or ed.school, ed.school if ed.degree else ed.location, dates(ed.start, ed.end))
+                               + 2 + (lines(ed.details, CHARS_PER_LINE) * LINE_PT if ed.details else 0)
                                for ed in cv.education)
         if cv.languages:
             h += heading + LINE_PT
