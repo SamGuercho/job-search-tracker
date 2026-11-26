@@ -7,7 +7,8 @@ import { openImport } from "./import.js";
 
 export async function renderMasterCv(root) {
   const importance = () => call("cv.keywords.importance").catch(() => null);
-  let [cv, vocabulary, info, asked] = await Promise.all([call("cv.master.get"), call("cv.keywords.list"), call("app.info"), importance()]);
+  let [cv, vocabulary, info, asked, fonts] = await Promise.all([call("cv.master.get"), call("cv.keywords.list"), call("app.info"), importance(),
+    call("cv.font.list").catch(() => null)]);
   const reload = async () => {
     [cv, vocabulary, asked] = await Promise.all([call("cv.master.get"), call("cv.keywords.list"), importance()]);
     render();
@@ -148,17 +149,35 @@ export async function renderMasterCv(root) {
       h("div", { class: "mini-detail" }, "Name & contacts: in your Profile ↗"));
     const draw = () => mount(page, order.map(blockFor));
     draw();
+    const sheet = h("div", { class: "mini-sheet", style: `--cv-font: "${cv.font}", serif` }, header, page);
+
+    // The font of every CV: only fonts installed where the PDFs are made are offered. Each option shows itself.
+    const fontPicker = () => {
+      if (!fonts || !fonts.fonts.length) return null;
+      const select = h("select", { "aria-label": "Font of your CVs", style: `font-family:"${cv.font}", serif; width:auto` },
+        fonts.fonts.map((f) => h("option", { value: f.name, selected: f.name === cv.font, style: `font-family:"${f.name}", ${f.kind}` },
+          f.name + (f.name === fonts.default ? " (default)" : ""))));
+      select.addEventListener("change", async () => {
+        const saved = await attempt(() => call("cv.font.set", { font: select.value }), `Font: ${select.value}. Every new CV uses it`);
+        if (saved) cv.font = saved;
+        select.value = cv.font;
+        select.style.fontFamily = `"${cv.font}", serif`;
+        sheet.style.setProperty("--cv-font", `"${cv.font}", serif`);
+      });
+      return h("label", { class: "row small", style: "gap:8px; margin:4px 0 8px" }, h("span", { class: "muted" }, "Font"), select);
+    };
     return h("div", { class: "card layout-card" },
       h("div", { class: "layout-side" },
         h("h2", {}, "Page layout"),
         h("p", { class: "small muted" }, "Your CV's sections in their order on the page. Click a section to edit it below; "
           + "drag it (or use its arrows) to move it: every CV you create follows this order. Empty sections are left out. "
           + "Your name, contacts and links at the top come from your ", h("a", { href: "#/profile" }, "Profile"), "."),
+        fontPicker(),
         h("div", { class: "row" },
           h("button", { class: "ghost small", onclick: () => setAll(true) }, "Expand all"),
           h("button", { class: "ghost small", onclick: () => setAll(false) }, "Collapse all")),
         status),
-      h("div", { class: "mini-sheet" }, header, page));
+      sheet);
   };
 
   // ------------------------------------------------- experiences and projects

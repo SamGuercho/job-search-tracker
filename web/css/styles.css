@@ -620,7 +620,7 @@ body.is-offline main { padding-top: 8px; }
   border: 1px solid var(--border); border-radius: 4px; box-shadow: 0 4px 14px rgba(29,26,51,.12); padding: 14px 12px;
   display: flex; flex-direction: column; gap: 6px; overflow: hidden; }
 .mini-header { display: flex; flex-direction: column; align-items: center; gap: 3px; padding-bottom: 4px; }
-.mini-name { font: 600 11px/1.2 Georgia, serif; font-variant: small-caps; letter-spacing: .04em; }
+.mini-name { font: 600 11px/1.2 var(--cv-font, Georgia, serif); font-variant: small-caps; letter-spacing: .04em; }
 .mini-header i, .mini-lines i { display: block; height: 3px; border-radius: 2px; background: #d9d6e6; }
 .mini-header i { width: 60%; } .mini-header i.short { width: 40%; }
 .mini-page { display: flex; flex-direction: column; gap: 5px; }
@@ -632,7 +632,7 @@ body.is-offline main { padding-top: 8px; }
 .mini-block.is-empty { opacity: .55; border-style: dashed; }
 .mini-grip { color: #8a85a6; font-size: 11px; font-weight: 700; line-height: 1; padding-top: 2px; letter-spacing: -2px; }
 .mini-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.mini-title { font: 700 9px/1.2 Georgia, serif; text-transform: uppercase; letter-spacing: .05em; border-bottom: 1px solid #1a1a1a; padding-bottom: 1px; }
+.mini-title { font: 700 9px/1.2 var(--cv-font, Georgia, serif); text-transform: uppercase; letter-spacing: .05em; border-bottom: 1px solid #1a1a1a; padding-bottom: 1px; }
 .mini-lines { display: flex; flex-direction: column; gap: 2px; padding-top: 1px; }
 .mini-detail { font-size: 9px; color: #6b6688; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mini-arrows { display: flex; flex-direction: column; justify-content: center; }

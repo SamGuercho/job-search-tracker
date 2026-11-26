@@ -5,6 +5,7 @@ import unittest
 from docx import Document
 
 from jobtracker import registry
+from jobtracker.cv_templates import elegant, fonts
 from jobtracker.cv_templates.elegant import entry_fits
 from jobtracker.models import DEFAULT_SECTIONS, JobMatch, MasterCV, Requirement
 from jobtracker.services import companies, cv_builder, jd_match, keyword_stats, master_cv
@@ -71,15 +72,60 @@ class EntryLayoutTests(unittest.TestCase):
         long_degree = "Master of Science in Industrial Engineering and Management, specialisation Operations Research"
         self.assertFalse(entry_fits(long_degree, "Technion - Israel Institute of Technology (Haifa)", "2016 - 2018"))
 
+    @unittest.skipUnless(fonts.installed("STIX Two Text"), "needs the STIX Two Text font files")
+    def test_text_runs_almost_up_to_the_dates(self):
+        when = "2016 - 2018"
+        room = elegant.USABLE_W_PT - fonts.width_pt(when, "STIX Two Text", 10) - fonts.width_pt(", ", "STIX Two Text", 10)
+        title, org = "Master of Science in Industrial Engineering", "Technion - Israel Institute of Technology"
+        while (fonts.width_pt(title, "STIX Two Text", 10, bold=True)
+               + fonts.width_pt(org + " (Haifa)", "STIX Two Text", 10, italic=True)) < room - 10:
+            org += " x"
+        self.assertTrue(entry_fits(title, org + " (Haifa)", when))           # ~10pt of air left before the dates: one line
+        self.assertFalse(entry_fits(title, org + " xxxx (Haifa)", when))  # a few more letters: two lines
+
+    def test_title_too_long_for_the_dates_puts_them_with_the_organisation(self):
+        title = "Master of Science in Industrial Engineering and Management, specialisation Operations Research and Logistics"
+        self.assertEqual(elegant.entry_layout(title, "Technion (Haifa)", "2014 - 2016"), "org_dates")
+        self.assertEqual(elegant.entry_layout("MSc", "Technion (Haifa)", "2014 - 2016"), "one")
+        reset()
+        master_cv.set_education([{"school": "Technion", "degree": title, "location": "Haifa", "start": "2014",
+                                  "end": "2016"}])
+        r = cv_builder.generate_cv(["SQL"], company_name="Edu", export_pdf=False)
+        paras = [p.text.replace("\u00a0", " ") for p in Document(str(TMP / "out" / r["docx"])).paragraphs]
+        i = paras.index(title)
+        self.assertEqual(paras[i + 1], "Technion (Haifa)\t2014 - 2016")
+
+    def test_without_font_files_counts_characters(self):
+        self.assertTrue(entry_fits("MSc Data Science", "Université Paris-Saclay (Paris)", "2016 - 2018", "No Such Font"))
+        self.assertFalse(entry_fits("x" * 80, "y" * 60, "2016 - 2018", "No Such Font"))
+
     def test_rendered_two_lines_when_too_long(self):
         reset()
         long_degree = "Master of Science in Industrial Engineering and Management, specialisation Operations Research"
         master_cv.set_education([{"school": "Technion - Israel Institute of Technology", "degree": long_degree,
                                   "location": "Haifa", "start": "2016", "end": "2018"}])
         r = cv_builder.generate_cv(["SQL"], company_name="Edu", export_pdf=False)
-        paras = [p.text for p in Document(str(TMP / "out" / r["docx"])).paragraphs]
+        paras = [p.text.replace("\u00a0", " ") for p in Document(str(TMP / "out" / r["docx"])).paragraphs]
         i = paras.index(f"{long_degree}\t2016 - 2018")
         self.assertEqual(paras[i + 1], "Technion - Israel Institute of Technology (Haifa)")
+
+
+class FontTests(unittest.TestCase):
+    def setUp(self):
+        reset()
+
+    def test_default_and_choice_are_used_by_generated_cvs(self):
+        self.assertEqual(MasterCV().font, "STIX Two Text")
+        listed = registry.run("cv.font.list", {})
+        self.assertEqual((listed["current"], listed["fonts"][0]["name"]), ("STIX Two Text", "STIX Two Text"))
+        with self.assertRaises(ValueError):
+            registry.run("cv.font.set", {"font": "Comic Sans of Nowhere"})
+        other = next((f["name"] for f in listed["fonts"] if f["name"] != "STIX Two Text"), None)
+        if other is None:
+            self.skipTest("only the default font is installed here")
+        self.assertEqual(registry.run("cv.font.set", {"font": other.lower()}), other)  # any case, saved as listed
+        r = cv_builder.generate_cv(["SQL"], company_name="Font", export_pdf=False)
+        self.assertEqual(Document(str(TMP / "out" / r["docx"])).styles["Normal"].font.name, other)
 
 
 class ProjectTests(unittest.TestCase):

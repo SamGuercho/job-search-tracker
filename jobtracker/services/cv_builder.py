@@ -68,6 +68,7 @@ class TailoredCV(BaseModel):
     experiences: list[TailoredExperience]
     projects: list[TailoredProject] = []
     sections: list[str] = DEFAULT_SECTIONS   # the order of the sections on the page (master CV's choice)
+    font: str = ""                           # the master CV's font ("" = the template's)
     education: list[Education]
     skills: list[SkillGroup]
     languages: list[str] = []
@@ -190,7 +191,7 @@ def select_bullets(keywords: list[str], keep_unmatched_roles: bool = True,
     covered |= skill_covered
     return TailoredCV(
         keywords=keywords, required=list(required or []), profile=cv.profile, experiences=experiences,
-        projects=projects, sections=cv.sections, education=cv.education, skills=skills, languages=cv.languages,
+        projects=projects, sections=cv.sections, font=cv.font, education=cv.education, skills=skills, languages=cv.languages,
         unmatched_keywords=[k for k in keywords if k.lower() not in covered], removed=removed, left_out=left_out,
     )
 

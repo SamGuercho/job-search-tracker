@@ -382,6 +382,7 @@ class MasterCV(BaseModel):
     experiences: list[Experience] = []
     projects: list[Project] = []     # work outside a company: personal, academic, freelance, open source
     sections: list[str] = Field(default_factory=lambda: list(DEFAULT_SECTIONS))  # order on the CV page
+    font: str = "STIX Two Text"      # the CVs' font (cv_templates/fonts.py: only installed ones can be chosen)
     education: list[Education] = []
     skills: list[SkillGroup] = []
     languages: list[str] = []   # e.g. "French (Native)"

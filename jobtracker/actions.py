@@ -971,6 +971,20 @@ def cv_sections_set(sections: list[str]):
     return master_cv.set_sections(sections)
 
 
+@action("cv.font.list")
+def cv_font_list():
+    """The CV's font (`current`) and the fonts that can be chosen (`fonts`: installed where the PDFs are made)."""
+    from .cv_templates import fonts
+    return {"current": master_cv.get_master().font, "default": fonts.DEFAULT_FONT, "fonts": fonts.available()}
+
+
+@action("cv.font.set")
+def cv_font_set(font: str):
+    """Change the font of every CV (one of cv.font.list's fonts; default STIX Two Text). Lines are measured in the
+    new font, so the one-page fit stays right."""
+    return master_cv.set_font(font)
+
+
 @action("cv.bullet.add", confirm=True)
 def cv_bullet_add(experience_id: str, text: str, keywords: list[str] = [], pinned: bool = False,
                   priority: int = 0, lead: str = "", group: str = ""):

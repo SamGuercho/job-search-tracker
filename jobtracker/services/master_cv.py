@@ -140,6 +140,17 @@ def set_sections(sections: list[str]) -> list[str]:
     return cv.sections
 
 
+def set_font(font: str) -> str:
+    """The font of every CV; only one installed where the PDFs are made (cv_templates.fonts.available)."""
+    from ..cv_templates import fonts
+    names = {f["name"].lower(): f["name"] for f in fonts.available()}
+    if font.strip().lower() not in names:
+        raise ValueError(f"Font {font!r} isn't available here. Choose one of: {', '.join(names.values())}")
+    with store.transaction() as cv:
+        cv.font = names[font.strip().lower()]
+    return cv.font
+
+
 # ------------------------------------------------------------------ bullets
 
 def add_bullet(experience_id: str, text: str, keywords: list[str] | None = None,

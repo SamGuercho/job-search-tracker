@@ -1,7 +1,7 @@
-"""Elegant serif template: STIX Two Text, name and position in small
-capitals, "•"-separated contact line, then the sections in the master CV's order (default Summary → Skills (inline)
-→ Professional Experience → Projects → Education → Languages), "Role, Company" headers with right-aligned dates,
-black rules under section titles."""
+"""Elegant serif template: STIX Two Text by default (or the font chosen on the master CV, see fonts.py), name
+and position in small capitals, "•"-separated contact line, then the sections in the master CV's order (default
+Summary → Skills (inline) → Professional Experience → Projects → Education → Languages), "Role, Company" headers
+with right-aligned dates, black rules under section titles."""
 from __future__ import annotations
 
 import math
@@ -15,8 +15,9 @@ from docx.shared import Cm, Pt, RGBColor
 from ..models import DEFAULT_SECTIONS
 from ..textstyle import plain_dashes
 from .common import bottom_border, dates, grouped, hyperlink, url
+from .fonts import DEFAULT_FONT, relative_width, width_pt
 
-FONT = "STIX Two Text"   # ships with macOS; Word/LibreOffice fall back to a serif elsewhere
+FONT = DEFAULT_FONT   # STIX Two Text: ships with macOS, installed in the server image; another can be chosen
 INK = RGBColor(0x1A, 0x1A, 0x1A)
 LINK = "1155CC"
 BODY_PT, HEAD_PT, NAME_PT, TITLE_PT = 10, 11, 20, 15
@@ -26,15 +27,40 @@ PAGE_W, PAGE_H = Cm(21.0), Cm(29.7)
 MARGIN_X, MARGIN_TOP, MARGIN_BOTTOM = Cm(0.76), Cm(0.6), Cm(0.5)
 USABLE_H_PT = (29.7 - 0.6 - 0.5) / 2.54 * 72
 LINE_PT = BODY_PT * 1.17 * LINE_SPACING
-CHARS_PER_LINE = 128          # full width at 10pt STIX Two Text
+USABLE_W_PT = (21.0 - 2 * 0.76) / 2.54 * 72
+DATES_GAP_PT = 6              # the least air between a header's text and its right-aligned dates
+CHARS_PER_LINE = 128          # full width at 10pt STIX Two Text (other fonts: scaled by their relative width)
 BULLET_CHARS_PER_LINE = 120
 
 
-def entry_fits(title: str, org: str, when: str) -> bool:
-    """Do "**Title**, *Organisation*" and the right-aligned dates share one line? Bold letters are wider, italic
-    ones narrower; a few characters of air are kept between the text and the dates."""
-    width = len(title) * 1.1 + (len(", ") + len(org) * 0.95 if org else 0) + (len(when) + 4 if when else 0)
-    return width <= CHARS_PER_LINE * 0.95
+def _width(font: str, text: str, bold: bool = False, italic: bool = False) -> float:
+    """Width in points: measured with the font itself, else estimated from characters (bold letters wider, italic
+    ones narrower)."""
+    measured = width_pt(text, font, BODY_PT, bold=bold, italic=italic)
+    if measured is not None:
+        return measured
+    return len(text) * (1.1 if bold else 0.95 if italic else 1.0) * relative_width(font) * USABLE_W_PT / CHARS_PER_LINE
+
+
+def _fits(font: str, when: str, *runs: tuple[str, bool, bool]) -> bool:
+    """Do these (text, bold, italic) runs and the right-aligned dates share one line, with DATES_GAP_PT of air?"""
+    width = sum(_width(font, text, bold, italic) for text, bold, italic in runs)
+    return width + (_width(font, when) + DATES_GAP_PT if when else 0) <= USABLE_W_PT
+
+
+def entry_layout(title: str, org: str, when: str, font: str = FONT) -> str:
+    """How an entry's header is laid out, so the text runs almost up to the dates and they never wrap alone:
+    "one"         **Title**, *Organisation* .......... dates
+    "title_dates" **Title** .......................... dates  /  *Organisation*
+    "org_dates"   **Title** (too long for the dates)  /  *Organisation* ............ dates"""
+    if not org or _fits(font, when, (title, True, False), (", ", False, False), (org, False, True)):
+        return "one"
+    return "title_dates" if _fits(font, when, (title, True, False)) else "org_dates"
+
+
+def entry_fits(title: str, org: str, when: str, font: str = FONT) -> bool:
+    """Do "**Title**, *Organisation*" and the right-aligned dates share one line?"""
+    return entry_layout(title, org, when, font) == "one"
 
 
 class ElegantTemplate:
@@ -50,10 +76,11 @@ class ElegantTemplate:
         self.width = PAGE_W - 2 * MARGIN_X
 
         normal = doc.styles["Normal"]
-        normal.font.name = FONT
+        self.font = getattr(cv, "font", "") or FONT
+        normal.font.name = self.font
         rfonts = normal.element.rPr.rFonts
         for attr in ("w:eastAsia", "w:hAnsi", "w:cs"):
-            rfonts.set(qn(attr), FONT)
+            rfonts.set(qn(attr), self.font)
         normal.font.size = Pt(BODY_PT)
         normal.font.color.rgb = INK
         fmt = normal.paragraph_format
@@ -168,29 +195,35 @@ class ElegantTemplate:
         bottom_border(para, "000000", space=1)
 
     def _entry(self, doc, title, org, when, before=0, link=""):
-        """**Title**, *Organisation*  ................  dates   (a `link` makes the title itself clickable)
-
-        When the three don't fit on one line, the dates would be pushed alone to the next line, far right, leaving
-        a gap: the organisation then goes on its own line under the title instead (**Title** .... dates / *Org*)."""
+        """**Title**, *Organisation*  ................  dates   (a `link` makes the title itself clickable).
+        Too long for one line, the organisation goes on its own line, and the dates go on whichever line has room
+        for them (entry_layout): never pushed alone to a line of their own with a gap."""
+        layout = entry_layout(title, org, when, self.font)
+        when = when.replace(" ", "\u00a0")  # "2014 - 2016" never breaks inside
         para = self._para(doc, before=before, keep=True)
         para.paragraph_format.tab_stops.add_tab_stop(self.width, WD_TAB_ALIGNMENT.RIGHT)
         if link:
             hyperlink(para, url(link), plain_dashes(title), color=LINK, bold=True)
         else:
             self._run(para, title, bold=True)
-        one_line = entry_fits(title, org, when)
-        if org and one_line:
+        if org and layout == "one":
             self._run(para, ", ")
             self._run(para, org, italic=True)
-        if when:
+        if when and layout != "org_dates":
             self._run(para, f"\t{when}")
-        if org and not one_line:
-            self._run(self._para(doc, keep=True), org, italic=True)
+        if org and layout != "one":
+            line = self._para(doc, keep=True)
+            line.paragraph_format.tab_stops.add_tab_stop(self.width, WD_TAB_ALIGNMENT.RIGHT)
+            self._run(line, org, italic=True)
+            if when and layout == "org_dates":
+                self._run(line, f"\t{when}")
 
     # ----------------------------------------------------------- estimation
 
     def estimate_pages(self, cv) -> float:
-        lines = lambda text, cpl: max(1, math.ceil(len(text) / cpl))
+        font = getattr(cv, "font", "") or FONT
+        scale = relative_width(font)   # a wider font fits fewer characters per line
+        lines = lambda text, cpl: max(1, math.ceil(len(text) * scale / cpl))
         p = cv.profile
         h = NAME_PT * 1.1 + (TITLE_PT * 1.1 if p.title else 0) + LINE_PT + 2
         heading = 10 + HEAD_PT * 1.1 + 2 + 2
@@ -201,7 +234,7 @@ class ElegantTemplate:
             h += heading + lines(p.summary, CHARS_PER_LINE) * LINE_PT
         if any(g.items for g in cv.skills):
             h += heading + lines(" • ".join(f"{g.name}: {', '.join(g.items)}" for g in cv.skills), CHARS_PER_LINE) * LINE_PT
-        head = lambda title, org, when: LINE_PT * (1 if not org or entry_fits(title, org, when) else 2)
+        head = lambda title, org, when: LINE_PT * (1 if entry_fits(title, org, when, font) else 2)
         exp_head = lambda e: head(e.role or e.company, e.company if e.role else e.location, dates(e.start, e.end))
         pr_head = lambda pr: head(pr.name, pr.role, dates(pr.start, pr.end))
         for entries, entry_head in ((cv.experiences, exp_head), (getattr(cv, "projects", []), pr_head)):
