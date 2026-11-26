@@ -59,7 +59,8 @@ class ElegantTemplate:
             self._run(self._para(doc, center=True), p.title, size=TITLE_PT, caps=True)
         contact = self._para(doc, center=True, after=2)
         items = [x for x in (p.phone, p.email, p.location) if x]
-        links = [(label, link) for label, link in (("LinkedIn", p.linkedin), ("Website", p.website)) if link]
+        links = [(label, link) for label, link in (("LinkedIn", p.linkedin), ("GitHub", getattr(p, "github", "")),
+                                                    ("Website", p.website)) if link]
         for i, text in enumerate(items):
             self._run(contact, (" • " if i else "") + text)
         for i, (label, link) in enumerate(links):

@@ -1,6 +1,7 @@
-"""The person using the app: how to greet them, their LinkedIn, and what they're looking for.
+"""The person using the app: how to greet them, their LinkedIn, GitHub and website, and what they're looking for.
 
-First and last name and LinkedIn are the master CV's (one place to edit them, on the CV header too); everything else lives in
+First and last name, LinkedIn, GitHub and website are the master CV's (one place to edit them, on the CV header
+too); everything else lives in
 profile.json: the greeting name, target roles, places and work models (jobs outside them get a warning, see
 fit()), salary expectation (the default for new applications), notice period and start date, the default
 language of interview preps, weekly goals (shown on Today), and working and study hours (study sessions are
@@ -25,7 +26,8 @@ def get() -> dict:
     mine = store.load()
     greeting = mine.preferred_name.strip() or cv.first_name
     return {**mine.model_dump(), "name": cv.name, "first_name": cv.first_name, "last_name": cv.last_name,
-            "greeting": greeting, "linkedin": cv.linkedin, "email": cv.email}
+            "greeting": greeting, "linkedin": cv.linkedin, "github": cv.github, "website": cv.website,
+            "email": cv.email}
 
 
 def _clean(value):
@@ -41,13 +43,15 @@ def _clean(value):
 
 
 def update(name: str | None = None, linkedin: str | None = None, first_name: str | None = None,
-           last_name: str | None = None, **fields) -> dict:
-    """Change any of: first and last name (or a full name, split at the first space), linkedin (master CV),
-    and the UserProfile fields (None = unchanged)."""
-    given = {"name": name, "first_name": first_name, "last_name": last_name, "linkedin": linkedin}
+           last_name: str | None = None, github: str | None = None, website: str | None = None, **fields) -> dict:
+    """Change any of: first and last name (or a full name, split at the first space), linkedin, github and
+    website (master CV header), and the UserProfile fields (None = unchanged)."""
+    given = {"name": name, "first_name": first_name, "last_name": last_name, "linkedin": linkedin,
+             "github": github, "website": website}
     cv_changes = {k: _clean(v) for k, v in given.items() if v is not None}
-    if cv_changes.get("linkedin") and not cv_changes["linkedin"].startswith(("http://", "https://")):
-        cv_changes["linkedin"] = "https://" + cv_changes["linkedin"].lstrip("/")
+    for k in ("linkedin", "github", "website"):
+        if cv_changes.get(k) and not cv_changes[k].startswith(("http://", "https://")):
+            cv_changes[k] = "https://" + cv_changes[k].lstrip("/")
     if cv_changes:
         master_cv.update_profile(**cv_changes)
     changes = {k: v for k, v in fields.items() if v is not None and k in UserProfile.model_fields}

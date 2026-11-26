@@ -26,6 +26,26 @@ class ProfileTests(unittest.TestCase):
         me = registry.run("today.get", {})["me"]
         self.assertEqual(me, {"greeting": "Sam", "linkedin": "https://linkedin.com/in/samuel"})
 
+    def test_github_and_website_go_on_the_cv_after_linkedin(self):
+        from docx import Document
+
+        from jobtracker.services import cv_builder
+        from tests.test_core import TMP
+        registry.run("profile.update", {"linkedin": "linkedin.com/in/ada", "github": "github.com/ada",
+                                        "website": "ada.dev"})
+        p = registry.run("profile.get", {})
+        self.assertEqual((p["github"], p["website"]), ("https://github.com/ada", "https://ada.dev"))
+        cv = master_cv.get_master().profile
+        self.assertEqual((cv.github, cv.website), ("https://github.com/ada", "https://ada.dev"))
+        r = cv_builder.generate_cv(["SQL"], company_name="Links", export_pdf=False)
+        doc = Document(str(TMP / "out" / r["docx"]))
+        contact = next(par for par in doc.paragraphs if "LinkedIn" in par.text)
+        self.assertIn("LinkedIn • GitHub • Website", contact.text)
+        targets = [rel.target_ref for rel in doc.part.rels.values() if "hyperlink" in rel.reltype]
+        self.assertIn("https://github.com/ada", targets)
+        registry.run("profile.update", {"github": ""})  # "" removes it
+        self.assertEqual(master_cv.get_master().profile.github, "")
+
     def test_referral_status_on_to_apply(self):
         for c in companies.list_companies():
             companies.delete_company(c.id)

@@ -639,3 +639,17 @@ body.is-offline main { padding-top: 8px; }
 .mini-arrows button { color: #4934c9; padding: 0 4px; min-height: 0; height: 18px; font-size: 12px; line-height: 1; }
 .mini-arrows button:disabled { opacity: .25; }
 @media (max-width: 600px) { .mini-sheet { width: 100%; aspect-ratio: auto; } .mini-arrows button { height: 26px; padding: 0 8px; } }
+
+/* Master CV: collapsible sections (a card-like header bar; the body holds the section's cards) */
+.fold { scroll-margin-top: 72px; }
+.fold-head { display: flex; align-items: center; gap: 10px; list-style: none; cursor: pointer; user-select: none;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); padding: 14px 18px; }
+.fold-head::-webkit-details-marker { display: none; }
+.fold-head:hover { border-color: var(--lavender); }
+.fold-head h2 { margin: 0; }
+.fold-meta { margin-left: auto; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.fold-chevron { display: inline-block; width: 14px; color: var(--muted); font-size: 18px; line-height: 1; transition: transform .15s; }
+.fold[open] > .fold-head .fold-chevron { transform: rotate(90deg); }
+.fold[open] > .fold-head { border-color: var(--accent-soft); }
+.fold-body { margin-top: 10px; }
+.mini-block:focus-visible { outline: 2px solid #4934c9; outline-offset: 1px; }

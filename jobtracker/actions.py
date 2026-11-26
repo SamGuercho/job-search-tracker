@@ -834,7 +834,7 @@ def company_set_cv_headline(company: str, headline_id: str = ""):
 
 @action("profile.get")
 def profile_get():
-    """The user: name (first and last), greeting name, LinkedIn,
+    """The user: name (first and last), greeting name, LinkedIn, GitHub, personal website,
     email, what they look for (target roles, seniority, locations,
     work models, max commute), salary expectation, notice period, start date, interview language, weekly goals."""
     return profile.get()
@@ -843,14 +843,16 @@ def profile_get():
 @action("profile.update")
 def profile_update(first_name: Optional[str] = None, last_name: Optional[str] = None, name: Optional[str] = None,
                    preferred_name: Optional[str] = None, linkedin: Optional[str] = None,
+                   github: Optional[str] = None, website: Optional[str] = None,
                    target_roles: Optional[list[str]] = None, seniority: Optional[str] = None,
                    locations: Optional[list[str]] = None, work_models: Optional[list[WorkModel]] = None,
                    max_commute_min: Optional[int] = None, salary_expectation: Optional[str] = None,
                    notice_period: Optional[str] = None, available_from: Optional[str] = None,
                    interview_language: Optional[str] = None, goals: Optional[WeeklyGoals] = None,
                    study: Optional[StudyHours] = None):
-    """Change the user's profile (only the fields given): first and last name and LinkedIn (the master CV
-    header's; they name the CV files, first-last-position-company; `name` = a full name, split at the first
+    """Change the user's profile (only the fields given): first and last name, LinkedIn, GitHub and personal
+    website (the master CV header's: the links print after the contact line, LinkedIn then GitHub then website;
+    "" removes one; the names name the CV files, first-last-position-company; `name` = a full name, split at the first
     space, prefer first_name and last_name), greeting name,
     what they look for (target roles, seniority, locations, work models, max commute: jobs outside get a
     warning), salary expectation (default for new applications), notice period, available from (YYYY-MM-DD),
@@ -858,6 +860,7 @@ def profile_update(first_name: Optional[str] = None, last_name: Optional[str] = 
     used for study), study hours on work days, weekend days (Python weekdays, Monday = 0; default Friday and
     Saturday), whether they're free to study on weekends and when, and the most study per day (minutes)."""
     return profile.update(first_name=first_name, last_name=last_name, name=name, linkedin=linkedin,
+                          github=github, website=website,
                           preferred_name=preferred_name, target_roles=target_roles,
                           seniority=seniority, locations=locations, work_models=work_models,
                           max_commute_min=max_commute_min, salary_expectation=salary_expectation,

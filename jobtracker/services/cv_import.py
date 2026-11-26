@@ -112,6 +112,7 @@ class _Profile(BaseModel):
     phone: str
     location: str
     linkedin: str
+    github: str
     website: str
     summary: str
 
@@ -134,6 +135,7 @@ Rules:
   is a bold label: put it in `lead` without the asterisks (e.g. "Copilot:") and the rest in `text`. Never drop a label.
   If there is no label, lead is "".
 - A URL in <angle brackets> is the target of the link text before it (e.g. "LinkedIn <https://...>" -> profile.linkedin is the URL).
+  A GitHub profile URL goes in profile.github; a personal website or portfolio in profile.website.
 - If bullets sit under a project sub-heading inside a job, put that heading in each bullet's `group`; else group "".
 - A separate "Projects" section (personal, academic, freelance, open-source, side projects: work NOT done for an
   employer) goes in `projects`, never in `experiences`: `name` = the project's name, `role` = the role or context

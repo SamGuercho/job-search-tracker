@@ -11,7 +11,7 @@ def fake_structured(instructions, text, schema):
     assert '"Projects" section' in instructions and "never in `experiences`" in instructions
     return schema.model_validate({
         "profile": {"name": "Ada Lovelace", "title": "Analyst", "email": "ada@example.com", "phone": "",
-                    "location": "", "linkedin": "", "website": "", "summary": "Mathematician."},
+                    "location": "", "linkedin": "", "github": "github.com/ada", "website": "", "summary": "Mathematician."},
         "experiences": [
             {"company": "Acme Corp", "role": "Senior Data Analyst", "location": "Paris", "start": "2022", "end": "Present",
              "bullets": [{"group": "", "lead": "", "text": "Built forecasting models in R.", "keywords": ["R", "Forecasting", "GenAI"]}]},

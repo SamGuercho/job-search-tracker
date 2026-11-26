@@ -6,7 +6,7 @@ import { openImport } from "./import.js";
 
 const PROFILE_FIELDS = [
   ["first_name", "First name"], ["last_name", "Last name"],
-  ["email", "Email"], ["phone", "Phone"], ["location", "Location"], ["linkedin", "LinkedIn URL"], ["website", "Website"],
+  ["email", "Email"], ["phone", "Phone"], ["location", "Location"], ["linkedin", "LinkedIn URL"], ["github", "GitHub URL"], ["website", "Personal website"],
 ];
 
 export async function renderMasterCv(root) {
@@ -41,7 +41,7 @@ export async function renderMasterCv(root) {
           h("button", { class: "small", onclick: () => save(v.id, { title: title.value, summary: summary.value, keywords: splitList(hints.value) }, "Saved") }, "Save")));
     };
     return h("div", { class: "card" },
-      h("div", { class: "row" }, h("h2", { style: "margin:0" }, "Titles & summaries"), h("span", { class: "spacer" }),
+      h("div", { class: "row" }, h("span", { class: "spacer" }),
         h("button", {
           onclick: async () => {
             const title = await promptSheet("Its summary can then be written for that title.", "", { title: "Add a title", ok: "Add", placeholder: "e.g. Data Scientist" });
@@ -65,7 +65,7 @@ export async function renderMasterCv(root) {
       e.preventDefault();
       await attempt(() => call("cv.profile.update", { fields: readForm(form) }), "Profile saved");
     });
-    return h("div", { class: "card" }, h("h2", {}, "Profile"), form);
+    return h("div", { class: "card" }, form);
   };
 
   // ------------------------------------------------------------ page layout
@@ -81,7 +81,8 @@ export async function renderMasterCv(root) {
       () => `${plural(cv.experiences.length, "role")} · ${plural(cv.experiences.reduce((t, e) => t + e.bullets.length, 0), "achievement")}`],
     projects: ["Projects", () => cv.projects.reduce((t, p) => t + 1 + p.bullets.length, 0),
       () => `${plural(cv.projects.length, "project")} · ${plural(cv.projects.reduce((t, p) => t + p.bullets.length, 0), "achievement")}`],
-    education: ["Education", () => cv.education.reduce((t, e) => t + 1 + (e.details ? 1 : 0), 0), () => `${cv.education.length} entries`],
+    education: ["Education", () => cv.education.reduce((t, e) => t + 1 + (e.details ? 1 : 0), 0),
+      () => `${cv.education.length} ${cv.education.length === 1 ? "entry" : "entries"}`],
     languages: ["Languages", () => (cv.languages.length ? 1 : 0), () => cv.languages.join(" · ")],
   };
 
@@ -99,7 +100,7 @@ export async function renderMasterCv(root) {
       const saved = await attempt(() => call("cv.sections.set", { sections: next }));
       status.textContent = saved ? "Order saved: every new CV follows it." : "";
       order = saved || previous;
-      if (saved) cv.sections = saved;
+      if (saved) { cv.sections = saved; placeSections(); }
       draw();
     };
     const shift = (i, by) => {
@@ -109,13 +110,17 @@ export async function renderMasterCv(root) {
     };
 
     // Pointer events cover mouse, pen and touch: the block follows the pointer between its neighbours. Listened on
-    // the document, since moving the block in the page drops a pointer capture.
+    // the document, since moving the block in the page drops a pointer capture. A press that doesn't move is a click:
+    // it opens that section of the page below.
     const drag = (block) => (e) => {
       if (e.button > 0 || e.target.closest("button")) return;
       e.preventDefault();
-      block.classList.add("dragging");
+      let moved = false;
       const move = (ev) => {
         if (ev.pointerId !== e.pointerId) return;
+        if (!moved && Math.hypot(ev.clientX - e.clientX, ev.clientY - e.clientY) < 6) return;
+        moved = true;
+        block.classList.add("dragging");
         const others = [...page.querySelectorAll(".mini-block")].filter((b) => b !== block);
         const before = others.find((b) => { const r = b.getBoundingClientRect(); return ev.clientY < r.top + r.height / 2; });
         if (before) { if (block.nextElementSibling !== before) page.insertBefore(block, before); }
@@ -125,7 +130,8 @@ export async function renderMasterCv(root) {
         if (ev.pointerId !== e.pointerId) return;
         for (const [type, fn] of listeners) document.removeEventListener(type, fn);
         block.classList.remove("dragging");
-        save([...page.querySelectorAll(".mini-block")].map((b) => b.dataset.section));
+        if (moved) save([...page.querySelectorAll(".mini-block")].map((b) => b.dataset.section));
+        else if (ev.type === "pointerup") openSection(block.dataset.section);
       };
       const listeners = [["pointermove", move], ["pointerup", drop], ["pointercancel", drop]];
       for (const [type, fn] of listeners) document.addEventListener(type, fn);
@@ -135,8 +141,10 @@ export async function renderMasterCv(root) {
       const [label, lines, detail] = SECTIONS[name];
       const n = lines();
       const block = h("div", {
-        class: `mini-block ${n ? "" : "is-empty"}`, role: "listitem", "data-section": name,
-        title: n ? "Drag to move this section" : "Empty: not printed until it has content",
+        class: `mini-block ${n ? "" : "is-empty"}`, role: "listitem", "data-section": name, tabindex: 0,
+        "aria-label": `${label}: open this section`,
+        title: n ? "Click to edit this section, drag to move it" : "Empty: not printed until it has content. Click to fill it in",
+        onkeydown: (ev) => { if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); openSection(name); } },
       },
         h("div", { class: "mini-grip", "aria-hidden": "true" }, "⋮⋮"),
         h("div", { class: "mini-body" },
@@ -158,8 +166,11 @@ export async function renderMasterCv(root) {
     return h("div", { class: "card layout-card" },
       h("div", { class: "layout-side" },
         h("h2", {}, "Page layout"),
-        h("p", { class: "small muted" }, "The order of the sections on your CV. Drag a block to move it (or use its arrows): "
-          + "every CV you create follows this order. Empty sections are left out."),
+        h("p", { class: "small muted" }, "Your CV's sections in their order on the page. Click a section to edit it below; "
+          + "drag it (or use its arrows) to move it: every CV you create follows this order. Empty sections are left out."),
+        h("div", { class: "row" },
+          h("button", { class: "ghost small", onclick: () => setAll(true) }, "Expand all"),
+          h("button", { class: "ghost small", onclick: () => setAll(false) }, "Collapse all")),
         status),
       h("div", { class: "mini-sheet" }, header, page));
   };
@@ -361,8 +372,7 @@ export async function renderMasterCv(root) {
       if (await attempt(() => call("cv.project.add", readForm(form)), "Project added")) reload();
     });
     return h("div", { class: "card" },
-      h("h2", {}, "Projects"),
-      h("p", { class: "small muted" }, "Important work done outside a company: personal, academic, freelance, open source. "
+      h("p", { class: "small muted", style: "margin-top:0" }, "Important work done outside a company: personal, academic, freelance, open source. "
         + "Their achievements are matched to jobs, reworded and trimmed exactly like experience ones."),
       form);
   };
@@ -379,7 +389,7 @@ export async function renderMasterCv(root) {
       h("button", { class: "ghost icon danger", onclick: () => { items.splice(i, 1); draw(); } }, "✕"))));
     draw();
     return h("div", { class: "card" },
-      h("h2", {}, title), rows,
+      rows,
       h("div", { class: "row", style: "margin-top:12px" },
         h("button", { onclick: () => { items.push(structuredClone(blank)); draw(); } }, "+ Add"),
         h("span", { class: "spacer" }),
@@ -389,7 +399,6 @@ export async function renderMasterCv(root) {
   const languages = () => {
     const input = h("input", { value: joinList(cv.languages), placeholder: "French (Native), English (Fluent)" });
     return h("div", { class: "card" },
-      h("h2", {}, "Languages"),
       h("div", { class: "row" }, input,
         h("button", { class: "primary", onclick: () => attempt(() => call("cv.languages.set", { languages: splitList(input.value) }), "Languages saved") }, "Save")));
   };
@@ -398,7 +407,6 @@ export async function renderMasterCv(root) {
     const input = h("textarea", { rows: 8, style: "font-family:ui-monospace,monospace;font-size:12px" },
       cv.synonyms.map((g) => g.join(", ")).join("\n"));
     return h("div", { class: "card" },
-      h("h2", {}, "Synonyms"),
       h("p", { class: "small muted" }, "One group per line, comma separated. When a job description uses one term of a line, bullets containing any other term of that line are selected (e.g. the ad says \"large language model\", your bullet says \"LLM\")."),
       input,
       h("div", { class: "row", style: "margin-top:8px" }, h("span", { class: "spacer" }),
@@ -412,7 +420,6 @@ export async function renderMasterCv(root) {
   const extraKeywords = () => {
     const input = h("input", { value: joinList(cv.extra_keywords) });
     return h("div", { class: "card" },
-      h("h2", {}, "Extra keywords to watch"),
       h("p", { class: "small muted" }, "Words you track in job descriptions even if no bullet uses them yet: they show up as gaps to work on."),
       h("div", { class: "row" }, input,
         h("button", { class: "primary", onclick: () => attempt(() => call("cv.keywords.set_extra", { keywords: splitList(input.value) }), "Keywords saved") }, "Save")));
@@ -441,7 +448,49 @@ export async function renderMasterCv(root) {
     },
   }, "📄 Create general CV");
 
+  // ------------------------------------------------------ collapsible sections
+  // Every big section folds; which ones are open is remembered on this device (and survives re-renders).
+  const OPEN_KEY = "ezri.masterCv.open";
+  const opened = new Set(JSON.parse(localStorage.getItem(OPEN_KEY) || "null") || ["profile"]);
+  const remember = () => localStorage.setItem(OPEN_KEY, JSON.stringify([...opened]));
+  const fold = (id, title, meta, ...body) => {
+    const el = h("details", { class: "fold", id: `cv-${id}`, open: opened.has(id) },
+      h("summary", { class: "fold-head" },
+        h("span", { class: "fold-chevron", "aria-hidden": "true" }, "›"),
+        h("h2", {}, title),
+        meta && h("span", { class: "small muted fold-meta" }, meta)),
+      h("div", { class: "fold-body stack" }, body));
+    el.addEventListener("toggle", () => { el.open ? opened.add(id) : opened.delete(id); remember(); });
+    return el;
+  };
+  const setAll = (open) => root.querySelectorAll("details.fold").forEach((d) => { d.open = open; });
+  const openSection = (name) => {
+    const el = root.querySelector(`#cv-${name}`);
+    if (!el) return;
+    el.open = true;
+    el.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  // The CV's sections, in their order on the page (the layout's order); each opens from its block.
+  const sectionFolds = () => ({
+    summary: fold("summary", "Titles & summaries", plural(cv.headlines.length, "title"), headlinesCard()),
+    skills: fold("skills", "Skills", plural(cv.skills.reduce((t, g) => t + g.items.length, 0), "skill"),
+      listEditor("Skills", cv.skills, [["name", "Group"], ["items", "Items, comma separated", true]],
+        { name: "", items: [] }, "cv.skills.set", "groups")),
+    experience: fold("experience", "Professional Experience", SECTIONS.experience[2](),
+      newExperience(), cv.experiences.map(experience)),
+    projects: fold("projects", "Projects", SECTIONS.projects[2](), newProject(), cv.projects.map(project)),
+    education: fold("education", "Education", `${cv.education.length} ${cv.education.length === 1 ? "entry" : "entries"}`,
+      listEditor("Education", cv.education,
+        [["degree", "Degree"], ["school", "School"], ["location", "Location"], ["start", "Start"], ["end", "End"], ["details", "Details"]],
+        { school: "", degree: "", location: "", start: "", end: "", details: "" }, "cv.education.set", "items")),
+    languages: fold("languages", "Languages", cv.languages.join(" · ") || "none yet", languages()),
+  });
+  const sectionsBox = h("div", { class: "stack" });
+  const placeSections = () => cv.sections.forEach((name) => { const el = sectionsBox.querySelector(`#cv-${name}`); if (el) sectionsBox.append(el); });
+
   function render() {
+    mount(sectionsBox, Object.values(sectionFolds()));
     const bullets = [...cv.experiences, ...cv.projects].reduce((n, e) => n + e.bullets.length, 0);
     mount(root,
       h("div", { class: "page-head" },
@@ -453,21 +502,12 @@ export async function renderMasterCv(root) {
           h("a", { class: "btn", href: "#/cv" }, "CV for a specific job"))),
       h("div", { class: "stack" },
         generalResult,
-        profile(),
-        headlinesCard(),
         layoutCard(),
-        newExperience(),
-        cv.experiences.map(experience),
-        newProject(),
-        cv.projects.map(project),
-        h("div", { class: "grid cols-2" },
-          listEditor("Education", cv.education,
-            [["degree", "Degree"], ["school", "School"], ["location", "Location"], ["start", "Start"], ["end", "End"], ["details", "Details"]],
-            { school: "", degree: "", location: "", start: "", end: "", details: "" }, "cv.education.set", "items"),
-          listEditor("Skills", cv.skills, [["name", "Group"], ["items", "Items, comma separated", true]],
-            { name: "", items: [] }, "cv.skills.set", "groups")),
-        h("div", { class: "grid cols-2" }, languages(), extraKeywords()),
-        synonyms()));
+        fold("profile", "Profile", cv.profile.name || "name and contacts", profile()),
+        sectionsBox,
+        fold("keywords", "Extra keywords to watch", plural(cv.extra_keywords.length, "keyword"), extraKeywords()),
+        fold("synonyms", "Synonyms", plural(cv.synonyms.length, "group"), synonyms())));
+    placeSections();
   }
   render();
 }

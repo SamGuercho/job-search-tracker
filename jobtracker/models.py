@@ -308,7 +308,8 @@ class Profile(BaseModel):
     phone: str = ""
     location: str = ""
     linkedin: str = ""
-    website: str = ""
+    github: str = ""        # printed after LinkedIn on the CV
+    website: str = ""       # personal website
     summary: str = ""
 
     @model_validator(mode="after")
