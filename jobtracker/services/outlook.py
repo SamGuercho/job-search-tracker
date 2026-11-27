@@ -15,7 +15,7 @@ becomes ({id, sender, subject, received_at, text, list_unsubscribe}).
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from . import web
 
@@ -54,7 +54,7 @@ def skipped_folders(get: Get) -> set[str]:
 
 
 def _utc(epoch: int) -> str:
-    return datetime.fromtimestamp(epoch, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return datetime.fromtimestamp(epoch, UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _local(iso: str) -> str:

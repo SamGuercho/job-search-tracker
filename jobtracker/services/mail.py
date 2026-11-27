@@ -6,7 +6,8 @@
                     Today: "Nimbus · interview invite, Tue 10:00"  [Apply] [Dismiss]  + a notification
 
 - Access: the user connects their Gmail (Google sign-in) or their personal Outlook (Microsoft sign-in,
-  services/outlook.py) once, read-only; the refresh token is kept in their data folder (mail.json). The server checks every few minutes (JOBTRACKER_MAIL_EVERY_MIN) in the
+  services/outlook.py) once, read-only; the refresh token is kept in their data folder
+  (mail.json). The server checks every few minutes (JOBTRACKER_MAIL_EVERY_MIN) in the
   background, for every person who connected a mailbox.
 - Filter: an email is looked at only if it names one of the user's applications: sent from the company's own
   domain, or the company's name or the position in its subject or text (recruiting platforms' no-reply senders
@@ -277,7 +278,8 @@ def _get(path: str, params: dict | None = None) -> dict:
 def _graph(path: str, params: dict | None = None) -> dict:
     """Microsoft Graph, for Outlook (`path` may be a full next-page link)."""
     url = path if path.startswith("https://") else outlook.GRAPH + path
-    url += f"?{urllib.parse.urlencode(params, safe="$,()", quote_via=urllib.parse.quote)}" if params else ""
+    if params:
+        url += "?" + urllib.parse.urlencode(params, safe="$,()", quote_via=urllib.parse.quote)
     return _fetch_json(url, "Outlook", {"Prefer": outlook.PREFER})
 
 
