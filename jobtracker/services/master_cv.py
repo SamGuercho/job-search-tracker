@@ -3,7 +3,18 @@ from __future__ import annotations
 
 import re
 
-from ..models import Bullet, Education, Experience, MasterCV, Profile, Project, SkillGroup, Variant, normalize_sections
+from ..models import (
+    Bullet,
+    BulletParts,
+    Education,
+    Experience,
+    MasterCV,
+    Profile,
+    Project,
+    SkillGroup,
+    Variant,
+    normalize_sections,
+)
 from ..storage import UserDocument
 from .companies import NotFound
 
@@ -154,15 +165,25 @@ def set_font(font: str) -> str:
 # ------------------------------------------------------------------ bullets
 
 def add_bullet(experience_id: str, text: str, keywords: list[str] | None = None,
-               pinned: bool = False, priority: int = 0, lead: str = "", group: str = "") -> Bullet:
+               pinned: bool = False, priority: int = 0, lead: str = "", group: str = "",
+               parts: BulletParts | dict | None = None) -> Bullet:
     bullet = Bullet(text=text, keywords=_clean_keywords(keywords or []), pinned=pinned,
-                    priority=priority, lead=lead, group=group)
+                    priority=priority, lead=lead, group=group, parts=_parts(parts))
     with store.transaction() as cv:  # experience_id: an experience's or a project's id
         _find_owner(cv, experience_id).bullets.append(bullet)
     return bullet
 
 
+def _parts(parts: BulletParts | dict | None) -> BulletParts | None:
+    if parts is None:
+        return None
+    parts = parts if isinstance(parts, BulletParts) else BulletParts.model_validate(parts)
+    return parts if parts.filled() else None
+
+
 def update_bullet(bullet_id: str, **fields) -> Bullet:
+    if "parts" in fields:
+        fields["parts"] = _parts(fields["parts"])
     if "keywords" in fields:
         fields["keywords"] = _clean_keywords(fields["keywords"])
     with store.transaction() as cv:
@@ -312,6 +333,21 @@ def written_in(term: str, text: str) -> bool:
         if wanted and wanted <= have:
             return True
     return False
+
+
+def written_spans(term: str, text: str) -> list[str]:
+    """The exact pieces of `text` that carry the term (as `written_in` finds it), for highlighting:
+    'LLM' in 'Built LLM-based tools' -> ['LLM']; 'data analysis' in 'analyzed sales data' -> ['analyzed', 'data']."""
+    text = text or ""
+    if m := keyword_pattern(term).search(text):
+        return [m.group(0)]
+    words = list(re.finditer(r"[A-Za-z0-9][A-Za-z0-9+#]*", text))
+    have = {stem(w.group()) for w in words}
+    for alternative in re.split(r"\s*/\s*|\s+or\s+", term):
+        wanted = word_stems(alternative, drop_filler=True)
+        if wanted and wanted <= have:
+            return list(dict.fromkeys(w.group() for w in words if stem(w.group()) in wanted))
+    return []
 
 
 def extract_keywords(text: str) -> list[str]:

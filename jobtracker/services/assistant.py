@@ -56,6 +56,9 @@ How to work:
   first, at most 3) on one of their `bullets`, with the job's word as target keyword, then show the drafts so
   the user picks the wordings to keep (cv.variant.add). One only in the skills: propose adding the job's word
   there. The other gaps are outright: nothing in the CV says it.
+  Variants are built AROUND the job's word (verbatim or a form of it) and change as little as possible: the tool
+  only returns drafts that use it. Never propose a wording without the word, never warn that a draft lacks it;
+  no draft means the word can't be said truthfully there: say so in one line.
   Never call a requirement covered because a CV term is close to it ("retail" is not "customer-facing
   analytics", "supply chain" is not "operational data"): if no achievement truly states it, it is a gap.
 - Each application has a process graph (default: Applied -> Response received -> First HR interview -> Reference
@@ -163,12 +166,17 @@ How to work:
   Each achievement can have several wordings (variants) emphasising different
   keywords. A CV uses at most one wording per achievement, so never create a near-duplicate achievement to get
   a keyword: add a wording to the existing achievement instead (cv.variant.draft, then cv.variant.add).
-- Growing the master CV:
+- Growing the master CV (achievements follow the What · How · Result guide: action verb + what, "by …-ing" how,
+  measurable result or the goal it served):
   * New wordings: cv.variant.draft with the target keywords, show the drafts, save only those the user picks.
-  * Interview: when the user wants to add experience, ask short questions one at a time (context, what they
-    did, tools, measurable result), then propose achievements with cv.bullet.add (one per distinct fact).
-  * Gaps: for a job's gaps, ask if the user truly has that experience; if yes, collect the facts and propose a
-    wording or achievement that states it. If not, say so; never stretch.
+  * A new achievement: ask ONE question at a time: What did you do? How did you do it (methods, tools, scale)?
+    What did it achieve (a number, or the goal)? Then cv.bullet.compose with their words (and the job's words as
+    keywords when there is a job), show the drafts, and propose the one they pick with cv.bullet.add
+    (experience_id = the experience or project, parts = {{what, how, result}}). One achievement per distinct fact.
+  * Gaps: for a job's gaps, ask which ones the user truly has. For those, cv.keywords.place first: it finds the
+    achievements where each word fits with a few words changed and drafts those wordings (show them; keep with
+    cv.variant.add). For its `no_slot` words, collect What / How / Result and compose a new achievement. A gap
+    the user doesn't have: say so; never stretch.
 - Never invent experience, numbers or dates for the CV. Every sentence you add must come from what the user
   said or what the CV already states. Adding/changing CV text always goes through the user's approval.
 - Some tools need the user's approval (deleting, overwriting, CV text). Calling them shows Approve/Reject buttons
@@ -347,6 +355,8 @@ def _tool_outcome(name: str, action, args: dict) -> _ToolOutcome:
         return _ToolOutcome(None, {"error": f"`{field}` is a placeholder, not the text: write the actual {field}."})
     if action.confirm:
         event.status = "pending"
+        if original := _original_wording(action.name, args):
+            event.result = {"original": original}  # the approval card shows what the change does to it
         return _ToolOutcome(message, {"status": "waiting_for_user_approval",
                                       "note": "Approve/Reject buttons are shown to the user. Do not call it again; "
                                               "explain and wait."})
@@ -364,6 +374,21 @@ def _tool_outcome(name: str, action, args: dict) -> _ToolOutcome:
         result["note"] = ("These changes are ALREADY shown to the user with Approve/Reject buttons: don't propose them "
                           "again or call the review again; tell the user in one line what waits for approval and why.")
     return _ToolOutcome(message, {"result": result}, proposed=proposed)
+
+
+def _original_wording(action_name: str, args: dict) -> str:
+    """The achievement text a proposed CV wording rewrites (for the approval card's diff), or ""."""
+    target = {"cv.variant.add": "bullet_id", "cv.bullet.update": "id", "cv.variant.update": "id"}.get(action_name)
+    if not target or not isinstance(args.get(target), str):
+        return ""
+    for owner in master_cv.get_master().bullet_owners():
+        for b in owner.bullets:
+            for w in b.wordings():
+                if w.id == args[target] and (action_name != "cv.variant.update" or w is not b):
+                    # no lead in the proposal: it keeps the achievement's, so compare the texts alone
+                    proposed_lead = args.get("lead", (args.get("fields") or {}).get("lead"))
+                    return w.text if proposed_lead is None else f"{w.lead} {w.text}".strip()
+    return ""
 
 
 def _proposals(result) -> list[ChatMessage]:

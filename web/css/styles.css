@@ -676,3 +676,39 @@ body.viewer-open { overflow: hidden; }
 .viewer-frame { flex: 1; width: 100%; max-width: 900px; min-height: 70vh; border: 0; background: #fff; border-radius: 4px; }
 .viewer-note { margin: 24px 0; text-align: center; }
 body.viewer-open #toasts { z-index: 70; }
+
+/* AI drafts: changes against the original (diff.js) */
+.draft-card { display: flex; flex-direction: column; gap: 6px; }
+.draft-text { line-height: 1.6; }
+.draft-meta { gap: 6px; }
+.d-add { background: var(--green-soft); color: var(--green); text-decoration: underline; text-underline-offset: 2px; border-radius: 3px; }
+.d-rep { background: #fff3b0; color: #5c4a00; border-radius: 3px; padding: 0 1px; }
+.d-del, .d-old { color: var(--red); text-decoration: line-through; opacity: .75; font-size: .92em; }
+.d-old { margin-right: 3px; }
+mark.kw { background: var(--accent-soft); color: var(--accent); font-weight: 700; border-radius: 3px; padding: 0 2px; outline: 1px solid var(--accent); }
+button.d-swap { all: unset; cursor: pointer; border-bottom: 2px dotted var(--accent); }
+button.d-swap.d-rep, button.d-swap.d-add { border-bottom-color: var(--accent); }
+button.d-swap:focus-visible { outline: 2px solid var(--accent); border-radius: 3px; }
+.d-swap-legend { border-bottom: 2px dotted var(--accent); }
+.diff-legend { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.swap-options { display: flex; flex-direction: column; gap: 8px; }
+.swap-options button { justify-content: center; padding: 12px; font-size: 15px; }
+@media (prefers-color-scheme: dark) { .d-rep { background: #4a3f10; color: #ffe27a; } }
+
+/* What · How · Result builder */
+.whr { margin: 6px 0 6px 28px; padding: 12px; background: var(--surface-2); border-radius: 8px; display: flex; flex-direction: column; gap: 10px; }
+.whr-field label { display: flex; align-items: center; gap: 6px; font-weight: 600; font-size: 13px; }
+.whr-field textarea { min-height: 44px; margin-top: 4px; }
+.whr-help { all: unset; cursor: pointer; width: 20px; height: 20px; border-radius: 50%; display: inline-grid; place-items: center; font-size: 12px; font-weight: 700; background: var(--accent-soft); color: var(--accent); }
+.whr-tip { font-size: 12px; color: var(--muted); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; margin-top: 4px; }
+.whr-tip b { color: var(--text); font-weight: 600; }
+.whr-chips button.chip { cursor: pointer; }
+@media (max-width: 900px) { .whr, .draft-panel { margin-left: 0; } }
+
+/* gaps: pick keywords, then build */
+button.chip.pick { cursor: pointer; font: inherit; font-size: 12px; }
+button.chip.pick.on { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+.gap-bar { position: sticky; bottom: 0; z-index: 4; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; padding: 10px 12px; margin: 8px -12px -12px; background: var(--surface); border-top: 1px solid var(--border); border-radius: 0 0 8px 8px; box-shadow: 0 -4px 12px rgba(29,26,51,.08); }
+@media (max-width: 760px) { .gap-bar { position: fixed; left: 0; right: 0; bottom: calc(57px + env(safe-area-inset-bottom)); margin: 0; border-radius: 0; padding: 10px 16px; } .gap-bar button { flex: 1; justify-content: center; padding: 10px; } }
+.gap-bar[hidden], .whr-tip[hidden] { display: none; }
+.placement { border-left: 3px solid var(--accent); padding-left: 10px; }

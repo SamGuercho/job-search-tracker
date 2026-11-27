@@ -1,6 +1,7 @@
 // Assistant: conversations with the LLM agent that drives the app's actions.
 import { call, fileUrl, streamChat } from "../api.js";
-import { attempt, chatRequest, confirmSheet, h, markdown, modal, mount, promptSheet, sendPdfButton, toast, usd } from "../ui.js";
+import { renderDiff } from "../diff.js";
+import { attempt, chatRequest, confirmSheet, h, keywordPattern, markdown, modal, mount, promptSheet, sendPdfButton, toast, usd } from "../ui.js";
 
 const LABELS = {
   "company.list": "Looked at your companies", "company.get": "Opened company", "company.create": "Added company",
@@ -212,14 +213,25 @@ export async function renderChat(root, chatId, params) {
         h("button", { type: "submit", class: "primary" }, "Send"))));
   };
 
+  // CV text waiting for approval: as a diff against the achievement it rewrites (job's words marked), else plain.
+  const proposedText = (t) => {
+    const lead = t.args.lead ?? t.args.fields?.lead ?? "";
+    const text = t.args.text || t.args.fields.text;
+    const original = t.result?.original;
+    if (!original) return h("blockquote", {}, lead && h("b", {}, `${lead} `), text);
+    const full = `${lead ? `${lead} ` : ""}${text}`;
+    const keywords = t.args.keywords || t.args.fields?.keywords || [];
+    const spans = keywords.map((k) => full.match(keywordPattern(k))?.[0]).filter(Boolean);
+    return h("blockquote", { class: "draft-text" }, renderDiff(original, full, { spans }));
+  };
+
   const toolEvent = (t) => {
     const icon = { done: "✓", approved: "✓", error: "⚠", rejected: "✕", pending: "?" }[t.status];
     if (t.status === "pending") {
       return h("div", { class: "tool pending" },
         h("div", {}, h("b", {}, "Approval needed: "), label(t.action)),
         // Text going into the CV is shown as text so it can be read before approving
-        (t.args.text || t.args.fields?.text) && h("blockquote", {},
-          (t.args.lead || t.args.fields?.lead) && h("b", {}, `${t.args.lead || t.args.fields.lead} `), t.args.text || t.args.fields.text),
+        (t.args.text || t.args.fields?.text) && proposedText(t),
         h("details", {}, h("summary", { class: "small muted" }, "Details"), h("pre", {}, JSON.stringify(t.args, null, 2))),
         h("div", { class: "row" },
           h("button", { class: "primary", onclick: () => resolve(t.id, true) }, "Approve"),

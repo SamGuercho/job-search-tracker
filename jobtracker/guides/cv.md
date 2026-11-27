@@ -23,12 +23,12 @@ fact is missing, leave it out or ask; never fill the gap with what the job asks 
   ("M.Sc. in…") unless the user asks. A job requiring a degree the CV's education shows is already covered.
 
 ## Achievements (bullet points)
-- One sentence: a strong action verb, what was done, how (tools, methods), and the result, with numbers only when
-  the CV has them.
+- Follow the achievement guide: What (action verb + what was done), How ("by …-ing": methods, tools, scale),
+  Result (numbers only when the CV has them, else the goal it served). One sentence.
 - Use the job's vocabulary only where it truthfully describes the same thing ("GPT-based" → "LLM-based" is fine;
   adding a tool that isn't there is not).
-- One wording per achievement in a CV; to target a keyword, add a wording to the existing achievement, never a
-  near-duplicate achievement.
+- One wording per achievement in a CV; to target a keyword, add a wording to the existing achievement (built
+  around the job's word, changing as little as possible), never a near-duplicate achievement.
 
 ## The whole CV
 - No long dashes (— or –) anywhere: they read as AI-written. Use a comma, a colon, parentheses or two sentences.

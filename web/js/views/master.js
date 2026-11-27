@@ -2,6 +2,8 @@
 // wordings), education, skills. Bullets, experiences and projects save automatically when a field loses focus.
 import { call, fileUrl } from "../api.js";
 import { attempt, confirmSheet, field, h, joinList, keywordPattern, mount, promptSheet, readForm, sendPdfButton, splitList } from "../ui.js";
+import { draftCard, diffLegend } from "../diff.js";
+import { whrPanel } from "../whr.js";
 import { openImport } from "./import.js";
 
 
@@ -200,6 +202,7 @@ export async function renderMasterCv(root) {
 
   const ownerCard = (kind, exp, i) => {
     const k = KINDS[kind];
+    const newWhr = h("div");
     const header = h("div", { class: "form-grid" },
       k.fields.map(([name, label]) => field(label, h("input", {
         name, value: exp[name], ...(name === "link" ? { inputmode: "url", placeholder: "github.com/you/project (optional)" } : {}),
@@ -223,7 +226,16 @@ export async function renderMasterCv(root) {
       header,
       h("div", { class: "small muted", style: "margin:14px 0 4px" }, "Achievements (same sub-heading = grouped together) · keywords: words written in the text (✓ in text, ✗ missing, + known keyword found) · priority (higher = kept longer) · pinned (always included). Extra wordings of an achievement say the same facts with other keywords: a CV uses one of them."),
       exp.bullets.map(bulletRow),
-      h("button", { style: "margin-top:8px", onclick: () => addBullet(exp.id) }, "+ Add achievement"));
+      newWhr,
+      h("div", { class: "row", style: "margin-top:8px" },
+        h("button", { onclick: () => addBullet(exp.id) }, "+ Add achievement"),
+        info.llm_available && h("button", { onclick: () => mount(newWhr, newWhr.firstChild ? null : whrPanel({
+          ownerId: exp.id, onClose: () => mount(newWhr),
+          intro: "A new achievement: fill what you did, how, and what it achieved. Tap ? for an example.",
+          actions: (parts) => [{ label: "Add achievement", primary: true, onclick: async (d) => {
+            if (await attempt(() => call("cv.bullet.add", { experience_id: exp.id, text: d.text, lead: d.lead, keywords: d.keywords, parts }), "Achievement added")) return reload();
+          } }],
+        })) }, "+ Add with What · How · Result")));
   };
 
   // Keywords only count when written in the text: mark each ✓/✗ and suggest known keywords the text contains.
@@ -277,17 +289,42 @@ export async function renderMasterCv(root) {
     draw();
 
     const drafts = h("div");
+    const whrBox = h("div");
+    const whrKey = `whr-open:${b.id}`;
+    const toggleWhr = (open) => {
+      try { open ? localStorage.setItem(whrKey, "1") : localStorage.removeItem(whrKey); } catch { /* private mode */ }
+      mount(whrBox, open && whrPanel({
+        parts: b.parts, lead: b.lead, original: `${b.lead ? `${b.lead} ` : ""}${b.text}`,
+        onClose: () => toggleWhr(false),
+        actions: (parts) => [
+          { label: "Use as main", primary: true, onclick: async (d) => {
+            if (await attempt(() => call("cv.bullet.update", { id: b.id, fields: { text: d.text, lead: d.lead, parts } }), "Achievement rewritten")) return reload();
+          } },
+          { label: "Add as wording", onclick: async (d) => {
+            const ok = await attempt(() => call("cv.variant.add", { bullet_id: b.id, text: d.text, lead: d.lead, keywords: d.keywords }), "Wording added");
+            if (ok) { await attempt(() => call("cv.bullet.update", { id: b.id, fields: { parts } })); return reload(); }
+          } },
+        ],
+      }));
+    };
+    let wasOpen = false;
+    try { wasOpen = localStorage.getItem(whrKey) === "1"; } catch { /* private mode */ }
+    if (wasOpen) toggleWhr(true);
     return h("div", { class: "achievement" },
       row,
       b.variants.length > 0 && h("div", { class: "wordings" }, b.variants.map((v, i) => variantRow(v, i + 2))),
       h("div", { class: "row wording-actions" },
+        h("button", {
+          class: "ghost small", disabled: !info.llm_available, title: b.parts ? "Built from What · How · Result: open to change a part" : "Write it from what you did, how, and the result",
+          onclick: () => toggleWhr(!whrBox.firstChild),
+        }, b.parts ? "✍ What · How · Result ✓" : "✍ What · How · Result"),
         h("button", { class: "ghost small", onclick: () => addVariant(b) }, "+ Add wording"),
         h("button", {
           class: "ghost small", disabled: !info.llm_available, title: info.llm_available ? "" : "Needs OPENAI_API_KEY in .env",
           onclick: () => mount(drafts, draftPanel(b, drafts)),
         }, "✨ Draft wordings with AI"),
         b.variants.length > 0 && h("span", { class: "small muted" }, `${b.variants.length + 1} wordings · one is used per CV`)),
-      drafts);
+      drafts, whrBox);
   };
 
   const variantRow = (v, n) => {
@@ -328,23 +365,23 @@ export async function renderMasterCv(root) {
         go.textContent = "Draft again";
         if (!r) return;
         mount(out,
-          r.drafts.map((d) => h("div", { class: "draft" },
-            h("div", {}, d.lead && h("b", {}, `${d.lead} `), d.text),
-            h("div", { class: "row" },
-              h("div", { class: "chips small" }, d.keywords.map((k) => h("span", { class: `chip ${d.covers.includes(k) ? "on" : ""}` }, k))),
-              h("span", { class: "spacer" }),
-              h("button", {
-                class: "small", onclick: async () => {
-                  if (await attempt(() => call("cv.variant.add", { bullet_id: b.id, text: d.text, lead: d.lead, keywords: d.keywords }), "Wording kept")) reload();
-                },
-              }, "Keep")))),
-          !r.drafts.length && h("p", { class: "small muted" }, "No usable draft: try other keywords or add true details."),
+          r.drafts.length > 0 && diffLegend(),
+          r.drafts.map((d) => draftCard(r.original, d, {
+            keywords: r.keywords, actions: [{
+              label: "Keep", primary: true, onclick: async () => {
+                if (await attempt(() => call("cv.variant.add", { bullet_id: b.id, text: d.text, lead: d.lead, keywords: d.keywords }), "Wording kept")) return reload();
+              },
+            }],
+          })),
+          !r.drafts.length && h("p", { class: "small muted" }, r.keywords.length
+            ? `No true wording uses ${r.keywords.join(" / ")} here: try another achievement, or add the true detail below.`
+            : "No usable draft: try other keywords or add true details."),
           r.rejected.length > 0 && h("details", { class: "small muted" }, h("summary", {}, `${r.rejected.length} draft(s) rejected automatically`),
-            r.rejected.map((x) => h("div", {}, `“${x.text}” — ${x.reason}`))));
+            r.rejected.map((x) => h("div", {}, `“${x.text}”: ${x.reason}`))));
       },
     }, "Draft");
     return h("div", { class: "draft-panel stack-tight" },
-      h("div", { class: "small muted" }, "The AI only rewords the facts already written (or the details you add). Drafts adding numbers are rejected automatically. Read before keeping."),
+      h("div", { class: "small muted" }, "Each draft is built around your keywords and changes as little as it can. The AI only rewords the facts already written (or the details you add); drafts adding numbers are rejected automatically."),
       h("div", { class: "row" }, kw, go, h("button", { class: "ghost small", onclick: () => mount(container) }, "Close")),
       facts, out);
   };

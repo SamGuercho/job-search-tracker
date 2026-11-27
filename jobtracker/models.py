@@ -158,6 +158,21 @@ class Variant(BaseModel):
     keywords: list[str] = []
 
 
+class BulletParts(BaseModel):
+    """The facts an achievement is built from (the What / How / Result method): kept so the user can reopen
+    them, change one and rewrite the bullet; drafts treat them as true facts."""
+    what: str = ""     # what was done: action verb + the thing ("Redesigned the mobile checkout flow")
+    how: str = ""      # how: methods, tools, scale ("interviewing 12 customers, A/B testing 4 layouts")
+    result: str = ""   # measurable result or the goal it served ("cut cart abandonment by 18%")
+
+    def filled(self) -> bool:
+        return bool(self.what.strip() or self.how.strip() or self.result.strip())
+
+    def as_text(self) -> str:
+        return "; ".join(f"{k}: {v.strip()}" for k, v in (("what", self.what), ("how", self.how),
+                                                          ("result", self.result)) if v.strip())
+
+
 class Bullet(BaseModel):
     """One achievement. `text`/`lead`/`keywords` are its main wording; `variants`
     are alternative wordings. A CV uses at most one wording per achievement."""
@@ -169,6 +184,7 @@ class Bullet(BaseModel):
     pinned: bool = False   # always included, never removed to fit the page
     priority: int = 0      # higher = kept longer when trimming to one page
     variants: list[Variant] = []
+    parts: BulletParts | None = None  # What / How / Result facts, when the user built it that way
 
     def wordings(self) -> list[Bullet | Variant]:
         return [self, *self.variants]

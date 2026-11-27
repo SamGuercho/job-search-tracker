@@ -18,6 +18,7 @@ from .models import (
     STATUSES,
     WORK_MODELS,
     Bullet,
+    BulletParts,
     Company,
     Contact,
     Education,
@@ -38,6 +39,7 @@ from .registry import action
 from .services import (
     analytics,
     assistant,
+    bullet_builder,
     calendar,
     companies,
     cv_builder,
@@ -989,18 +991,19 @@ def cv_font_set(font: str):
 
 @action("cv.bullet.add", confirm=True)
 def cv_bullet_add(experience_id: str, text: str, keywords: list[str] = [], pinned: bool = False,
-                  priority: int = 0, lead: str = "", group: str = ""):
+                  priority: int = 0, lead: str = "", group: str = "", parts: Optional[BulletParts] = None):
     """Add a bullet point under an experience or a project (`experience_id` = either one's id).
     `keywords` tag it for matching job descriptions;
     `pinned` bullets are always included; higher `priority` bullets are kept longer when trimming to one page.
     Optional `lead` is a bold label shown before the text ("Copilot:"); `group` puts the bullet under a
-    project sub-heading inside the experience."""
-    return master_cv.add_bullet(experience_id, text, keywords, pinned, priority, lead, group)
+    project sub-heading inside the experience. `parts` keeps the What / How / Result facts it was built from
+    (cv.bullet.compose)."""
+    return master_cv.add_bullet(experience_id, text, keywords, pinned, priority, lead, group, parts)
 
 
 @action("cv.bullet.update", confirm=True)
 def cv_bullet_update(id: str, fields: BulletPatch):
-    """Update a bullet's text, keywords, pinned flag or priority."""
+    """Update a bullet's text, keywords, pinned flag, priority or `parts` (its What / How / Result facts)."""
     return master_cv.update_bullet(id, **_patch(fields))
 
 
@@ -1027,10 +1030,33 @@ def cv_variant_delete(id: str):
 
 @action("cv.variant.draft")
 def cv_variant_draft(bullet_id: str, keywords: list[str] = [], count: int = 3, facts: str = ""):
-    """Ask the AI for new wordings of an achievement that work in `keywords` where truthful. Nothing is saved:
-    show the drafts to the user; save the ones they accept with cv.variant.add. Drafts adding numbers not in
-    the original (or in `facts`, extra true details from the user) are rejected automatically."""
+    """Ask the AI for new wordings of an achievement built AROUND `keywords` (the job's words), changing as little
+    as possible. Nothing is saved: show the drafts to the user; save the ones they accept with cv.variant.add.
+    Every draft returned uses a target keyword (`covers`); drafts that don't, or that add numbers not in the
+    original (or in `facts`, extra true details from the user), are rejected automatically. Each draft has
+    `edit` ("swap": only the keyword's phrase changed, "restructure": reworded) and `swaps` (other words the user
+    may swap 1-to-1). No draft = the keyword can't be said truthfully there: say so."""
     return wording.draft_variants(bullet_id, keywords, count, facts)
+
+
+@action("cv.bullet.compose")
+def cv_bullet_compose(what: str, how: str = "", result: str = "", lead: str = "", keywords: list[str] = [],
+                      owner_id: str = ""):
+    """Write an achievement from the user's facts with the What / How / Result method: `what` they did (action
+    verb + the thing), `how` (methods, tools, scale: "by …-ing"), `result` (numbers, or the goal it served).
+    Returns 3 drafts (how-led, result-first, compact) working in `keywords` where the facts support them. Only the
+    user's facts: drafts adding numbers are rejected. Nothing is saved: show the drafts; save the chosen one with
+    cv.bullet.add (experience_id = `owner_id`, parts = the facts) or as a wording with cv.variant.add."""
+    return bullet_builder.compose(what, how, result, lead, keywords, owner_id)
+
+
+@action("cv.keywords.place")
+def cv_keywords_place(keywords: list[str]):
+    """For a job's words the user confirms are true for them (e.g. gaps), find the existing achievements where
+    each can be written by changing a few words, and draft those wordings (built around the word). Returns
+    `placements` (achievement, keywords, drafts) and `no_slot` (keywords no achievement truthfully says: a new
+    achievement is needed, cv.bullet.compose with the user's facts). Nothing is saved: keep with cv.variant.add."""
+    return bullet_builder.place(keywords)
 
 
 @action("cv.bullet.delete", confirm=True)

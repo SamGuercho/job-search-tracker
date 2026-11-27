@@ -1,6 +1,8 @@
 // CV builder: match a job description (or type keywords), preview, generate.
 import { call, fileUrl } from "../api.js";
-import { attempt, debounce, field, h, keywordPattern, matchPanel, mount, sendPdfButton, toast } from "../ui.js";
+import { diffLegend, draftCard } from "../diff.js";
+import { attempt, debounce, field, h, keywordPattern, matchPanel, modal, mount, sendPdfButton, toast } from "../ui.js";
+import { whrPanel } from "../whr.js";
 
 export async function renderCvBuilder(root, params) {
   const [companies, vocabulary, info] = await Promise.all([call("company.list"), call("cv.keywords.list"), call("app.info")]);
@@ -85,6 +87,13 @@ export async function renderCvBuilder(root, params) {
     h("span", { class: "chips" }, m.keywords.map((k) => h("span", { class: `chip ${m.reword ? "warn" : "on"}` }, k))),
     h("span", { class: "small muted" }, `${m.bullets} bullet${m.bullets === 1 ? "" : "s"}${m.in_skills ? " + skills" : ""} · ${SOURCE[m.source]}`));
 
+  // "Keep" on a wording draft: saved as a variant of the achievement.
+  const keepAction = (bulletId) => ({
+    label: "Keep", primary: true, onclick: async (d) =>
+      attempt(() => call("cv.variant.add", { bullet_id: bulletId, text: d.text, lead: d.lead, keywords: d.keywords }),
+        "Wording kept: match again to see it covered"),
+  });
+
   // A resolvable gap: the CV says it with other words (a synonym, a tool of that kind), but an ATS looks for the
   // job's word. Propose a wording of the bullet that uses it.
   const rewordRow = (m) => {
@@ -93,21 +102,13 @@ export async function renderCvBuilder(root, params) {
     const draft = async (btn) => {
       btn.disabled = true;
       btn.textContent = "Drafting…";
-      const r = await attempt(() => call("cv.variant.draft", { bullet_id: bullet.id, keywords: [m.jd_term] }));
+      const r = await attempt(() => call("cv.variant.draft", { bullet_id: bullet.id, keywords: [m.jd_term], count: 2 }));
       btn.disabled = false;
       btn.textContent = "Propose again";
       if (!r) return;
       mount(out,
-        h("div", { class: "small muted" }, `Today: ${r.original}`),
-        r.drafts.map((d) => h("div", { class: "draft row" },
-          h("div", { style: "flex:1" }, d.lead && h("b", {}, `${d.lead} `), d.text,
-            !d.covers.length && h("span", { class: "small", style: "color:var(--amber)" }, ` (doesn't use “${m.jd_term}”)`)),
-          h("button", {
-            class: "small", onclick: async (e) => {
-              if (await attempt(() => call("cv.variant.add", { bullet_id: bullet.id, text: d.text, lead: d.lead, keywords: d.keywords }),
-                "Wording kept: match again to see it covered")) e.target.disabled = true;
-            },
-          }, "Keep"))),
+        r.drafts.length > 0 && diffLegend(),
+        r.drafts.map((d) => draftCard(r.original, d, { keywords: [m.jd_term], actions: [keepAction(bullet.id)] })),
         !r.drafts.length && h("p", { class: "small muted" }, "No true wording found with this word: skip it, or add the facts in the master CV."));
     };
     return h("div", {}, h("div", { class: "req" },
@@ -128,10 +129,78 @@ export async function renderCvBuilder(root, params) {
     r.reword?.length > 0 && [
       h("div", { class: "small", style: "color:var(--amber)" }, `Fixable with a variant (${r.reword.length}): your CV says it with other words, but an ATS looks for the job's word. Add a wording of the bullet that uses it`),
       r.reword.map(rewordRow)],
-    r.gaps.length > 0 && [
-      h("div", { class: "small", style: "color:var(--red); margin-top:8px" }, `Not in your CV (${r.gaps.length}): add it only if it's true (a new bullet or a wording of one), else skip`),
-      h("div", { class: "chips" }, r.gaps.map((g) => h("span", { class: "chip bad", title: g.must_have ? "Required" : "" }, g.must_have ? `${g.jd_term} (required)` : g.jd_term)))],
+    r.gaps.length > 0 && gapsBlock(r.gaps),
   ));
+
+  // ------------------------------------------------- gaps: build what's true
+  // Pick the job's words you really have, then either write a new achievement with them, or let the AI find the
+  // achievements where each fits with a few words changed. Everything stays on this page (sheet + inline drafts).
+  const gapsBlock = (gaps) => {
+    const picked = new Set();
+    const chipsBox = h("div", { class: "chips" });
+    const bar = h("div", { class: "gap-bar", hidden: true });
+    const placeBox = h("div", { class: "stack-tight" });
+    const drawChipsAndBar = () => {
+      mount(chipsBox, gaps.map((g) => h("button", {
+        type: "button", class: `chip pick ${picked.has(g.jd_term) ? "on" : "bad"}`, "aria-pressed": String(picked.has(g.jd_term)),
+        title: g.must_have ? "Required by the job" : "",
+        onclick: () => { picked.has(g.jd_term) ? picked.delete(g.jd_term) : picked.add(g.jd_term); drawChipsAndBar(); },
+      }, picked.has(g.jd_term) ? "✓ " : "", g.must_have ? `${g.jd_term} (required)` : g.jd_term)));
+      bar.hidden = !picked.size || !info.llm_available;
+      const n = picked.size;
+      mount(bar,
+        h("button", { class: "primary", onclick: () => createBulletSheet([...picked]) }, `✍ Create a bullet (${n})`),
+        h("button", { onclick: (e) => findSlots([...picked], e.target) }, `🔎 Find where they fit (${n})`));
+    };
+    const findSlots = async (keywords, btn) => {
+      btn.disabled = true;
+      mount(placeBox, h("p", { class: "small muted" }, `Looking through your achievements for ${keywords.join(", ")}…`));
+      const r = await attempt(() => call("cv.keywords.place", { keywords }));
+      btn.disabled = false;
+      if (!r) return mount(placeBox);
+      mount(placeBox,
+        r.placements.length > 0 && [h("b", { class: "small" }, "Where they fit (keep a wording to add it to that achievement)"), diffLegend()],
+        r.placements.map((p) => h("div", { class: "placement stack-tight" },
+          h("div", { class: "small muted" }, h("b", {}, p.owner), p.why ? ` · ${p.why}` : ""),
+          p.drafts.map((d) => draftCard(p.original, d, { keywords: p.keywords, actions: [keepAction(p.bullet_id)] })))),
+        r.no_slot.length > 0 && h("div", { class: "small" },
+          h("span", { class: "muted" }, `No achievement says ${r.no_slot.map((x) => `“${x.keyword}”`).join(", ")} truthfully. `),
+          h("button", { class: "small", onclick: () => createBulletSheet(r.no_slot.map((x) => x.keyword)) }, "✍ Create a bullet with them")));
+    };
+    drawChipsAndBar();
+    return [
+      h("div", { class: "row small", style: "margin-top:8px" },
+        h("span", { style: "color:var(--red)" }, `Not in your CV (${gaps.length}): pick the ones that are true for you, then build a bullet with them (or skip)`),
+        info.llm_available && h("button", { class: "ghost small", onclick: () => { gaps.forEach((g) => picked.add(g.jd_term)); drawChipsAndBar(); } }, "Select all")),
+      chipsBox, placeBox, bar];
+  };
+
+  // One sheet: where it goes, What · How · Result with the picked words as chips, drafts, "Add to CV".
+  let master = null;
+  const createBulletSheet = async (keywords) => {
+    master = master || await attempt(() => call("cv.master.get"));
+    if (!master) return;
+    const owners = [...master.experiences.map((e) => ({ id: e.id, label: [e.role, e.company].filter(Boolean).join(" · ") })),
+      ...master.projects.map((p) => ({ id: p.id, label: `Project · ${p.name}` }))];
+    if (!owners.length) return toast("Add an experience or a project in the master CV first", true);
+    const where = h("select", { "aria-label": "Experience or project" }, owners.map((o) => h("option", { value: o.id }, o.label)));
+    let close;
+    const body = h("div", { class: "stack-tight" },
+      field("In which experience or project?", where),
+      whrPanel({
+        keywords, ownerId: () => where.value,
+        intro: `Only what's true: say what you did with ${keywords.join(", ")}, how, and what it achieved. The AI writes it with the job's words.`,
+        actions: (parts) => [{
+          label: "Add to CV", primary: true, onclick: async (d) => {
+            const ok = await attempt(() => call("cv.bullet.add", { experience_id: where.value, text: d.text, lead: d.lead, keywords: d.keywords, parts }),
+              "Achievement added to your master CV");
+            if (ok) { master = null; close(); if (jd.value.trim()) matchJob(); }
+            return ok;
+          },
+        }],
+      }));
+    close = modal(`Create a bullet with ${keywords.length === 1 ? `“${keywords[0]}”` : `${keywords.length} words`}`, body);
+  };
 
   // --------------------------------------------------------------- preview
   const previewBox = h("div");

@@ -45,6 +45,9 @@ def main(argv: list[str]) -> int:
         host = argv[argv.index("--host") + 1] if "--host" in argv else config.HOST
         uvicorn.run("monitor.app:app", host=host, port=port, proxy_headers=True, forwarded_allow_ips="*")
         return 0
+    if argv[:2] == ["eval", "drafting"]:
+        from .evals.drafting import main as run_drafting
+        return run_drafting(argv[2:])
     if argv[0] == "eval":
         from .evals.runner import main as run_eval
         return run_eval(argv[1:])

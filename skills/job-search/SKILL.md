@@ -82,9 +82,17 @@ the action from the project root:
   "experience", "projects", "education", "languages"]}` (that is the default; generated CVs follow it).
 - An achievement can have several wordings; a CV uses one of them. To target a new keyword, add a wording to the
   existing achievement (`cv.variant.draft` → show the drafts → `cv.variant.add` the chosen one), never a near-duplicate.
+  Drafts are built around the keyword (verbatim or a form of it) and change as little as possible; the tool drops
+  any draft without it. No draft = the keyword isn't true there.
+- Achievements follow `jobtracker/guides/bullets.md`: What (action verb + what was done) · How ("by …-ing": methods,
+  tools, scale) · Result (a number, or the goal it served). To write a new one, ask the user those three, one at a
+  time, then `cv.bullet.compose {"what", "how", "result", "keywords", "owner_id"}` → show the drafts →
+  `cv.bullet.add` with `"parts": {"what", "how", "result"}`.
+- A job's gaps the user truly has: `cv.keywords.place {"keywords"}` finds the achievements where each fits with a
+  few words changed (drafts to keep with `cv.variant.add`); its `no_slot` words need a new achievement (compose).
 - Title at the top of a CV: always the job's title (the application's position) unless `company.set_cv_title`
   sets another one for that application.
-- Writing CV text (summary, achievements): follow `jobtracker/guides/cv.md` (only CV facts; the summary opens with
+- Writing CV text (summary, achievements): follow `jobtracker/guides/cv.md` and `bullets.md` (only CV facts; the summary opens with
   the CV title at the job's level; never the job's gaps as claims).
 - Summary at the top of the CV: `cv.summary.review {"company"}` (verdict, gaps, suggested rewrite) → with the user's
   OK, `company.set_cv_summary` (that application only) or `cv.profile.update` (master, everywhere).

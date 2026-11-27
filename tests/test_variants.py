@@ -74,7 +74,13 @@ class DraftTests(unittest.TestCase):
         self.wording.llm.structured = self.orig
 
     def fake(self, drafts):
-        self.wording.llm.structured = lambda i, t, schema: schema.model_validate({"drafts": drafts})
+        def answer(instructions, text, schema):
+            if schema.__name__ == "_Verdicts":  # the fact-check: every draft is true
+                return schema.model_validate({"verdicts": [{"draft": i, "true": True, "why": ""}
+                                                           for i in range(1, text.count("DRAFT ") + 1)]})
+            return schema.model_validate(
+                {"drafts": [{"edit": "swap", "swaps": [], "evidence": "GPT-based", **d} for d in drafts]})
+        self.wording.llm.structured = answer
 
     def test_drafts_with_invented_numbers_are_rejected(self):
         self.fake([{"lead": "Copilot:", "text": "Built an LLM-based assistant used by 200 analysts."},
