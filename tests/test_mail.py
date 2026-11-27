@@ -1,4 +1,4 @@
-"""Email: Google sign-in state, parsing Gmail messages, the filter (only emails naming an application), the check
+"""Email: Google and Microsoft sign-in state, parsing Gmail and Outlook messages, the filter (only emails naming an application), the check
 loop with Gmail and the model stubbed, and applying each kind of update to the process."""
 import base64
 import tempfile
@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 
 from jobtracker import config, registry
 from jobtracker.api import app
-from jobtracker.services import companies, llm, mail, today
+from jobtracker.services import companies, llm, mail, outlook, today
 from tests.test_core import reset  # sets the temp data/output env vars first
 
 
@@ -97,6 +97,164 @@ class SignInTests(Configured):
             registry.run("mail.disconnect", {})
         self.assertEqual(revoke.call_args.args[0], mail.REVOKE_URL)
         self.assertFalse(mail.status()["connected"])
+
+
+
+def graph_message(mid, name, address, subject, text="", html="", unsubscribe=False, folder="inbox",
+                  at="2026-11-25T08:00:00Z"):
+    body = {"contentType": "html", "content": html} if html else {"contentType": "text", "content": text}
+    headers = [{"name": "List-Unsubscribe", "value": "<mailto:u@x.com>"}] if unsubscribe else []
+    return {"id": mid, "parentFolderId": folder, "subject": subject, "receivedDateTime": at, "bodyPreview": text[:20],
+            "from": {"emailAddress": {"name": name, "address": address}}, "body": body,
+            "internetMessageHeaders": headers}
+
+
+class OutlookTests(Configured):
+    def setUp(self):
+        super().setUp()
+        self._ms = config.MICROSOFT_CLIENT_ID, config.MICROSOFT_CLIENT_SECRET
+        config.MICROSOFT_CLIENT_ID, config.MICROSOFT_CLIENT_SECRET = "ms-client", "ms-secret"
+
+    def tearDown(self):
+        config.MICROSOFT_CLIENT_ID, config.MICROSOFT_CLIENT_SECRET = self._ms
+        super().tearDown()
+
+    def connect_outlook(self):
+        with mail.store.transaction() as book:
+            book.account = mail.MailAccount(provider="outlook", email="me@outlook.com", refresh_token="r1",
+                                            checked_until=1000)
+
+    def test_connect_url_personal_accounts_read_only(self):
+        url = mail.connect_url("https://pc.tail.ts.net/", "outlook")
+        self.assertTrue(url.startswith("https://login.microsoftonline.com/consumers/"))
+        self.assertIn("Mail.Read", url)
+        self.assertIn("offline_access", url)
+        self.assertNotIn("ReadWrite", url)
+        self.assertIn("redirect_uri=https%3A%2F%2Fpc.tail.ts.net%2Fmail%2Fcallback", url)
+        r = TestClient(app).get("/mail/connect?provider=outlook", headers={"host": "pc.tail.ts.net"},
+                                follow_redirects=False)
+        self.assertTrue(r.headers["location"].startswith(outlook.AUTH_URL))
+
+    def test_each_provider_is_configured_on_its_own(self):
+        config.GOOGLE_CLIENT_ID = ""
+        self.assertEqual(mail.status()["providers"], {"gmail": False, "outlook": True})
+        self.assertTrue(mail.configured())
+        with self.assertRaises(mail.MailError):
+            mail.connect_url("https://x/", "gmail")
+        config.MICROSOFT_CLIENT_ID = ""
+        self.assertFalse(mail.configured())
+
+    def test_state_carries_the_provider(self):
+        self.assertEqual(mail.check_state(mail.make_state("dana", provider="outlook"), "dana"), "outlook")
+        self.assertEqual(mail.check_state(mail.make_state("dana"), "dana"), "gmail")
+        self.assertEqual(mail.check_state(mail.make_state("dana", provider="yahoo"), "dana"), "")
+
+    def test_finish_saves_an_outlook_account(self):
+        state = mail.make_state("", provider="outlook")
+        tokens = {"access_token": "a", "refresh_token": "r", "expires_in": 3600,
+                  "scope": "https://graph.microsoft.com/Mail.Read https://graph.microsoft.com/User.Read"}
+        with mock.patch.object(mail, "_post_form", return_value=tokens) as post, \
+                mock.patch.object(mail, "_graph", return_value={"mail": None, "userPrincipalName": "me@hotmail.com"}):
+            account = mail.finish_connect("code", state, "https://pc.tail.ts.net/")
+        self.assertEqual(post.call_args.args[0], outlook.TOKEN_URL)
+        self.assertEqual(post.call_args.args[1]["client_id"], "ms-client")
+        self.assertEqual((account.provider, account.email, account.refresh_token), ("outlook", "me@hotmail.com", "r"))
+        self.assertEqual(mail.status()["provider_name"], "Outlook")
+
+    def test_finish_refuses_without_mail_permission(self):
+        state = mail.make_state("", provider="outlook")
+        tokens = {"access_token": "a", "refresh_token": "r", "scope": "https://graph.microsoft.com/User.Read"}
+        with mock.patch.object(mail, "_post_form", return_value=tokens), self.assertRaises(mail.MailError):
+            mail.finish_connect("code", state, "https://x/")
+
+    def test_renewed_refresh_token_is_kept(self):
+        self.connect_outlook()
+        with mock.patch.object(mail, "_post_form", return_value={"access_token": "a2", "refresh_token": "r2",
+                                                                  "expires_in": 3600}) as post:
+            self.assertEqual(mail._access_token(), "a2")
+        self.assertEqual(post.call_args.args[0], outlook.TOKEN_URL)
+        self.assertEqual(mail.store.load().account.refresh_token, "r2")
+
+    def test_disconnect_has_nothing_to_revoke(self):
+        self.connect_outlook()
+        with mock.patch.object(mail, "_post_form") as post:
+            r = mail.disconnect()
+        post.assert_not_called()
+        self.assertEqual(r["remove_access_at"], outlook.CONSENT_PAGE)
+        self.assertFalse(mail.status()["connected"])
+
+    def test_parse_text_html_and_sender(self):
+        e = outlook.parse(graph_message("1", "Nimbus Talent", "jobs@nimbus.io", "Interview", text="See you Tuesday"))
+        self.assertEqual((e["sender"], e["subject"], e["text"]), ("Nimbus Talent <jobs@nimbus.io>", "Interview",
+                                                                   "See you Tuesday"))
+        self.assertEqual(e["received_at"][:4], "2026")
+        e = outlook.parse(graph_message("2", "Doe, Jane", "j@x.com", "Hi", html="<p>Hello <b>there</b></p>",
+                                        unsubscribe=True))
+        self.assertIn("Hello", e["text"])
+        self.assertNotIn("<p>", e["text"])
+        self.assertTrue(e["list_unsubscribe"])
+        self.assertEqual(mail._domain(mail.parseaddr(e["sender"])[1]), "x.com")
+
+    def graph(self, pages, folders=None):
+        folders = folders or {"sentitems": "SENT", "drafts": "DRAFTS", "deleteditems": "BIN", "junkemail": "JUNK"}
+        calls = []
+
+        def get(path, params=None):
+            calls.append((path, params))
+            if path.startswith("/mailFolders/"):
+                return {"id": folders[path.rsplit("/", 1)[1]]}
+            if path == "/messages":
+                return pages[0]
+            if path.startswith("https://"):
+                return pages[int(path.rsplit("=", 1)[1])]
+            return self.messages[path.rsplit("/", 1)[1]]
+        return get, calls
+
+    def test_list_new_skips_sent_drafts_junk_and_pages(self):
+        pages = [{"value": [{"id": "c", "parentFolderId": "INBOX"}, {"id": "s", "parentFolderId": "SENT"}],
+                  "@odata.nextLink": "https://graph.microsoft.com/v1.0/me/messages?skip=1"},
+                 {"value": [{"id": "b", "parentFolderId": "OTHER"}, {"id": "j", "parentFolderId": "JUNK"},
+                            {"id": "a", "parentFolderId": "INBOX"}]}]
+        get, calls = self.graph(pages)
+        self.assertEqual(outlook.list_new(get, 1_790_000_000, 150), ["a", "b", "c"])  # oldest first
+        listing = next(p for path, p in calls if path == "/messages")
+        self.assertIn("receivedDateTime ge 2026-", listing["$filter"])
+        self.assertEqual(outlook.list_new(get, 1_790_000_000, 2), ["b", "c"])  # the newest ones
+
+    def test_check_with_outlook(self):
+        self.connect_outlook()
+        c = companies.create_company(name="Nimbus", position="Data Scientist", website="https://nimbus.io")
+        self.messages = {
+            "a": graph_message("a", "Nimbus", "jobs@nimbus.io", "Interview", text="Technical interview Tuesday"),
+            "b": graph_message("b", "Friend", "friend@outlook.com", "Dinner", text="See you"),
+        }
+        get, _ = self.graph([{"value": [{"id": "b", "parentFolderId": "I"}, {"id": "a", "parentFolderId": "I"}]}])
+        verdict = mail._Verdict(company_id=c.id, kind="rejection", summary="Not moving forward", person="",
+                                step_name="", date="", time="", duration_min=0, location="")
+        with mock.patch.object(mail, "_graph", side_effect=get), \
+                mock.patch.object(mail, "classify", return_value=verdict) as classify, \
+                mock.patch.object(mail.push, "notify", return_value=1):
+            r = registry.run("mail.check", {})
+        self.assertEqual((r["looked_at"], r["about_applications"], len(r["found"])), (2, 1, 1))
+        self.assertEqual(classify.call_args.args[0]["sender"], "Nimbus <jobs@nimbus.io>")
+        self.assertEqual(r["found"][0]["message_id"], "a")
+
+    def test_find_missed_with_outlook(self):
+        self.connect_outlook()
+        companies.create_company(name="Zafran", position="Analyst")
+        page = {"value": [
+            {**graph_message("1", "Zafran Talent", "no-reply@comeet.co", "Your application", text="Hi"),
+             "parentFolderId": "I"},
+            {**graph_message("2", "Friend", "friend@gmail.com", "Dinner", text="8pm"), "parentFolderId": "I"},
+            {**graph_message("3", "Shop", "deals@shop.com", "Zafran-style rugs", unsubscribe=True),
+             "parentFolderId": "I"},
+            {**graph_message("4", "Me", "me@outlook.com", "Zafran application", text="sent"), "parentFolderId": "SENT"},
+        ]}
+        get, _ = self.graph([page])
+        with mock.patch.object(mail, "_graph", side_effect=get):
+            r = registry.run("mail.find_missed", {"company": "Zafran"})
+        self.assertEqual([e["id"] for e in r["emails"]], ["1"])
+        self.assertEqual(r["searched"], 3)
 
 
 class ParseAndFilterTests(unittest.TestCase):

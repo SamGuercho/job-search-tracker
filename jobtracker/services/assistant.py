@@ -131,7 +131,7 @@ How to work:
 - Interview recordings (uploaded on the application page): recording.list gives each debrief (questions with
   graded answers, to improve, next steps, thank-you email); recording.transcript the full text. Their graded
   answers are already in the practice log (source "interview").
-- Email: when the user connected their Gmail (mail.status), news about applications found in it waits in
+- Email: when the user connected their Gmail or Outlook (mail.status), news about applications found in it waits in
   mail.inbox as proposed updates (a rejection, an interview invite with its date, a next step…). "Any news?" ->
   mail.inbox (mail.check looks right now). Apply one with mail.apply only when the user agrees; mail.dismiss when
   it's wrong. You can't connect their email: point them to Profile → Email.

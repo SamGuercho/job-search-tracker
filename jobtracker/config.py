@@ -91,10 +91,14 @@ FFPROBE_BIN = os.environ.get("JOBTRACKER_FFPROBE", "ffprobe")
 MAX_RECORDING_MB = int(os.environ.get("JOBTRACKER_MAX_RECORDING_MB", "500"))
 PREMIUM = {u.strip().lower() for u in os.environ.get("JOBTRACKER_PREMIUM", "").split(",") if u.strip()}
 
-# Email (services/mail.py): read-only Gmail access to spot news about applications. Needs a Google OAuth client
+# Email (services/mail.py): read-only Gmail or Outlook access to spot news about applications. Needs a Google OAuth client
 # ("Web application") whose redirect URI is <the app's address>/mail/callback: see the home-server guide.
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "").strip()
 GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "").strip()
+# Outlook (personal Microsoft accounts): a Microsoft Entra app registration ("Personal Microsoft accounts only", Web
+# redirect URI <the app's address>/mail/callback, the same one): see the home-server guide.
+MICROSOFT_CLIENT_ID = os.environ.get("MICROSOFT_CLIENT_ID", "").strip()
+MICROSOFT_CLIENT_SECRET = os.environ.get("MICROSOFT_CLIENT_SECRET", "").strip()
 MAIL_REDIRECT_URL = os.environ.get("JOBTRACKER_MAIL_REDIRECT_URL", "").strip()  # default: from the request
 MAIL = os.environ.get("JOBTRACKER_MAIL", "1").lower() not in ("0", "false", "no")   # the background check
 MAIL_EVERY_MIN = max(2, int(os.environ.get("JOBTRACKER_MAIL_EVERY_MIN", "10") or 10))

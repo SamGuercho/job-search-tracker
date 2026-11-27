@@ -591,7 +591,7 @@ class StoryBook(BaseModel):
 
 
 # ---------------------------------------------------------------------- mail
-# The user's mailbox, read (Gmail, read-only) for news about their applications (services/mail.py): each email
+# The user's mailbox, read (Gmail or Outlook, read-only) for news about their applications (services/mail.py): each email
 # about a tracked application becomes a proposed update the user applies or dismisses.
 
 MailKind = Literal["application_received", "referred", "rejection", "interview_invite", "next_step", "offer",
@@ -599,8 +599,9 @@ MailKind = Literal["application_received", "referred", "rejection", "interview_i
 
 
 class MailAccount(BaseModel):
+    provider: Literal["gmail", "outlook"] = "gmail"   # which mailbox (Outlook: personal Microsoft accounts)
     email: str = ""
-    refresh_token: str = ""      # Google's long-lived token (read-only Gmail access); "" = not connected
+    refresh_token: str = ""      # the provider's long-lived token (read-only mail access); "" = not connected
     connected_at: str | None = None
     last_check: str | None = None
     last_error: str = ""
@@ -609,7 +610,7 @@ class MailAccount(BaseModel):
 
 class MailEvent(BaseModel):
     id: str = Field(default_factory=new_id)
-    message_id: str              # Gmail's id
+    message_id: str              # the mailbox's id (Gmail's, or Outlook's immutable id)
     received_at: str = ""        # "YYYY-MM-DDTHH:MM:SS" local time
     sender: str = ""
     subject: str = ""
@@ -632,7 +633,7 @@ class MailEvent(BaseModel):
 class MailBook(BaseModel):
     account: MailAccount = MailAccount()
     events: list[MailEvent] = []
-    seen: list[str] = []         # Gmail ids already looked at (the newest few thousand)
+    seen: list[str] = []         # email ids already looked at (the newest few thousand)
     # what each looked-at email became: skipped (names no application), unrelated / other (the model's answer),
     # proposed, or fixed (a miss the user repaired); to tell why an email was missed
     outcomes: dict[str, str] = {}

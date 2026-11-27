@@ -231,20 +231,20 @@ def _base_url(request: Request) -> str:
 
 
 @app.get("/mail/connect")
-def mail_connect(request: Request):
-    """Start the Google sign-in for read-only Gmail access (Profile → Email → Connect)."""
+def mail_connect(request: Request, provider: str = "gmail"):
+    """Start the sign-in for read-only access: Google for Gmail, Microsoft for Outlook (Profile → Email → Connect)."""
     try:
-        return RedirectResponse(mail.connect_url(_base_url(request)), status_code=303)
+        return RedirectResponse(mail.connect_url(_base_url(request), provider), status_code=303)
     except mail.MailError as e:
         return RedirectResponse(f"/#/profile?mail_error={quote(str(e))}", status_code=303)
 
 
 @app.get("/mail/callback")
 def mail_callback(request: Request, code: str = "", state: str = "", error: str = ""):
-    """Google sends the user back here after the sign-in."""
+    """Google or Microsoft sends the user back here after the sign-in (the state says which)."""
     if error or not code:
-        reason = ("You didn't allow access to your email." if error == "access_denied"
-                  else f"Google said: {error or 'no code'}")
+        reason = ("You didn't allow access to your email." if error in ("access_denied", "consent_required")
+                  else f"The sign-in said: {error or 'no code'}")
         return RedirectResponse(f"/#/profile?mail_error={quote(reason)}", status_code=303)
     try:
         mail.finish_connect(code, state, _base_url(request))

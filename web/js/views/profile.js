@@ -104,7 +104,7 @@ export async function renderProfile(root) {
       h("div", { class: "row" }, h("span", { class: "spacer" }), h("button", { class: "primary", onclick: save }, "Save"))));
 }
 
-// Email: read-only Gmail access, so news about applications (a rejection, an interview invite) shows on Today and
+// Email: read-only Gmail or Outlook access, so news about applications (a rejection, an interview invite) shows on Today and
 // as a notification. Only emails naming one of your applications are read further (services/mail.py).
 function mailSection(m, section, refresh) {
   const params = new URLSearchParams(location.hash.split("?")[1] || "");
@@ -122,25 +122,35 @@ function mailSection(m, section, refresh) {
     toast(r.error ? r.error : r.found.length ? `${r.found.length} update${r.found.length > 1 ? "s" : ""}: see Today` : `Nothing new (${r.looked_at} emails, ${r.about_applications} about your applications)`, Boolean(r.error));
     refresh();
   };
+  const outlook = m.provider === "outlook";
   const disconnect = async () => {
-    if (!(await confirmSheet("Ezri stops reading your email and asks Google to remove its access. Updates already found stay on Today.", { title: "Disconnect your email?", ok: "Disconnect", danger: true }))) return;
+    const text = outlook
+      ? "Ezri stops reading your email and forgets its access. Updates already found stay on Today. To remove Ezri from your Microsoft account too, open account.live.com/consent/Manage."
+      : "Ezri stops reading your email and asks Google to remove its access. Updates already found stay on Today.";
+    if (!(await confirmSheet(text, { title: "Disconnect your email?", ok: "Disconnect", danger: true }))) return;
     if (await attempt(() => call("mail.disconnect"), "Email disconnected")) refresh();
   };
+  const providers = m.providers || { gmail: m.configured };
+  const connectButtons = [
+    providers.gmail && h("a", { class: "btn primary", href: "/mail/connect?provider=gmail" }, "Connect Gmail"),
+    providers.outlook && h("a", { class: `btn${providers.gmail ? "" : " primary"}`, href: "/mail/connect?provider=outlook" }, "Connect Outlook"),
+  ];
+  const signIn = [providers.gmail && "Google", providers.outlook && "Microsoft"].filter(Boolean).join(" or ");
   const how = "Only emails that name one of your applications (from the company's domain, or its name or the position in the subject or text) are read further and sent to the AI; the rest never leave the server. Nothing changes by itself: each one becomes an update on Today that you apply or dismiss.";
   if (!m.configured) {
-    return section("Email", "Spot rejections, interview invites and next steps in your Gmail, as notifications.",
-      h("p", { class: "small muted" }, "Not set up on this server yet: the owner creates a Google OAuth client and adds GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET (home-server guide, “Email”). Its redirect URI must be:"),
+    return section("Email", "Spot rejections, interview invites and next steps in your Gmail or Outlook, as notifications.",
+      h("p", { class: "small muted" }, "Not set up on this server yet: the owner creates a Google OAuth client (GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET) and/or a Microsoft app registration (MICROSOFT_CLIENT_ID and MICROSOFT_CLIENT_SECRET): home-server guide, “Email”. Its redirect URI must be:"),
       h("code", { class: "small" }, m.redirect_uri || `${location.origin}/mail/callback`));
   }
   return section("Email", how,
     m.connected
-      ? h("div", { class: "small" }, `Connected: `, h("b", {}, m.email || "Gmail"), ` (read-only) · last check ${when(m.last_check)} · every ${m.every_min} min`)
-      : h("div", { class: "small" }, "Not connected. You'll sign in with Google and allow Ezri to read (never send or delete) your email."),
+      ? h("div", { class: "small" }, `Connected: `, h("b", {}, m.email || m.provider_name || "Gmail"), ` (${m.provider_name || "Gmail"}, read-only) · last check ${when(m.last_check)} · every ${m.every_min} min`)
+      : h("div", { class: "small" }, `Not connected. You'll sign in with ${signIn} and allow Ezri to read (never send or delete) your email.${providers.outlook ? " Outlook: personal accounts (outlook.com, hotmail, live)." : ""}`),
     m.last_error && h("div", { class: "small", style: "color:var(--amber)" }, m.last_error),
     h("div", { class: "row" },
       m.connected
         ? [h("button", { onclick: checkNow }, "Check now"), h("span", { class: "spacer" }), h("button", { class: "danger", onclick: disconnect }, "Disconnect")]
-        : h("a", { class: "btn primary", href: "/mail/connect" }, "Connect Gmail")));
+        : connectButtons));
 }
 
 // LinkedIn: no API gives your network, so the contacts come from LinkedIn's own data export, uploaded here.

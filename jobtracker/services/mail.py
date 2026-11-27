@@ -1,12 +1,12 @@
 """Email: news about the user's applications, read from their mailbox and proposed as updates.
 
-    Gmail (read-only) ─► new emails ─► filter: about a tracked application? ─► cheap model: what happened?
+    Gmail or Outlook (read-only) ─► new emails ─► filter: about a tracked application? ─► cheap model: what happened?
                                         (no: never leaves the server)            │
                                                                                  ▼
                     Today: "Nimbus · interview invite, Tue 10:00"  [Apply] [Dismiss]  + a notification
 
-- Access: the user connects their Gmail once (Google sign-in, read-only scope); the refresh token is kept in
-  their data folder (mail.json). The server checks every few minutes (JOBTRACKER_MAIL_EVERY_MIN) in the
+- Access: the user connects their Gmail (Google sign-in) or their personal Outlook (Microsoft sign-in,
+  services/outlook.py) once, read-only; the refresh token is kept in their data folder (mail.json). The server checks every few minutes (JOBTRACKER_MAIL_EVERY_MIN) in the
   background, for every person who connected a mailbox.
 - Filter: an email is looked at only if it names one of the user's applications: sent from the company's own
   domain, or the company's name or the position in its subject or text (recruiting platforms' no-reply senders
@@ -41,7 +41,7 @@ from ..logs import log
 from ..models import Company, MailAccount, MailBook, MailEvent, MailKind, NewsReport
 from ..process import Node
 from ..storage import UserDocument
-from . import companies, llm, master_cv, push, usage, web
+from . import companies, llm, master_cv, outlook, push, usage, web
 
 store = UserDocument("mail.json", MailBook)
 
@@ -66,6 +66,12 @@ NOTIFY = {"referred", "rejection", "interview_invite", "next_step", "offer", "re
 CANDIDATE_NEWS = {"application_received", "referred", "rejection", "interview_invite", "next_step", "offer"}
 _SSL = ssl.create_default_context(cafile=certifi.where())
 
+# Where each provider signs people in and renews their access (Gmail's details are the constants above)
+NAMES = {"gmail": "Gmail", "outlook": "Outlook"}
+COMPANY = {"gmail": "Google", "outlook": "Microsoft"}
+AUTH = {"gmail": AUTH_URL, "outlook": outlook.AUTH_URL}
+TOKEN = {"gmail": TOKEN_URL, "outlook": outlook.TOKEN_URL}
+
 
 class MailError(RuntimeError):
     pass
@@ -73,9 +79,21 @@ class MailError(RuntimeError):
 
 # ------------------------------------------------------------------ settings
 
-def configured() -> bool:
-    """Whether the server owner set up a Google OAuth client (GOOGLE_CLIENT_ID / SECRET)."""
-    return bool(config.GOOGLE_CLIENT_ID and config.GOOGLE_CLIENT_SECRET)
+def _client(provider: str) -> tuple[str, str]:
+    """The OAuth client the server owner set up for this provider (id, secret)."""
+    if provider == "outlook":
+        return config.MICROSOFT_CLIENT_ID, config.MICROSOFT_CLIENT_SECRET
+    return config.GOOGLE_CLIENT_ID, config.GOOGLE_CLIENT_SECRET
+
+
+def configured(provider: str = "") -> bool:
+    """Whether the server owner set up an OAuth client for this provider (GOOGLE_CLIENT_ID / SECRET,
+    MICROSOFT_CLIENT_ID / SECRET), or for any when none is given."""
+    return all(_client(provider)) if provider else any(configured(p) for p in NAMES)
+
+
+def _provider() -> str:
+    return store.load().account.provider
 
 
 def redirect_uri(base_url: str = "") -> str:
@@ -86,13 +104,15 @@ def redirect_uri(base_url: str = "") -> str:
 
 def status(base_url: str = "") -> dict:
     a = store.load().account
-    return {"configured": configured(), "connected": bool(a.refresh_token), "email": a.email,
+    return {"configured": configured(), "providers": {p: configured(p) for p in NAMES},
+            "provider": a.provider, "provider_name": NAMES[a.provider],
+            "connected": bool(a.refresh_token), "email": a.email,
             "connected_at": a.connected_at, "last_check": a.last_check, "last_error": a.last_error,
             "every_min": config.MAIL_EVERY_MIN,
             "redirect_uri": redirect_uri(base_url) if base_url else config.MAIL_REDIRECT_URL}
 
 
-# ------------------------------------------------------------- Google sign-in
+# ------------------------------------------------------------------- sign-in
 
 def _state_key() -> bytes:
     """The server's secret for signing sign-in requests (kept with the owner's data, made once)."""
@@ -108,29 +128,42 @@ def _sign(text: str) -> str:
     return hmac.new(_state_key(), text.encode(), hashlib.sha256).hexdigest()[:32]
 
 
-def make_state(user: str, now: float | None = None) -> str:
-    """Ties Google's answer to the person who started the sign-in, for 15 minutes."""
-    body = f"{int((now or time.time()) + 900)}.{secrets.token_hex(8)}.{base64.urlsafe_b64encode(user.encode()).decode()}"
+def make_state(user: str, now: float | None = None, provider: str = "gmail") -> str:
+    """Ties the provider's answer to the person who started the sign-in (and which provider), for 15 minutes."""
+    who = base64.urlsafe_b64encode(user.encode()).decode()
+    body = f"{int((now or time.time()) + 900)}.{secrets.token_hex(8)}.{who}.{provider}"
     return f"{body}.{_sign(body)}"
 
 
-def check_state(state: str, user: str, now: float | None = None) -> bool:
+def check_state(state: str, user: str, now: float | None = None) -> str:
+    """The provider the sign-in was for, "" when the state is forged, expired or someone else's."""
     try:
-        expiry, nonce, who, signature = state.split(".")
-        body = f"{expiry}.{nonce}.{who}"
-        return (hmac.compare_digest(signature, _sign(body)) and int(expiry) > (now or time.time())
-                and base64.urlsafe_b64decode(who.encode()).decode() == user)
+        expiry, nonce, who, provider, signature = state.split(".")
+        body = f"{expiry}.{nonce}.{who}.{provider}"
+        ok = (hmac.compare_digest(signature, _sign(body)) and int(expiry) > (now or time.time())
+              and base64.urlsafe_b64decode(who.encode()).decode() == user and provider in NAMES)
+        return provider if ok else ""
     except (ValueError, UnicodeDecodeError):
-        return False
+        return ""
 
 
-def connect_url(base_url: str) -> str:
-    if not configured():
-        raise MailError("Email isn't set up on this server: the owner adds GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET.")
-    query = {"client_id": config.GOOGLE_CLIENT_ID, "redirect_uri": redirect_uri(base_url), "response_type": "code",
-             "scope": SCOPE, "access_type": "offline", "prompt": "consent", "include_granted_scopes": "true",
-             "state": make_state(users.current())}
-    return f"{AUTH_URL}?{urllib.parse.urlencode(query)}"
+def connect_url(base_url: str, provider: str = "gmail") -> str:
+    if provider not in NAMES:
+        raise MailError(f"Unknown email provider {provider!r}.")
+    if not configured(provider):
+        keys = "MICROSOFT_CLIENT_ID and MICROSOFT_CLIENT_SECRET" if provider == "outlook" else \
+            "GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET"
+        raise MailError(f"{NAMES[provider]} isn't set up on this server: the owner adds {keys}.")
+    state = make_state(users.current(), provider=provider)
+    if provider == "outlook":
+        query = {"client_id": config.MICROSOFT_CLIENT_ID, "redirect_uri": redirect_uri(base_url),
+                 "response_type": "code", "response_mode": "query", "scope": outlook.SCOPE,
+                 "prompt": "select_account", "state": state}
+    else:
+        query = {"client_id": config.GOOGLE_CLIENT_ID, "redirect_uri": redirect_uri(base_url), "response_type": "code",
+                 "scope": SCOPE, "access_type": "offline", "prompt": "consent", "include_granted_scopes": "true",
+                 "state": state}
+    return f"{AUTH[provider]}?{urllib.parse.urlencode(query)}"
 
 
 def _post_form(url: str, fields: dict) -> dict:
@@ -141,37 +174,47 @@ def _post_form(url: str, fields: dict) -> dict:
             return json.loads(r.read() or b"{}")
     except urllib.error.HTTPError as e:
         detail = e.read().decode("utf-8", "replace")[:300]
-        raise MailError(f"Google refused ({e.code}): {detail}") from e
+        raise MailError(f"{_who(url)} refused ({e.code}): {detail}") from e
     except (urllib.error.URLError, TimeoutError) as e:
-        raise MailError(f"Google couldn't be reached: {e}") from e
+        raise MailError(f"{_who(url)} couldn't be reached: {e}") from e
+
+
+def _who(url: str) -> str:
+    return "Microsoft" if "microsoft" in url else "Google"
 
 
 def finish_connect(code: str, state: str, base_url: str) -> MailAccount:
-    """Google's answer to the sign-in: exchange the code for a refresh token, find the address, save."""
-    if not check_state(state, users.current()):
+    """The provider's answer to the sign-in: exchange the code for a refresh token, find the address, save."""
+    provider = check_state(state, users.current())
+    if not provider:
         raise MailError("This sign-in link expired or was started by someone else: connect again.")
-    tokens = _post_form(TOKEN_URL, {"code": code, "client_id": config.GOOGLE_CLIENT_ID,
-                                    "client_secret": config.GOOGLE_CLIENT_SECRET,
-                                    "redirect_uri": redirect_uri(base_url), "grant_type": "authorization_code"})
+    client_id, secret = _client(provider)
+    fields = {"code": code, "client_id": client_id, "client_secret": secret,
+              "redirect_uri": redirect_uri(base_url), "grant_type": "authorization_code",
+              **({"scope": outlook.SCOPE} if provider == "outlook" else {})}
+    tokens = _post_form(TOKEN[provider], fields)
     if not tokens.get("refresh_token"):
-        raise MailError("Google gave no lasting access: remove Ezri from your Google account's third-party access, "
-                        "then connect again.")
-    if SCOPE not in tokens.get("scope", SCOPE).split():
-        raise MailError("Reading your email wasn't allowed: connect again and tick the Gmail permission.")
+        where = "Microsoft account's app permissions" if provider == "outlook" else "Google account's third-party access"
+        raise MailError(f"{COMPANY[provider]} gave no lasting access: remove Ezri from your {where}, then connect again.")
+    allowed = outlook.granted(tokens.get("scope", "Mail.Read")) if provider == "outlook" else \
+        SCOPE in tokens.get("scope", SCOPE).split()
+    if not allowed:
+        raise MailError(f"Reading your email wasn't allowed: connect again and accept the {NAMES[provider]} permission.")
     _tokens[users.current()] = (tokens["access_token"], time.time() + int(tokens.get("expires_in", 3600)) - 60)
-    email = _get("/profile").get("emailAddress", "")
+    email = outlook.address(_graph) if provider == "outlook" else _get("/profile").get("emailAddress", "")
     now = datetime.now().isoformat(timespec="seconds")
     with store.transaction() as book:
-        book.account = MailAccount(email=email, refresh_token=tokens["refresh_token"], connected_at=now,
-                                   checked_until=int(time.time()) - FIRST_LOOKBACK_DAYS * 86400)
-    log.info("Mailbox connected for %s", users.current() or "the owner")
+        book.account = MailAccount(provider=provider, email=email, refresh_token=tokens["refresh_token"],
+                                   connected_at=now, checked_until=int(time.time()) - FIRST_LOOKBACK_DAYS * 86400)
+    log.info("%s mailbox connected for %s", NAMES[provider], users.current() or "the owner")
     return book.account
 
 
 def disconnect() -> dict:
-    """Forget the mailbox (and tell Google to revoke the access). Proposed updates already found stay."""
+    """Forget the mailbox (and tell Google to revoke the access: Microsoft has no such call for personal accounts,
+    people remove it on their account's consent page). Proposed updates already found stay."""
     account = store.load().account
-    if account.refresh_token:
+    if account.refresh_token and account.provider == "gmail":
         try:
             _post_form(REVOKE_URL, {"token": account.refresh_token})
         except MailError as e:  # already revoked, or offline: forgetting it here is what matters
@@ -179,10 +222,11 @@ def disconnect() -> dict:
     with store.transaction() as book:
         book.account = MailAccount()
     _tokens.pop(users.current(), None)
-    return {"disconnected": account.email}
+    return {"disconnected": account.email, "provider": account.provider,
+            **({"remove_access_at": outlook.CONSENT_PAGE} if account.provider == "outlook" else {})}
 
 
-# ------------------------------------------------------------------ Gmail API
+# ------------------------------------------------------------- the mailbox
 
 _tokens: dict[str, tuple[str, float]] = {}   # user -> (access token, expiry): short-lived, kept in memory only
 
@@ -195,32 +239,52 @@ def _access_token() -> str:
     account = store.load().account
     if not account.refresh_token:
         raise MailError("No mailbox connected.")
+    provider = account.provider
+    client_id, secret = _client(provider)
     try:
-        answer = _post_form(TOKEN_URL, {"client_id": config.GOOGLE_CLIENT_ID,
-                                        "client_secret": config.GOOGLE_CLIENT_SECRET,
-                                        "refresh_token": account.refresh_token, "grant_type": "refresh_token"})
+        answer = _post_form(TOKEN[provider], {"client_id": client_id, "client_secret": secret,
+                                              "refresh_token": account.refresh_token, "grant_type": "refresh_token",
+                                              **({"scope": outlook.SCOPE} if provider == "outlook" else {})})
     except MailError as e:
         if "invalid_grant" in str(e):
-            raise MailError("Google access expired or was removed: connect your email again.") from e
+            raise MailError(f"{COMPANY[provider]} access expired or was removed: connect your email again.") from e
         raise
+    renewed = answer.get("refresh_token")
+    if renewed and renewed != account.refresh_token:  # Microsoft hands out a new one each time: keep the latest
+        with store.transaction() as book:
+            if book.account.refresh_token == account.refresh_token:
+                book.account.refresh_token = renewed
     _tokens[user] = (answer["access_token"], time.time() + int(answer.get("expires_in", 3600)) - 60)
     return answer["access_token"]
 
 
-def _get(path: str, params: dict | None = None) -> dict:
-    url = GMAIL + path + (f"?{urllib.parse.urlencode(params, doseq=True)}" if params else "")
-    request = urllib.request.Request(url, headers={"Authorization": f"Bearer {_access_token()}"})
+def _fetch_json(url: str, name: str, headers: dict | None = None) -> dict:
+    request = urllib.request.Request(url, headers={"Authorization": f"Bearer {_access_token()}", **(headers or {})})
     try:
         with urllib.request.urlopen(request, timeout=30, context=_SSL) as r:
             return json.loads(r.read() or b"{}")
     except urllib.error.HTTPError as e:
-        raise MailError(f"Gmail refused ({e.code}): {e.read().decode('utf-8', 'replace')[:300]}") from e
+        raise MailError(f"{name} refused ({e.code}): {e.read().decode('utf-8', 'replace')[:300]}") from e
     except (urllib.error.URLError, TimeoutError) as e:
-        raise MailError(f"Gmail couldn't be reached: {e}") from e
+        raise MailError(f"{name} couldn't be reached: {e}") from e
+
+
+def _get(path: str, params: dict | None = None) -> dict:
+    """Gmail's API."""
+    return _fetch_json(GMAIL + path + (f"?{urllib.parse.urlencode(params, doseq=True)}" if params else ""), "Gmail")
+
+
+def _graph(path: str, params: dict | None = None) -> dict:
+    """Microsoft Graph, for Outlook (`path` may be a full next-page link)."""
+    url = path if path.startswith("https://") else outlook.GRAPH + path
+    url += f"?{urllib.parse.urlencode(params, safe="$,()", quote_via=urllib.parse.quote)}" if params else ""
+    return _fetch_json(url, "Outlook", {"Prefer": outlook.PREFER})
 
 
 def list_new(after: int) -> list[str]:
     """Ids of the emails received after `after` (epoch seconds), oldest first, at most MAX_PER_CHECK."""
+    if _provider() == "outlook":
+        return outlook.list_new(_graph, after, MAX_PER_CHECK)
     ids, page = [], None
     query = f"after:{after} -in:sent -in:drafts -in:chats -in:spam -in:trash"
     while len(ids) < MAX_PER_CHECK:
@@ -261,6 +325,9 @@ def parse(message: dict) -> dict:
 
 
 def fetch(message_id: str) -> dict:
+    """One email as {id, sender, subject, received_at, text, list_unsubscribe}, from the connected mailbox."""
+    if _provider() == "outlook":
+        return outlook.fetch(_graph, message_id)
     return parse(_get(f"/messages/{message_id}", {"format": "full"}))
 
 
@@ -648,7 +715,7 @@ def people() -> list[str]:
 
 
 def run_once() -> int:
-    """Check every connected mailbox. Returns how many updates were found."""
+    """Check every connected mailbox (Gmail or Outlook). Returns how many updates were found."""
     if not configured():
         return 0
     total = 0
@@ -663,7 +730,7 @@ def run_once() -> int:
 
 
 def start() -> None:
-    """Start the background check (once per process), unless JOBTRACKER_MAIL=0 or Google isn't set up."""
+    """Start the background check (once per process), unless JOBTRACKER_MAIL=0 or no provider is set up."""
     global _started
     if _started or not config.MAIL or not configured():
         return
@@ -729,30 +796,41 @@ def _name_tokens(c: Company) -> list[str]:
 
 def find_missed(company_ref: str, days: int = MISS_WINDOW_DAYS) -> dict:
     """The user's recent emails that look like they could be about this application (even if Ezri skipped them),
-    most likely first, for the user to point at the one Ezri missed. Only headers and Gmail's snippet are read."""
+    most likely first, for the user to point at the one Ezri missed. Only headers and the preview are read."""
     c = companies.resolve(company_ref)
     tokens = _name_tokens(c)
     position = [w.lower() for w in re.findall(r"\w+", c.position) if len(w) >= 4]
-    answer = _get("/messages", {"q": f"newer_than:{days}d -in:sent -in:drafts -in:chats", "maxResults": SEARCH_LIMIT})
+    emails = outlook.recent(_graph, days, SEARCH_LIMIT, time.time()) if _provider() == "outlook" else _gmail_recent(days)
     outcomes = store.load().outcomes
     found = []
-    for m in answer.get("messages", []):
-        meta = _get(f"/messages/{m['id']}", {"format": "metadata",
-                                             "metadataHeaders": ["From", "Subject", "List-Unsubscribe"]})
-        headers = {h["name"].lower(): h["value"] for h in meta.get("payload", {}).get("headers", [])}
-        sender, subject, snippet = headers.get("from", ""), headers.get("subject", ""), meta.get("snippet", "")
+    for m in emails:
+        sender, subject, snippet = m["sender"], m["subject"], m["snippet"]
         name, address = parseaddr(sender)
         host = _domain(address) if "@" in address else ""
         text = f"{subject} {snippet}".lower()
         score = 3 * any(t in host or t in name.lower() for t in tokens) + 2 * any(t in text for t in tokens) \
             + any(w in text for w in position) + (platform(host) not in ("direct", "public", "unknown")) \
-            - 2 * bool(headers.get("list-unsubscribe"))
+            - 2 * bool(m["list_unsubscribe"])
         if score > 0:
-            received = datetime.fromtimestamp(int(meta.get("internalDate", "0")) / 1000).isoformat(timespec="minutes")
-            found.append({"id": m["id"], "sender": sender, "subject": subject, "received_at": received,
+            found.append({"id": m["id"], "sender": sender, "subject": subject, "received_at": m["received_at"][:16],
                           "snippet": snippet[:160], "score": score, "looked_at": m["id"] in outcomes})
     found.sort(key=lambda x: (x["score"], x["received_at"]), reverse=True)  # likeliest, then newest
-    return {"company": c.name, "company_id": c.id, "emails": found[:6], "searched": len(answer.get("messages", []))}
+    return {"company": c.name, "company_id": c.id, "emails": found[:6], "searched": len(emails)}
+
+
+def _gmail_recent(days: int) -> list[dict]:
+    """The last `days` days' Gmail emails, headers and snippet only (same shape as outlook.recent)."""
+    answer = _get("/messages", {"q": f"newer_than:{days}d -in:sent -in:drafts -in:chats", "maxResults": SEARCH_LIMIT})
+    out = []
+    for m in answer.get("messages", []):
+        meta = _get(f"/messages/{m['id']}", {"format": "metadata",
+                                             "metadataHeaders": ["From", "Subject", "List-Unsubscribe"]})
+        headers = {h["name"].lower(): h["value"] for h in meta.get("payload", {}).get("headers", [])}
+        received = datetime.fromtimestamp(int(meta.get("internalDate", "0")) / 1000).isoformat(timespec="seconds")
+        out.append({"id": m["id"], "sender": headers.get("from", ""), "subject": headers.get("subject", ""),
+                    "snippet": meta.get("snippet", ""), "received_at": received,
+                    "list_unsubscribe": bool(headers.get("list-unsubscribe"))})
+    return out
 
 
 REASONS = {

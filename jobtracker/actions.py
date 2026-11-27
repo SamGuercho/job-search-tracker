@@ -217,9 +217,9 @@ def practice_record(company: str, exercise: str, score: int, missed: list[str] =
 
 @action("mail.status")
 def mail_status():
-    """The user's email connection: whether the server can read email (`configured`), whether their Gmail is
-    connected (read-only), its address, the last check and its error. Connecting happens in the app (Profile →
-    Email): it needs the user's Google sign-in, which you can't do for them."""
+    """The user's email connection: whether the server can read email (`configured`), whether their mailbox is
+    connected (read-only; `provider` gmail or outlook), its address, the last check and its error. Connecting happens
+    in the app (Profile → Email): it needs the user's Google or Microsoft sign-in, which you can't do for them."""
     return mail.status()
 
 
@@ -263,7 +263,7 @@ def company_heard(company: str, channel: Literal["email", "call", "in_person", "
 @action("mail.find_missed")
 def mail_find_missed(company: str):
     """The user's recent emails that may be the one Ezri missed for this application, likeliest first (sender,
-    subject, date, Gmail's snippet), for the user to pick."""
+    subject, date, the email's preview), for the user to pick."""
     return mail.find_missed(company)
 
 
@@ -297,7 +297,8 @@ def mail_share(message: str, note: str = ""):
 
 @action("mail.disconnect", confirm=True)
 def mail_disconnect():
-    """Stop reading the user's email: forgets the access and asks Google to revoke it."""
+    """Stop reading the user's email: forgets the access (Gmail: also asks Google to revoke it; Outlook: the user
+    removes Ezri on their Microsoft account's consent page, `remove_access_at`)."""
     return mail.disconnect()
 
 

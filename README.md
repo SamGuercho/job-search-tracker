@@ -214,7 +214,7 @@ Ezri then shows *Add this job?* and nothing happens until you confirm. A link to
 outside the app only pre-fills the message: it is never sent by itself.
 
 ### Email (news about your applications)
-Connect your Gmail on **Profile → Email** (read-only: Ezri can't send or delete anything). Every 10 minutes the
+Connect your Gmail or your personal Outlook on **Profile → Email** (read-only: Ezri can't send or delete anything). Every 10 minutes the
 server looks at your new emails and keeps only those that name one of your applications: sent from the company's
 domain, or with the company's name or the position in the subject or text (recruiting platforms' no-reply emails
 always say who they're from). The cheap model then says which application it's about and what happened:
@@ -223,8 +223,8 @@ a recruiter's message. Any news from the company (not a recruiter's first messag
 hadn't, and a referral notes who referred you and the source.
 Each one shows on **Today** under *From your email* with what **Apply** would do (close the application, plan the
 interview step, mark Applied, log the news) and **Dismiss**, plus a notification. Nothing changes by itself.
-Setting it up needs a Google OAuth client, once, by the server's owner: see the
-[home-server guide](deploy/home-server/README.md#email-news-from-your-gmail).
+Setting it up needs a Google OAuth client and/or a Microsoft app registration, once, by the server's owner: see the
+[home-server guide](deploy/home-server/README.md#email-news-from-your-gmail-or-outlook).
 
 **When Ezri misses one.** After you change a step yourself (a reply, an interview, a rejection), a one-tap row asks
 *How did you hear?* (email, call, in person, LinkedIn). "Email" when Ezri proposed nothing means it missed it:
@@ -359,7 +359,7 @@ drafts, reviews, import) use the `OPENAI_API_KEY` from `.env` (and Claude as fal
 | Backups made by the app, uploaded CVs | `data/backups/`, `data/uploads/` | **No** |
 | Generated CVs, saved job descriptions | `output/<Company>/` (or `JOBTRACKER_OUTPUT_DIR`) | **No** |
 | OpenAI key, local paths | `.env` | **No** |
-| Gmail access (a read-only Google token) and the updates found | `data/mail.json` | **No** |
+| Email access (a read-only Google or Microsoft token) and the updates found | `data/mail.json` | **No** |
 | Assistant telemetry (messages, answers, tool results, timings) | `data/telemetry.db` in the app folder, never in `JOBTRACKER_DATA_DIR` (or `JOBTRACKER_TELEMETRY_DB`) | **No** |
 | Example data for new users | `data/seed/` | Yes (fictional) |
 
@@ -392,6 +392,7 @@ All settings live in `.env` (created from `.env.example` on first run). Restart 
 | `JOBTRACKER_TRANSCRIBE_FALLBACK_MODEL` | `gpt-transcribe` | Text-only transcription when the model above fails. |
 | `JOBTRACKER_MAX_RECORDING_MB` | `500` | Largest recording you can upload. |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | empty | A Google OAuth client ("Web application", redirect URI `<app address>/mail/callback`) so people can connect their Gmail (read-only) for news on Today. See the home-server guide, "Email". |
+| `MICROSOFT_CLIENT_ID` / `MICROSOFT_CLIENT_SECRET` | empty | A Microsoft Entra app registration (personal Microsoft accounts only, Web redirect URI `<app address>/mail/callback`) so people can connect their Outlook (read-only). See the home-server guide, "Email". |
 | `JOBTRACKER_MAIL_EVERY_MIN` | `10` | How often the server checks the connected mailboxes (`JOBTRACKER_MAIL=0`: never). |
 | `JOBTRACKER_PRICES` | empty | A JSON file to override or add model prices for the Costs page (same shape as `jobtracker/prices.py`). |
 | `JOBTRACKER_CODEX` | `codex` | The Codex command (installed in the Docker image; on a Mac, the one inside the ChatGPT app works too). |

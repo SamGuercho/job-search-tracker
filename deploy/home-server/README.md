@@ -272,15 +272,19 @@ for your ChatGPT account, so treat that folder like a password (it is git-ignore
 Sign out with `docker compose exec app codex logout`. Anyone can still get a prep without the button: an AI
 assistant connected through MCP can write it with the `prep_brief` and `prep_save` tools, on their own plan.
 
-## Email (news from your Gmail)
+## Email (news from your Gmail or Outlook)
 
-Each person can connect their Gmail (read-only) on **Profile → Email**. Every 10 minutes the server looks at the
+Each person can connect their Gmail or their personal Outlook (outlook.com, hotmail, live), read-only, on
+**Profile → Email**. Every 10 minutes the server looks at the
 new emails, keeps only those that name one of that person's applications (the company's domain, its name or the
 position), and has the cheap model say what happened: a rejection, an interview invite (with its date), a next
 step, an offer. Each becomes an update on **Today** with **Apply** / **Dismiss**, and a notification. Nothing
 changes by itself, and the other emails are never sent anywhere.
 
-Google needs to know the app once (about 15 minutes, done by you, the owner):
+Set up Gmail, Outlook or both: each needs the app registered once (about 15 minutes each, done by you, the owner).
+Only the ones you set up get a **Connect** button.
+
+**Gmail** (Google):
 
 1. Open https://console.cloud.google.com, create a project (e.g. "Ezri").
 2. **APIs & Services → Library**: search **Gmail API**, **Enable**.
@@ -298,9 +302,30 @@ Google needs to know the app once (about 15 minutes, done by you, the owner):
    ```
 7. Update: `powershell -ExecutionPolicy Bypass -File .\update-now.ps1`, then **Profile → Email → Connect Gmail**.
 
-Each person's access is a Google token in their data folder (`mail.json`): it can read their email, so the data
-folder (and its backups) deserves the same care as a password. **Disconnect** on the Profile page deletes it and
-asks Google to revoke it; anyone can also remove "Ezri" from their Google account's third-party access.
+Each person's access is a Google or Microsoft token in their data folder (`mail.json`): it can read their email, so the data
+folder (and its backups) deserves the same care as a password. **Disconnect** on the Profile page deletes it (and
+asks Google to revoke it); anyone can also remove "Ezri" from their Google account's third-party access.
+**Outlook** (Microsoft, personal accounts only):
+
+1. Open https://portal.azure.com with a Microsoft account (a free Azure account is enough: nothing is billed).
+2. **Microsoft Entra ID → App registrations → New registration**: name "Ezri", supported account types
+   **Personal Microsoft accounts only**, redirect URI: platform **Web**,
+   `https://<pc-name>.<tailnet>.ts.net/mail/callback` (the same address as Gmail's). **Register**.
+3. **Certificates & secrets → New client secret**: pick the longest expiry (24 months) and copy the **Value**
+   right away (it's shown once). Note the date: when it expires, make a new one and update `.env`.
+4. **API permissions → Add a permission → Microsoft Graph → Delegated**: tick `Mail.Read`, `User.Read`,
+   `offline_access`. **Add permissions**. (No admin consent needed: each person allows it when connecting.)
+5. In `.env`, paste the **Application (client) ID** from the app's Overview page, and the secret's value:
+   ```
+   MICROSOFT_CLIENT_ID=00000000-0000-0000-0000-000000000000
+   MICROSOFT_CLIENT_SECRET=abc8Q~...
+   ```
+6. Update, then **Profile → Email → Connect Outlook**. People see that the app is unverified ("unverified" under
+   its name): that's expected for a private app.
+
+Outlook's access lapses after 90 days without a check (the background check keeps it alive). Microsoft has no way
+for Ezri to revoke it: after **Disconnect**, people can remove "Ezri" at https://account.live.com/consent/Manage.
+
 `JOBTRACKER_MAIL_EVERY_MIN` changes how often it checks; `JOBTRACKER_MAIL=0` turns the checks off.
 
 ---
