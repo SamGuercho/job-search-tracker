@@ -274,7 +274,7 @@ assistant connected through MCP can write it with the `prep_brief` and `prep_sav
 
 ## Email (news from your Gmail or Outlook)
 
-Each person can connect their Gmail or their personal Outlook (outlook.com, hotmail, live), read-only, on
+Each person can connect their Gmail, their personal Outlook (outlook.com, hotmail, live) or both, read-only, on
 **Profile → Email**. Every 10 minutes the server looks at the
 new emails, keeps only those that name one of that person's applications (the company's domain, its name or the
 position), and has the cheap model say what happened: a rejection, an interview invite (with its date), a next

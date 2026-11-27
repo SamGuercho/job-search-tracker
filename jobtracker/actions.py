@@ -217,8 +217,8 @@ def practice_record(company: str, exercise: str, score: int, missed: list[str] =
 
 @action("mail.status")
 def mail_status():
-    """The user's email connection: whether the server can read email (`configured`), whether their mailbox is
-    connected (read-only; `provider` gmail or outlook), its address, the last check and its error. Connecting happens
+    """The user's email connection: whether the server can read email (`configured`), which mailboxes are
+    connected (`accounts`: read-only Gmail and/or Outlook, each with its address, last check and error). Connecting happens
     in the app (Profile → Email): it needs the user's Google or Microsoft sign-in, which you can't do for them."""
     return mail.status()
 
@@ -296,10 +296,11 @@ def mail_share(message: str, note: str = ""):
 
 
 @action("mail.disconnect", confirm=True)
-def mail_disconnect():
-    """Stop reading the user's email: forgets the access (Gmail: also asks Google to revoke it; Outlook: the user
-    removes Ezri on their Microsoft account's consent page, `remove_access_at`)."""
-    return mail.disconnect()
+def mail_disconnect(account: str = ""):
+    """Stop reading one of the user's mailboxes (`account`: its id from mail.status; may be left out when only one
+    is connected): forgets the access (Gmail: also asks Google to revoke it; Outlook: the user removes Ezri on their
+    Microsoft account's consent page, `remove_access_at`)."""
+    return mail.disconnect(account)
 
 
 # ------------------------------------------------------------------ stories

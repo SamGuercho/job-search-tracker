@@ -5,8 +5,8 @@
                                                                                  ▼
                     Today: "Nimbus · interview invite, Tue 10:00"  [Apply] [Dismiss]  + a notification
 
-- Access: the user connects their Gmail (Google sign-in) or their personal Outlook (Microsoft sign-in,
-  services/outlook.py) once, read-only; the refresh token is kept in their data folder
+- Access: the user connects their Gmail (Google sign-in), their personal Outlook (Microsoft sign-in,
+  services/outlook.py) or both, once, read-only; each refresh token is kept in their data folder
   (mail.json). The server checks every few minutes (JOBTRACKER_MAIL_EVERY_MIN) in the
   background, for every person who connected a mailbox.
 - Filter: an email is looked at only if it names one of the user's applications: sent from the company's own
@@ -93,8 +93,9 @@ def configured(provider: str = "") -> bool:
     return all(_client(provider)) if provider else any(configured(p) for p in NAMES)
 
 
-def _provider() -> str:
-    return store.load().account.provider
+def connected() -> list[MailAccount]:
+    """The current user's connected mailboxes."""
+    return store.load().connected()
 
 
 def redirect_uri(base_url: str = "") -> str:
@@ -104,12 +105,11 @@ def redirect_uri(base_url: str = "") -> str:
 
 
 def status(base_url: str = "") -> dict:
-    a = store.load().account
+    accounts = [{"id": a.id, "provider": a.provider, "provider_name": NAMES[a.provider], "email": a.email,
+                 "connected_at": a.connected_at, "last_check": a.last_check, "last_error": a.last_error}
+                for a in connected()]
     return {"configured": configured(), "providers": {p: configured(p) for p in NAMES},
-            "provider": a.provider, "provider_name": NAMES[a.provider],
-            "connected": bool(a.refresh_token), "email": a.email,
-            "connected_at": a.connected_at, "last_check": a.last_check, "last_error": a.last_error,
-            "every_min": config.MAIL_EVERY_MIN,
+            "connected": bool(accounts), "accounts": accounts, "every_min": config.MAIL_EVERY_MIN,
             "redirect_uri": redirect_uri(base_url) if base_url else config.MAIL_REDIRECT_URL}
 
 
@@ -201,43 +201,60 @@ def finish_connect(code: str, state: str, base_url: str) -> MailAccount:
         SCOPE in tokens.get("scope", SCOPE).split()
     if not allowed:
         raise MailError(f"Reading your email wasn't allowed: connect again and accept the {NAMES[provider]} permission.")
-    _tokens[users.current()] = (tokens["access_token"], time.time() + int(tokens.get("expires_in", 3600)) - 60)
-    email = outlook.address(_graph) if provider == "outlook" else _get("/profile").get("emailAddress", "")
-    now = datetime.now().isoformat(timespec="seconds")
+    account = MailAccount(provider=provider, refresh_token=tokens["refresh_token"],
+                          connected_at=datetime.now().isoformat(timespec="seconds"),
+                          checked_until=int(time.time()) - FIRST_LOOKBACK_DAYS * 86400)
+    _tokens[(users.current(), account.id)] = (tokens["access_token"],
+                                              time.time() + int(tokens.get("expires_in", 3600)) - 60)
+    account.email = outlook.address(_getter(account)) if provider == "outlook" else \
+        _get("/profile", account=account).get("emailAddress", "")
     with store.transaction() as book:
-        book.account = MailAccount(provider=provider, email=email, refresh_token=tokens["refresh_token"],
-                                   connected_at=now, checked_until=int(time.time()) - FIRST_LOOKBACK_DAYS * 86400)
+        # the same mailbox connected again: it replaces the old access and goes on from where it was
+        old = next((a for a in book.accounts if a.provider == provider and a.email.lower() == account.email.lower()),
+                   None)
+        if old:
+            _tokens[(users.current(), old.id)] = _tokens.pop((users.current(), account.id))
+            account = account.model_copy(update={"id": old.id, "checked_until": old.checked_until or
+                                                 account.checked_until})
+        book.accounts = [a for a in book.accounts if a.refresh_token and (not old or a.id != old.id)] + [account]
     log.info("%s mailbox connected for %s", NAMES[provider], users.current() or "the owner")
-    return book.account
+    return account
 
 
-def disconnect() -> dict:
-    """Forget the mailbox (and tell Google to revoke the access: Microsoft has no such call for personal accounts,
-    people remove it on their account's consent page). Proposed updates already found stay."""
-    account = store.load().account
-    if account.refresh_token and account.provider == "gmail":
+def disconnect(account_id: str = "") -> dict:
+    """Forget one mailbox (and tell Google to revoke the access: Microsoft has no such call for personal accounts,
+    people remove it on their account's consent page). `account_id` may be left out when only one is connected.
+    Proposed updates already found stay."""
+    accounts = connected()
+    account = next((a for a in accounts if a.id == account_id), None) if account_id else \
+        (accounts[0] if len(accounts) == 1 else None)
+    if account is None:
+        if not accounts:
+            return {"disconnected": ""}
+        raise ValueError("Which mailbox? " + ", ".join(f"{a.id} ({a.email}, {NAMES[a.provider]})" for a in accounts))
+    if account.provider == "gmail":
         try:
             _post_form(REVOKE_URL, {"token": account.refresh_token})
         except MailError as e:  # already revoked, or offline: forgetting it here is what matters
             log.info("Revoking the Gmail access failed: %s", e)
     with store.transaction() as book:
-        book.account = MailAccount()
-    _tokens.pop(users.current(), None)
+        book.accounts = [a for a in book.accounts if a.id != account.id]
+    _tokens.pop((users.current(), account.id), None)
     return {"disconnected": account.email, "provider": account.provider,
             **({"remove_access_at": outlook.CONSENT_PAGE} if account.provider == "outlook" else {})}
 
 
 # ------------------------------------------------------------- the mailbox
 
-_tokens: dict[str, tuple[str, float]] = {}   # user -> (access token, expiry): short-lived, kept in memory only
+# (user, mailbox id) -> (access token, expiry): short-lived, kept in memory only
+_tokens: dict[tuple[str, str], tuple[str, float]] = {}
 
 
-def _access_token() -> str:
-    user = users.current()
-    token, expiry = _tokens.get(user, ("", 0))
+def _access_token(account: MailAccount) -> str:
+    key = (users.current(), account.id)
+    token, expiry = _tokens.get(key, ("", 0))
     if token and expiry > time.time():
         return token
-    account = store.load().account
     if not account.refresh_token:
         raise MailError("No mailbox connected.")
     provider = account.provider
@@ -253,14 +270,17 @@ def _access_token() -> str:
     renewed = answer.get("refresh_token")
     if renewed and renewed != account.refresh_token:  # Microsoft hands out a new one each time: keep the latest
         with store.transaction() as book:
-            if book.account.refresh_token == account.refresh_token:
-                book.account.refresh_token = renewed
-    _tokens[user] = (answer["access_token"], time.time() + int(answer.get("expires_in", 3600)) - 60)
+            for a in book.accounts:
+                if a.id == account.id and a.refresh_token == account.refresh_token:
+                    a.refresh_token = renewed
+        account.refresh_token = renewed
+    _tokens[key] = (answer["access_token"], time.time() + int(answer.get("expires_in", 3600)) - 60)
     return answer["access_token"]
 
 
-def _fetch_json(url: str, name: str, headers: dict | None = None) -> dict:
-    request = urllib.request.Request(url, headers={"Authorization": f"Bearer {_access_token()}", **(headers or {})})
+def _fetch_json(url: str, name: str, account: MailAccount, headers: dict | None = None) -> dict:
+    request = urllib.request.Request(url, headers={"Authorization": f"Bearer {_access_token(account)}",
+                                                   **(headers or {})})
     try:
         with urllib.request.urlopen(request, timeout=30, context=_SSL) as r:
             return json.loads(r.read() or b"{}")
@@ -270,27 +290,35 @@ def _fetch_json(url: str, name: str, headers: dict | None = None) -> dict:
         raise MailError(f"{name} couldn't be reached: {e}") from e
 
 
-def _get(path: str, params: dict | None = None) -> dict:
+def _get(path: str, params: dict | None = None, *, account: MailAccount) -> dict:
     """Gmail's API."""
-    return _fetch_json(GMAIL + path + (f"?{urllib.parse.urlencode(params, doseq=True)}" if params else ""), "Gmail")
+    url = GMAIL + path + (f"?{urllib.parse.urlencode(params, doseq=True)}" if params else "")
+    return _fetch_json(url, "Gmail", account)
 
 
-def _graph(path: str, params: dict | None = None) -> dict:
+def _graph(path: str, params: dict | None = None, *, account: MailAccount) -> dict:
     """Microsoft Graph, for Outlook (`path` may be a full next-page link)."""
     url = path if path.startswith("https://") else outlook.GRAPH + path
     if params:
         url += "?" + urllib.parse.urlencode(params, safe="$,()", quote_via=urllib.parse.quote)
-    return _fetch_json(url, "Outlook", {"Prefer": outlook.PREFER})
+    return _fetch_json(url, "Outlook", account, {"Prefer": outlook.PREFER})
 
 
-def list_new(after: int) -> list[str]:
+def _getter(account: MailAccount):
+    """This mailbox's API as get(path, params=None) (Gmail's or Graph)."""
+    call = _graph if account.provider == "outlook" else _get
+    return lambda path, params=None: call(path, params, account=account)
+
+
+def list_new(after: int, account: MailAccount) -> list[str]:
     """Ids of the emails received after `after` (epoch seconds), oldest first, at most MAX_PER_CHECK."""
-    if _provider() == "outlook":
-        return outlook.list_new(_graph, after, MAX_PER_CHECK)
+    if account.provider == "outlook":
+        return outlook.list_new(_getter(account), after, MAX_PER_CHECK)
+    get = _getter(account)
     ids, page = [], None
     query = f"after:{after} -in:sent -in:drafts -in:chats -in:spam -in:trash"
     while len(ids) < MAX_PER_CHECK:
-        answer = _get("/messages", {"q": query, "maxResults": 100, **({"pageToken": page} if page else {})})
+        answer = get("/messages", {"q": query, "maxResults": 100, **({"pageToken": page} if page else {})})
         ids += [m["id"] for m in answer.get("messages", [])]
         page = answer.get("nextPageToken")
         if not page:
@@ -326,11 +354,25 @@ def parse(message: dict) -> dict:
             "list_unsubscribe": bool(headers.get("list-unsubscribe"))}
 
 
-def fetch(message_id: str) -> dict:
-    """One email as {id, sender, subject, received_at, text, list_unsubscribe}, from the connected mailbox."""
-    if _provider() == "outlook":
-        return outlook.fetch(_graph, message_id)
-    return parse(_get(f"/messages/{message_id}", {"format": "full"}))
+def fetch(message_id: str, account: MailAccount | None = None) -> dict:
+    """One email as {id, sender, subject, received_at, text, list_unsubscribe}, from this mailbox, or from the one
+    that has it (a Gmail id looks like "18c2f0a1b2c3d4e5", an Outlook one is long: that one is tried first)."""
+    if account is None:
+        error: MailError | None = None
+        for a in _likely_mailboxes(message_id):
+            try:
+                return fetch(message_id, a)
+            except MailError as e:
+                error = e
+        raise error or MailError("No mailbox connected.")
+    if account.provider == "outlook":
+        return outlook.fetch(_getter(account), message_id)
+    return parse(_get(f"/messages/{message_id}", {"format": "full"}, account=account))
+
+
+def _likely_mailboxes(message_id: str) -> list[MailAccount]:
+    gmail_like = bool(re.fullmatch(r"[0-9a-f]{8,24}", message_id))
+    return sorted(connected(), key=lambda a: (a.provider == "gmail") != gmail_like)
 
 
 # --------------------------------------------------------------------- filter
@@ -510,12 +552,44 @@ def _event(email: dict, verdict: _Verdict, company: Company) -> MailEvent:
                      duration_min=max(0, min(verdict.duration_min, 600)), location=verdict.location.strip()[:500])
 
 
+_PREFIX = re.compile(r"^\s*((re|fwd?|fw|tr|aw|wg)\s*:\s*)+", re.I)
+
+
+def _same_news(a: MailEvent, b: MailEvent) -> bool:
+    """The same email seen twice (Gmail forwarding to Outlook, both connected): same application, kind and subject
+    (without "Fwd:"), received within three days."""
+    if (a.company_id, a.kind) != (b.company_id, b.kind) or \
+            _PREFIX.sub("", a.subject).strip().lower() != _PREFIX.sub("", b.subject).strip().lower():
+        return False
+    try:
+        apart = abs((datetime.fromisoformat(a.received_at) - datetime.fromisoformat(b.received_at)).total_seconds())
+    except ValueError:
+        return False
+    return apart <= 3 * 86400
+
+
 def check(now: float | None = None) -> dict:
-    """Look at the emails received since the last check (the current user's mailbox). Returns what was found."""
-    book = store.load()
-    account = book.account
-    if not account.refresh_token:
+    """Look at the emails received since the last check, in each of the current user's mailboxes."""
+    accounts = connected()
+    if not accounts:
         return {"connected": False, "found": []}
+    out: dict = {"connected": True, "looked_at": 0, "about_applications": 0, "found": [], "error": ""}
+    errors = []
+    for account in accounts:
+        r = _check(account, now)
+        out["looked_at"] += r["looked_at"]
+        out["about_applications"] += r["about_applications"]
+        out["found"] += r["found"]
+        if r["error"]:
+            errors.append(f"{NAMES[account.provider]} ({account.email}): {r['error']}" if len(accounts) > 1
+                          else r["error"])
+    out["error"] = " · ".join(errors)
+    return out
+
+
+def _check(account: MailAccount, now: float | None = None) -> dict:
+    """One mailbox's new emails."""
+    book = store.load()
     started = int(now or time.time())
     clock = time.monotonic()
     seen = set(book.seen)
@@ -527,11 +601,11 @@ def check(now: float | None = None) -> dict:
     traits: dict[str, dict] = {}
     error = ""
     try:
-        ids = [i for i in list_new(max(0, account.checked_until - 120)) if i not in seen]  # a little overlap
+        ids = [i for i in list_new(max(0, account.checked_until - 120), account) if i not in seen]  # a little overlap
         apps = companies.list_companies()
         with usage.feature("mail.check"):
             for message_id in ids:
-                email = fetch(message_id)
+                email = fetch(message_id, account)
                 looked += 1
                 options = candidates(email, apps)
                 outcome = "skipped"
@@ -549,31 +623,38 @@ def check(now: float | None = None) -> dict:
         checked_until = started
     except (MailError, llm.LLMUnavailable) as e:
         error, checked_until = str(e), account.checked_until
-        log.warning("Email check failed for %s: %s", users.current() or "the owner", e)
+        log.warning("Email check failed for %s (%s): %s", users.current() or "the owner", account.provider, e)
     with store.transaction() as book:
+        new: list[MailEvent] = []
         known = {e.message_id for e in book.events}
-        new = [e for e in found if e.message_id not in known]
+        for e in found:
+            if e.message_id in known or any(_same_news(e, x) for x in book.events + new):
+                outcomes[e.message_id] = "duplicate"
+                continue
+            new.append(e)
         book.events += new
         before = set(book.seen)
         book.seen = (book.seen + [i for i in ids_looked if i not in before])[-KEEP_SEEN:]
         book.outcomes.update(outcomes)
         if len(book.outcomes) > KEEP_SEEN:
             book.outcomes = dict(list(book.outcomes.items())[-KEEP_SEEN:])
-        if book.account.refresh_token:  # (not disconnected meanwhile)
-            book.account.checked_until = max(book.account.checked_until, checked_until)
-            book.account.last_check = datetime.now().isoformat(timespec="seconds")
-            book.account.last_error = error
+        for a in book.accounts:  # (not disconnected meanwhile)
+            if a.id == account.id:
+                a.checked_until = max(a.checked_until, checked_until)
+                a.last_check = datetime.now().isoformat(timespec="seconds")
+                a.last_error = error
     for e in new:
         if e.kind in NOTIFY:
             push.notify(f"{e.company}: {LABELS.get(e.kind, e.kind)}", e.summary or e.subject, "/#/today",
                         tag=f"mail:{e.id}")
         delay = (datetime.fromisoformat(e.found_at) - datetime.fromisoformat(e.received_at)).total_seconds() \
             if e.received_at else None
-        _telemetry("mail.found", kind=e.kind, delay_s=delay, notified=e.kind in NOTIFY, **traits.get(e.message_id, {}))
+        _telemetry("mail.found", kind=e.kind, delay_s=delay, notified=e.kind in NOTIFY, provider=account.provider,
+                   **traits.get(e.message_id, {}))
     _telemetry("mail.check", status="error" if error else "ok", looked=looked, about_applications=sent_to_model,
-               found=len(new), verdicts=verdicts, error=error[:300], duration_ms=round(1000 * (time.monotonic() - clock)))
-    return {"connected": True, "looked_at": looked, "about_applications": sent_to_model,
-            "found": [view(e) for e in new], "error": error}
+               found=len(new), verdicts=verdicts, error=error[:300], provider=account.provider,
+               duration_ms=round(1000 * (time.monotonic() - clock)))
+    return {"looked_at": looked, "about_applications": sent_to_model, "found": [view(e) for e in new], "error": error}
 
 
 # ------------------------------------------------------------ proposals
@@ -724,7 +805,7 @@ def run_once() -> int:
     for person in people():
         with users.acting_as(person):
             try:
-                if store.load().account.refresh_token:
+                if connected():
                     total += len(check()["found"])
             except Exception as e:  # one person's problem must not stop the others'
                 log.warning("Email check failed for %s: %s", person or "the owner", e)
@@ -779,7 +860,7 @@ def heard(company_ref: str, channel: str, step: str = "") -> dict:
     step_type = ("closed" if node.kind == "closed" else node.type()) if node else ""
     out: dict = {"channel": channel, "mail": ""}
     if channel == "email":
-        if not store.load().account.refresh_token:
+        if not connected():
             out["mail"] = "not_connected"
         elif hit := _recent_event(c.id):
             out.update(mail="found", event=view(hit))
@@ -802,7 +883,16 @@ def find_missed(company_ref: str, days: int = MISS_WINDOW_DAYS) -> dict:
     c = companies.resolve(company_ref)
     tokens = _name_tokens(c)
     position = [w.lower() for w in re.findall(r"\w+", c.position) if len(w) >= 4]
-    emails = outlook.recent(_graph, days, SEARCH_LIMIT, time.time()) if _provider() == "outlook" else _gmail_recent(days)
+    emails: list[dict] = []
+    errors: list[MailError] = []
+    for account in connected():
+        try:
+            emails += outlook.recent(_getter(account), days, SEARCH_LIMIT, time.time()) \
+                if account.provider == "outlook" else _gmail_recent(days, account)
+        except MailError as e:  # one mailbox unreachable: the others still help
+            errors.append(e)
+    if errors and not emails:
+        raise errors[0]
     outcomes = store.load().outcomes
     found = []
     for m in emails:
@@ -820,12 +910,13 @@ def find_missed(company_ref: str, days: int = MISS_WINDOW_DAYS) -> dict:
     return {"company": c.name, "company_id": c.id, "emails": found[:6], "searched": len(emails)}
 
 
-def _gmail_recent(days: int) -> list[dict]:
+def _gmail_recent(days: int, account: MailAccount) -> list[dict]:
     """The last `days` days' Gmail emails, headers and snippet only (same shape as outlook.recent)."""
-    answer = _get("/messages", {"q": f"newer_than:{days}d -in:sent -in:drafts -in:chats", "maxResults": SEARCH_LIMIT})
+    get = _getter(account)
+    answer = get("/messages", {"q": f"newer_than:{days}d -in:sent -in:drafts -in:chats", "maxResults": SEARCH_LIMIT})
     out = []
     for m in answer.get("messages", []):
-        meta = _get(f"/messages/{m['id']}", {"format": "metadata",
+        meta = get(f"/messages/{m['id']}", {"format": "metadata",
                                              "metadataHeaders": ["From", "Subject", "List-Unsubscribe"]})
         headers = {h["name"].lower(): h["value"] for h in meta.get("payload", {}).get("headers", [])}
         received = datetime.fromtimestamp(int(meta.get("internalDate", "0")) / 1000).isoformat(timespec="seconds")
@@ -880,7 +971,8 @@ def diagnose(company_ref: str, message_id: str) -> dict:
             fixes.append({"type": "name", "value": "", "label": f"Add another name for {c.name}"})
     explanation = REASONS[reason]
     if reason == "not_checked":
-        explanation += (f": {book.account.last_error}" if book.account.last_error
+        last_error = " · ".join(a.last_error for a in book.connected() if a.last_error)
+        explanation += (f": {last_error}" if last_error
                         else ": it arrived before you connected your email, or before the last check.")
     elif reason == "model" and event:
         explanation = f"The AI took it for news about {event.company} ({LABELS.get(event.kind, event.kind)})"

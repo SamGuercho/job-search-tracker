@@ -46,7 +46,7 @@ class Configured(unittest.TestCase):
 
     def connect(self):
         with mail.store.transaction() as book:
-            book.account = mail.MailAccount(email="me@gmail.com", refresh_token="r", checked_until=1000)
+            book.accounts = [mail.MailAccount(email="me@gmail.com", refresh_token="r", checked_until=1000)]
 
 
 class SignInTests(Configured):
@@ -121,8 +121,8 @@ class OutlookTests(Configured):
 
     def connect_outlook(self):
         with mail.store.transaction() as book:
-            book.account = mail.MailAccount(provider="outlook", email="me@outlook.com", refresh_token="r1",
-                                            checked_until=1000)
+            book.accounts = [mail.MailAccount(provider="outlook", email="me@outlook.com", refresh_token="r1",
+                                            checked_until=1000)]
 
     def test_connect_url_personal_accounts_read_only(self):
         url = mail.connect_url("https://pc.tail.ts.net/", "outlook")
@@ -159,7 +159,7 @@ class OutlookTests(Configured):
         self.assertEqual(post.call_args.args[0], outlook.TOKEN_URL)
         self.assertEqual(post.call_args.args[1]["client_id"], "ms-client")
         self.assertEqual((account.provider, account.email, account.refresh_token), ("outlook", "me@hotmail.com", "r"))
-        self.assertEqual(mail.status()["provider_name"], "Outlook")
+        self.assertEqual(mail.status()["accounts"][0]["provider_name"], "Outlook")
 
     def test_finish_refuses_without_mail_permission(self):
         state = mail.make_state("", provider="outlook")
@@ -171,9 +171,9 @@ class OutlookTests(Configured):
         self.connect_outlook()
         with mock.patch.object(mail, "_post_form", return_value={"access_token": "a2", "refresh_token": "r2",
                                                                   "expires_in": 3600}) as post:
-            self.assertEqual(mail._access_token(), "a2")
+            self.assertEqual(mail._access_token(mail.store.load().accounts[0]), "a2")
         self.assertEqual(post.call_args.args[0], outlook.TOKEN_URL)
-        self.assertEqual(mail.store.load().account.refresh_token, "r2")
+        self.assertEqual(mail.store.load().accounts[0].refresh_token, "r2")
 
     def test_disconnect_has_nothing_to_revoke(self):
         self.connect_outlook()
@@ -199,7 +199,7 @@ class OutlookTests(Configured):
         folders = folders or {"sentitems": "SENT", "drafts": "DRAFTS", "deleteditems": "BIN", "junkemail": "JUNK"}
         calls = []
 
-        def get(path, params=None):
+        def get(path, params=None, **_):
             calls.append((path, params))
             if path.startswith("/mailFolders/"):
                 return {"id": folders[path.rsplit("/", 1)[1]]}
@@ -257,6 +257,92 @@ class OutlookTests(Configured):
         self.assertEqual(r["searched"], 3)
 
 
+
+class TwoMailboxesTests(Configured):
+    def setUp(self):
+        super().setUp()
+        self._ms = config.MICROSOFT_CLIENT_ID, config.MICROSOFT_CLIENT_SECRET
+        config.MICROSOFT_CLIENT_ID, config.MICROSOFT_CLIENT_SECRET = "ms-client", "ms-secret"
+
+    def tearDown(self):
+        config.MICROSOFT_CLIENT_ID, config.MICROSOFT_CLIENT_SECRET = self._ms
+        super().tearDown()
+
+    def connect_both(self):
+        with mail.store.transaction() as book:
+            book.accounts = [mail.MailAccount(id="g", provider="gmail", email="me@gmail.com", refresh_token="rg",
+                                              checked_until=1000),
+                             mail.MailAccount(id="o", provider="outlook", email="me@outlook.com", refresh_token="ro",
+                                              checked_until=1000)]
+
+    def test_old_single_mailbox_file_is_read(self):
+        book = mail.MailBook.model_validate({"account": {"email": "me@gmail.com", "refresh_token": "r"}})
+        self.assertEqual([(a.provider, a.email) for a in book.connected()], [("gmail", "me@gmail.com")])
+        self.assertEqual(mail.MailBook.model_validate({"account": {"email": ""}}).accounts, [])
+
+    def test_connecting_outlook_keeps_gmail_and_reconnecting_replaces(self):
+        self.connect()  # Gmail
+        tokens = {"access_token": "a", "refresh_token": "r", "expires_in": 3600, "scope": "Mail.Read"}
+        for _ in range(2):
+            with mock.patch.object(mail, "_post_form", return_value=tokens), \
+                    mock.patch.object(mail, "_graph", return_value={"mail": "me@outlook.com"}):
+                mail.finish_connect("code", mail.make_state("", provider="outlook"), "https://x/")
+        status = mail.status()
+        self.assertEqual([a["provider"] for a in status["accounts"]], ["gmail", "outlook"])
+
+    def test_disconnect_one_needs_which(self):
+        self.connect_both()
+        with self.assertRaises(ValueError):
+            mail.disconnect()
+        with mock.patch.object(mail, "_post_form", return_value={}):
+            registry.run("mail.disconnect", {"account": "o"})
+        self.assertEqual([a.id for a in mail.connected()], ["g"])
+
+    def test_check_reads_both_and_a_forward_is_proposed_once(self):
+        self.connect_both()
+        c = companies.create_company(name="Nimbus", position="Data Scientist", website="https://nimbus.io")
+        emails = {
+            "g1": email("jobs@nimbus.io", "Nimbus: your application", "We won't move forward"),
+            "o1": email("jobs@nimbus.io", "Fwd: Nimbus: your application", "We won't move forward"),
+            "o2": email("jobs@nimbus.io", "Interview", "Technical interview"),
+        }
+        listed = {"g": ["g1"], "o": ["o1", "o2"]}
+        verdict = lambda e, options: mail._Verdict(  # noqa: E731
+            company_id=c.id, kind="rejection" if "application" in e["subject"] else "interview_invite",
+            summary="x", person="", step_name="", date="", time="", duration_min=0, location="")
+        with mock.patch.object(mail, "list_new", side_effect=lambda after, a: listed[a.id]), \
+                mock.patch.object(mail, "fetch", side_effect=lambda i, a: {**emails[i], "id": i}), \
+                mock.patch.object(mail, "classify", side_effect=verdict), \
+                mock.patch.object(mail.push, "notify", return_value=1) as notify:
+            r = registry.run("mail.check", {})
+        self.assertEqual((r["looked_at"], len(r["found"])), (3, 2))
+        self.assertEqual(sorted(e["message_id"] for e in r["found"]), ["g1", "o2"])
+        self.assertEqual(notify.call_count, 2)
+        self.assertEqual(mail.store.load().outcomes["o1"], "duplicate")
+        self.assertTrue(all(a.last_check for a in mail.connected()))
+
+    def test_one_mailbox_failing_leaves_the_other(self):
+        self.connect_both()
+
+        def listing(after, a):
+            if a.id == "g":
+                raise mail.MailError("Google access expired")
+            return []
+        with mock.patch.object(mail, "list_new", side_effect=listing):
+            r = mail.check()
+        self.assertIn("Gmail (me@gmail.com): Google access expired", r["error"])
+        errors = {a.id: a.last_error for a in mail.connected()}
+        self.assertEqual(errors, {"g": "Google access expired", "o": ""})
+
+    def test_fetch_finds_the_mailbox_that_has_the_email(self):
+        self.connect_both()
+        asked = []
+        with mock.patch.object(mail, "_get", side_effect=lambda *a, **k: asked.append("gmail") or {}), \
+                mock.patch.object(mail, "_graph", side_effect=lambda *a, **k: asked.append("outlook") or
+                                  graph_message("AAMkAD123=", "N", "n@x.com", "s")):
+            mail.fetch("AAMkAD123=")
+        self.assertEqual(asked, ["outlook"])
+
 class ParseAndFilterTests(unittest.TestCase):
     def setUp(self):
         reset()
@@ -307,7 +393,7 @@ class CheckAndApplyTests(Configured):
 
     def run_check(self, ids, verdict=None):
         with mock.patch.object(mail, "list_new", return_value=ids), \
-                mock.patch.object(mail, "fetch", side_effect=lambda i: mail.parse(self.messages[i])), \
+                mock.patch.object(mail, "fetch", side_effect=lambda i, *_: mail.parse(self.messages[i])), \
                 mock.patch.object(mail, "classify", side_effect=verdict or self.verdict) as classify, \
                 mock.patch.object(mail.push, "notify", return_value=1) as notify:
             return registry.run("mail.check", {}), classify, notify
@@ -322,7 +408,7 @@ class CheckAndApplyTests(Configured):
         # already seen: not again, and the check moved forward
         r, classify, _ = self.run_check(["a", "b", "c"])
         self.assertEqual((r["looked_at"], classify.call_count), (0, 0))
-        self.assertGreater(mail.store.load().account.checked_until, 1000)
+        self.assertGreater(mail.store.load().accounts[0].checked_until, 1000)
         self.assertEqual(len(today.summary()["mail"]), 2)
 
     def test_model_unavailable_retries_later(self):
@@ -330,7 +416,7 @@ class CheckAndApplyTests(Configured):
             raise llm.LLMUnavailable("no key")
         r, _, _ = self.run_check(["a"], verdict=down)
         self.assertIn("no key", r["error"])
-        account = mail.store.load().account
+        account = mail.store.load().accounts[0]
         self.assertEqual(account.checked_until, 1000)
         self.assertNotIn("a", mail.store.load().seen)
 
@@ -401,7 +487,7 @@ class MonitoringTests(Configured):
             "news": gmail_message("news", "x@ads.com", "Sale", text="Buy now", unsubscribe=True),
         }
 
-    def fetch(self, i):
+    def fetch(self, i, *_):
         return mail.parse(self.messages[i])
 
     def run_check(self, ids, kind="rejection"):
@@ -452,7 +538,7 @@ class MonitoringTests(Configured):
         heard = [p for t, p in self.events if t == "mail.heard"]
         self.assertEqual([p["mail"] for p in heard], ["missed", "found", ""])
         with mail.store.transaction() as book:
-            book.account = mail.MailAccount()
+            book.accounts = [mail.MailAccount()]
         self.assertEqual(mail.heard("Zafran", "email")["mail"], "not_connected")
         with self.assertRaises(ValueError):
             mail.heard("Zafran", "pigeon")
@@ -514,7 +600,7 @@ class MonitoringTests(Configured):
             "3": {"from": "deals@shop.com", "subject": "Zafran-style rugs", "snippet": "", "unsub": True},
         }
 
-        def get(path, params=None):
+        def get(path, params=None, **_):
             if path == "/messages":
                 return listing
             m = meta[path.rsplit("/", 1)[1]]

@@ -214,7 +214,8 @@ Ezri then shows *Add this job?* and nothing happens until you confirm. A link to
 outside the app only pre-fills the message: it is never sent by itself.
 
 ### Email (news about your applications)
-Connect your Gmail or your personal Outlook on **Profile → Email** (read-only: Ezri can't send or delete anything). Every 10 minutes the
+Connect your Gmail, your personal Outlook or both on **Profile → Email** (read-only: Ezri can't send or delete anything;
+an email that reaches both, forwarded from one to the other, is proposed once). Every 10 minutes the
 server looks at your new emails and keeps only those that name one of your applications: sent from the company's
 domain, or with the company's name or the position in the subject or text (recruiting platforms' no-reply emails
 always say who they're from). The cheap model then says which application it's about and what happened:

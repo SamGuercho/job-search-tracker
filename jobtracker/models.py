@@ -599,6 +599,7 @@ MailKind = Literal["application_received", "referred", "rejection", "interview_i
 
 
 class MailAccount(BaseModel):
+    id: str = Field(default_factory=new_id)
     provider: Literal["gmail", "outlook"] = "gmail"   # which mailbox (Outlook: personal Microsoft accounts)
     email: str = ""
     refresh_token: str = ""      # the provider's long-lived token (read-only mail access); "" = not connected
@@ -631,12 +632,26 @@ class MailEvent(BaseModel):
 
 
 class MailBook(BaseModel):
-    account: MailAccount = MailAccount()
+    accounts: list[MailAccount] = []   # the connected mailboxes (a Gmail, an Outlook, or both)
     events: list[MailEvent] = []
     seen: list[str] = []         # email ids already looked at (the newest few thousand)
     # what each looked-at email became: skipped (names no application), unrelated / other (the model's answer),
     # proposed, or fixed (a miss the user repaired); to tell why an email was missed
     outcomes: dict[str, str] = {}
+
+    @model_validator(mode="before")
+    @classmethod
+    def _one_mailbox_before(cls, data):
+        """mail.json from when one mailbox was the most: {"account": {...}} becomes {"accounts": [...]}."""
+        if isinstance(data, dict) and "account" in data:
+            data = dict(data)
+            old = data.pop("account") or {}
+            if not data.get("accounts") and isinstance(old, dict) and old.get("refresh_token"):
+                data["accounts"] = [old]
+        return data
+
+    def connected(self) -> list[MailAccount]:
+        return [a for a in self.accounts if a.refresh_token]
 
 
 # ------------------------------------------------------------------ learning
