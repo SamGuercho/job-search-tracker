@@ -13,6 +13,7 @@ import { renderProfile } from "./views/profile.js";
 import { bookmarklet, renderClip } from "./views/clip.js";
 import { call, lastOfflineSave, saveForOffline } from "./api.js";
 import { attempt, h, modal, mount, toast } from "./ui.js";
+import { useViewerForFiles } from "./viewer.js";
 
 const routes = [
   { pattern: /^\/$/, nav: "tracker", view: () => renderTracker },
@@ -103,6 +104,9 @@ if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").cat
 const pushSupported = "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
 const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
 const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+// iPhone home-screen app: no browser bar, so files open in an in-app viewer with a way back (viewer.js).
+// ?viewer=1 in the address turns it on anywhere, to try it on a computer.
+if ((isIOS && standalone) || new URLSearchParams(location.search).has("viewer")) useViewerForFiles();
 
 function keyBytes(b64) {
   const s = atob((b64 + "=".repeat((4 - (b64.length % 4)) % 4)).replace(/-/g, "+").replace(/_/g, "/"));

@@ -321,13 +321,39 @@ async def import_linkedin(file: UploadFile = File(...)):
         raise HTTPException(400, str(e)) from e
 
 
-@app.get("/files/{path:path}")
-def get_file(path: str):
-    """Download a generated document from the output folder."""
+def _output_file(path: str) -> Path:
+    """A file of the current user's output folder (404 for anything else)."""
     root = users.output_dir()
     target = (root / path).resolve()
     if not target.is_relative_to(root.resolve()) or not target.is_file():
         raise HTTPException(404, "File not found")
+    return target
+
+
+@app.get("/api/file-pages/{path:path}")
+def file_pages(path: str):
+    """How many pages a generated PDF has (the iPhone file viewer shows each as an image)."""
+    from .services import pdf_pages
+    target = _output_file(path)
+    if target.suffix.lower() != ".pdf":
+        raise HTTPException(400, "Not a PDF")
+    try:
+        return {"pages": pdf_pages.count(target)}
+    except Exception as e:  # noqa: BLE001  (a damaged PDF)
+        raise HTTPException(422, f"This PDF can't be read: {e}") from e
+
+
+@app.get("/files/{path:path}")
+def get_file(path: str, page: int = 0, width: int = 1200):
+    """Download a generated document from the output folder. A PDF with `page` (from 1): that page as a PNG."""
+    target = _output_file(path)
+    if page and target.suffix.lower() == ".pdf":
+        from .services import pdf_pages
+        try:
+            png = pdf_pages.render(target, page, width)
+        except ValueError as e:
+            raise HTTPException(404, str(e)) from e
+        return Response(png, media_type="image/png", headers={"Cache-Control": "private, max-age=300"})
     if target.suffix.lower() in {".md", ".txt"}:  # readable in the browser instead of downloaded
         return FileResponse(target, media_type="text/plain; charset=utf-8", filename=target.name,
                             content_disposition_type="inline")
