@@ -25,8 +25,8 @@ fact is missing, leave it out or ask; never fill the gap with what the job asks 
 ## Achievements (bullet points)
 - Follow the achievement guide: What (action verb + what was done), How ("by …-ing": methods, tools, scale),
   Result (numbers only when the CV has them, else the goal it served). One sentence.
-- Use the job's vocabulary only where it truthfully describes the same thing ("GPT-based" → "LLM-based" is fine;
-  adding a tool that isn't there is not).
+- Use the job's vocabulary only where it truthfully describes the same thing ("Salesforce" → "Salesforce CRM" is
+  fine; adding a tool that isn't there is not).
 - One wording per achievement in a CV; to target a keyword, add a wording to the existing achievement (built
   around the job's word, changing as little as possible), never a near-duplicate achievement.
 

@@ -34,9 +34,9 @@ class JDMatchTests(unittest.TestCase):
         original, original_available = jd_match.llm.structured, jd_match.llm.available
         jd_match.llm.available = lambda: True
         jd_match.llm.structured = lambda i, t, schema: schema.model_validate({"requirements": [
-            {"requirement": "semantic search", "must_have": True,
+            {"requirement": "semantic search", "must_have": True, "category": False, "searchable": True, "evidence": [],
              "cv_terms": [{"term": "Pinecone", "relation": "instance"}, {"term": "Elastic Cloud", "relation": "same"}]},
-            {"requirement": "Go", "must_have": False, "cv_terms": []}]})
+            {"requirement": "Go", "must_have": False, "category": False, "searchable": True, "evidence": [], "cv_terms": []}]})
         try:
             r = self.run_match(use_ai=True)
         finally:
@@ -75,9 +75,9 @@ class StrictMatchTests(unittest.TestCase):
 
     def test_related_terms_dont_cover_a_requirement(self):
         r = self.match([
-            {"requirement": "retail", "must_have": False, "cv_terms": [{"term": "Segmentation", "relation": "related"}]},
-            {"requirement": "replenishment", "must_have": False, "cv_terms": [{"term": "SQL", "relation": "related"}]},
-            {"requirement": "retail performance tracking", "must_have": False,
+            {"requirement": "retail", "must_have": False, "category": False, "searchable": True, "evidence": [], "cv_terms": [{"term": "Segmentation", "relation": "related"}]},
+            {"requirement": "replenishment", "must_have": False, "category": False, "searchable": True, "evidence": [], "cv_terms": [{"term": "SQL", "relation": "related"}]},
+            {"requirement": "retail performance tracking", "must_have": False, "category": False, "searchable": True, "evidence": [],
              "cv_terms": [{"term": "Tableau", "relation": "instance"}]}])
         gaps = [g["jd_term"] for g in r["gaps"]]
         self.assertIn("replenishment", gaps)
@@ -85,11 +85,11 @@ class StrictMatchTests(unittest.TestCase):
 
     def test_other_words_need_a_wording_and_forms_of_the_word_dont(self):
         r = self.match([
-            {"requirement": "data analysis", "must_have": True,
+            {"requirement": "data analysis", "must_have": True, "category": False, "searchable": True, "evidence": [],
              "cv_terms": [{"term": "SQL", "relation": "instance"}]},          # "Designed and analysed 40+ A/B tests"
-            {"requirement": "dashboards", "must_have": False,
+            {"requirement": "dashboards", "must_have": False, "category": False, "searchable": True, "evidence": [],
              "cv_terms": [{"term": "Tableau", "relation": "instance"}]},      # "Tableau dashboards"
-            {"requirement": "retail performance tracking", "must_have": False,
+            {"requirement": "retail performance tracking", "must_have": False, "category": False, "searchable": True, "evidence": [],
              "cv_terms": [{"term": "Looker", "relation": "instance"}]}])
         by_term = {m["jd_term"]: m for m in r["matches"]}
         self.assertTrue(by_term["dashboards"]["literal"])  # "dashboard" is written: same word
@@ -99,7 +99,7 @@ class StrictMatchTests(unittest.TestCase):
         self.assertEqual(r["matches"][-1]["jd_term"], "retail performance tracking")  # written-as-in-the-job first
 
     def test_a_word_written_in_the_cv_gets_no_extra_terms(self):
-        r = self.match([{"requirement": "Excel", "must_have": True, "cv_terms": [
+        r = self.match([{"requirement": "Excel", "must_have": True, "category": False, "searchable": True, "evidence": [], "cv_terms": [
             {"term": "SQL", "relation": "same"}, {"term": "Python", "relation": "same"}]}])
         excel = next(m for m in r["matches"] if m["jd_term"] == "Excel")
         self.assertEqual(excel["keywords"], ["Excel"])
@@ -155,7 +155,7 @@ class EducationTests(unittest.TestCase):
         original, original_available = jd_match.llm.structured, jd_match.llm.available
         jd_match.llm.available = lambda: True
         jd_match.llm.structured = lambda i, t, schema: schema.model_validate({"requirements": [
-            {"requirement": "Master's degree in a quantitative field", "must_have": True, "cv_terms": []}]})
+            {"requirement": "Master's degree in a quantitative field", "must_have": True, "category": False, "searchable": True, "evidence": [], "cv_terms": []}]})
         try:
             r = self.match("A Master's degree in a quantitative field is required.", use_ai=True)
         finally:
@@ -166,3 +166,88 @@ class EducationTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class EveryUserTests(unittest.TestCase):
+    """What any user's CV and any job need, whatever the field: languages, spellings, families, noise."""
+
+    def setUp(self):
+        reset()
+        cv = master_cv.get_master()
+        exp = cv.experiences[0]
+        for b in list(exp.bullets):
+            master_cv.delete_bullet(b.id)
+        master_cv.add_bullet(exp.id, "Maintained dashboards in Tableau and joined sales tables in SQL.", ["Tableau"])
+        master_cv.set_languages(["Hebrew (Native)", "English - fluent"])
+        self.orig = jd_match.llm.structured, jd_match.llm.available
+        jd_match.llm.available = lambda: True
+
+    def tearDown(self):
+        jd_match.llm.structured, jd_match.llm.available = self.orig
+
+    def match(self, requirements, text="Job"):
+        jd_match.llm.structured = lambda i, t, schema: schema.model_validate({"requirements": [
+            {"must_have": True, "category": False, "searchable": True, "evidence": [], "cv_terms": [], **r} for r in requirements]})
+        r = registry.run("cv.keywords.match_job", {"text": text})
+        return r, {m["jd_term"]: m for m in r["matches"] + r["gaps"]}
+
+    def test_spoken_languages_in_the_cv_cover_the_job(self):
+        r, by = self.match([{"requirement": "German"}], "Fluent Hebrew and English required. German a plus.")
+        self.assertTrue(by["Hebrew"]["literal"] and by["English"]["literal"])
+        self.assertTrue(by["Hebrew"]["in_languages"])
+        self.assertEqual([g["jd_term"] for g in r["gaps"]], ["German"])
+
+    def test_another_spelling_is_the_same_word(self):
+        master_cv.add_bullet(master_cv.get_master().experiences[0].id, "Built reports in PowerBI.")
+        _, by = self.match([{"requirement": "Power BI"}])
+        self.assertTrue(by["Power BI"]["literal"])
+        self.assertEqual(by["Power BI"]["keywords"], ["Power BI"])
+
+    def test_a_family_is_covered_by_one_of_its_tools(self):
+        _, by = self.match([{"requirement": "BI tools", "category": True,
+                             "cv_terms": [{"term": "Tableau", "relation": "instance"}]}])
+        self.assertTrue(by["BI tools"]["literal"])
+        self.assertFalse(by["BI tools"]["reword"])
+
+    def test_the_activity_word_is_noise_and_other_forms_count(self):
+        r, by = self.match([{"requirement": "dashboard development"}, {"requirement": "joins"}])
+        self.assertTrue(by["dashboard development"]["keywords"] and by["dashboard development"]["literal"])
+        self.assertEqual(by["joins"]["keywords"], ["joined"])
+        self.assertEqual(r["gaps"], [])
+
+    def test_traits_titles_and_generic_words_are_not_requirements(self):
+        r, by = self.match([{"requirement": "business curiosity", "searchable": False},
+                            {"requirement": "Data Analyst", "searchable": False},
+                            {"requirement": "implementation."}, {"requirement": "data"}])
+        self.assertEqual(set(by), set())
+
+    def test_suggestions_never_offer_the_word_back(self):
+        self.assertNotIn("Tableau", jd_match.suggest("tableau"))
+
+    def test_degrees_and_languages_are_not_missing_from_bullets(self):
+        from jobtracker.services import cv_builder
+        cv = cv_builder.select_bullets(["Hebrew", "Tableau", "Kubernetes"])
+        self.assertEqual(cv.unmatched_keywords, ["Kubernetes"])
+
+    def test_job_titles_and_achievements_in_their_own_words_count(self):
+        cv = master_cv.get_master()
+        master_cv.update_experience(cv.experiences[0].id, role="Customer Support Lead")
+        b = master_cv.add_bullet(cv.experiences[0].id, "Led a team of 6 agents handling 900 tickets a week.")
+        r, by = self.match([
+            {"requirement": "customer support"},
+            {"requirement": "people management",
+             "evidence": [{"achievement": b.id[:8], "words": "Led a team of 6 agents", "relation": "does"}]},
+            {"requirement": "forklift operation",  # cited words that aren't in the achievement are ignored
+             "evidence": [{"achievement": b.id[:8], "words": "drove forklifts", "relation": "does"}]}])
+        self.assertEqual(by["people management"]["keywords"], ["Led a team of 6 agents"])
+        self.assertTrue(by["people management"]["reword"])
+        self.assertEqual(by["forklift operation"]["keywords"], [])
+        self.assertTrue(by["customer support"]["literal"])  # the job title says it
+
+    def test_a_tool_stays_its_own_requirement(self):
+        master_cv.add_bullet(master_cv.get_master().experiences[0].id, "Sent newsletters from HubSpot.", ["HubSpot"])
+        _, by = self.match([{"requirement": "email marketing", "category": True,
+                             "cv_terms": [{"term": "HubSpot", "relation": "instance"}]}], "Email marketing with HubSpot.")
+        self.assertIn("HubSpot", by)
+        self.assertFalse(by["email marketing"]["category"])  # not a family of tools: it needs the job's word
+        self.assertTrue(by["email marketing"]["reword"])

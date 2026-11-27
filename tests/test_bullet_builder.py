@@ -19,7 +19,7 @@ def draft(text, lead="", edit="swap", swaps=(), evidence="GPT-based"):
 def all_true(text, schema, false=()):
     """The fact-check's answer: every draft true, except the numbers in `false`."""
     n = text.count("\nDRAFT ") + text.startswith("DRAFT ")
-    return schema.model_validate({"verdicts": [{"draft": i, "true": i not in false, "why": "stretch"}
+    return schema.model_validate({"verdicts": [{"draft": i, "true": i not in false, "natural": True, "why": "stretch"}
                                                for i in range(1, n + 1)]})
 
 

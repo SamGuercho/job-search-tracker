@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import re
+from contextlib import contextmanager
+from contextvars import ContextVar
 
 from ..models import (
     Bullet,
@@ -21,8 +23,22 @@ from .companies import NotFound
 store = UserDocument("master_cv.json", MasterCV, seed_name="master_cv.json")
 
 
+_reading: ContextVar[MasterCV | None] = ContextVar("master_cv_reading", default=None)
+
+
 def get_master() -> MasterCV:
-    return store.load()
+    return _reading.get() or store.load()
+
+
+@contextmanager
+def reading(cv: MasterCV):
+    """Read-only: every lookup in this context (and threads copying it) sees `cv` instead of the user's master CV.
+    For evaluations that match job descriptions against test CVs without touching anyone's data."""
+    token = _reading.set(cv)
+    try:
+        yield cv
+    finally:
+        _reading.reset(token)
 
 
 def _find_experience(cv: MasterCV, experience_id: str) -> Experience:
@@ -55,10 +71,16 @@ def _find_bullet(cv: MasterCV, bullet_id: str) -> tuple[Experience | Project, Bu
     raise NotFound(f"Bullet {bullet_id!r} not found")
 
 
+def strip_punctuation(term: str) -> str:
+    """'implementation.' -> 'implementation' (a sentence's end), but 'M.Sc.' and 'Node.js' stay."""
+    term = term.strip().rstrip(",;:!?").strip()
+    return term[:-1].rstrip() if term.endswith(".") and "." not in term[:-1] else term
+
+
 def _clean_keywords(keywords: list[str]) -> list[str]:
     seen, out = set(), []
     for k in keywords:
-        k = k.strip()
+        k = strip_punctuation(k)
         if k and k.lower() not in seen:
             seen.add(k.lower())
             out.append(k)
@@ -277,11 +299,32 @@ def keyword_vocabulary() -> list[str]:
     return sorted(_clean_keywords(words), key=str.lower)
 
 
+# Words that are not keywords on their own: an ATS search for them finds every CV, so matching them is noise
+# ("data", "skill", "workflow" in a job description say nothing about the candidate).
+GENERIC_TERMS = {
+    "data", "output", "outputs", "skill", "skills", "workflow", "workflows", "process", "processes", "tool", "tools",
+    "solution", "solutions", "practical solutions", "result", "results", "insight", "insights", "work", "team",
+    "teams", "project", "projects", "system", "systems", "report", "reports", "analysis", "experience", "business",
+    "product", "products", "development", "implementation", "support", "management", "quality", "performance",
+    "information", "technology", "communication skills", "detail", "details", "task", "tasks", "requirements",
+}
+
+
+def is_generic(term: str) -> bool:
+    return strip_punctuation(term).lower() in GENERIC_TERMS
+
+
+def language_name(entry: str) -> str:
+    """'French (Native)', 'English - fluent', 'Hebrew: C1' -> the language itself."""
+    return re.split(r"\s*[(\-–:,/]\s*", entry.strip(), maxsplit=1)[0].strip()
+
+
 def keyword_pattern(keyword: str) -> re.Pattern:
     """Case-insensitive whole-word match that also works for 'C++', '.NET', 'CI/CD'.
     A trailing plural is accepted: 'LLM' matches 'LLMs', 'Agent' matches 'agents'."""
-    # Spaces and hyphens are interchangeable: "Time Series" matches "time-series".
-    kw = r"[\s\-]+".join(re.escape(part) for part in re.split(r"[\s\-]+", keyword.strip()))
+    # Spaces and hyphens are interchangeable and may be left out: "Time Series" matches "time-series",
+    # "Power BI" matches "PowerBI".
+    kw = r"[\s\-]*".join(re.escape(part) for part in re.split(r"[\s\-]+", keyword.strip()))
     plural = "(?:e?s)?" if keyword.strip()[-1:].isalnum() else ""
     return re.compile(rf"(?<![\w]){kw}{plural}(?![\w])", re.IGNORECASE)
 
@@ -296,7 +339,9 @@ _SUFFIXES = sorted(["izations", "isations", "ization", "isation", "ations", "ati
 FILLER_WORDS = {"a", "an", "and", "or", "of", "in", "on", "with", "the", "to", "for", "using", "use", "based",
                 "experience", "experienced", "proficiency", "proficient", "knowledge", "strong", "skills", "skill",
                 "ability", "familiarity", "understanding", "working", "solid", "good", "excellent", "hands",
-                "etc", "e.g", "such", "as", "related", "relevant", "least"}
+                "etc", "e.g", "such", "as", "related", "relevant", "least",
+                # the activity around a thing, not the thing: "dashboard development" is found in "built dashboards"
+                "development", "developing", "expertise", "background", "approach", "practices", "capabilities"}
 
 
 def stem(word: str) -> str:

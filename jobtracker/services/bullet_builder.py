@@ -38,8 +38,8 @@ Strict rules:
   give. Rephrase their words into strong CV language, but keep every number exactly as written.
 - A missing part stays missing (no Result: end on the goal if given, else after the How).
 - KEYWORDS (the job's words): the user picked them as true for this achievement. Write each one verbatim (or a
-  close form of the word) wherever the facts are that thing or an instance of it ("GPT-4" is an LLM: "an
-  LLM-based assistant (GPT-4)"). Skip one only if nothing in the facts relates to it; never invent a fact for it.
+  close form of the word) wherever the facts are that thing, an instance of it or the activity itself ("HubSpot"
+  is a CRM: "a CRM (HubSpot) workflow"). Skip one only if nothing in the facts relates to it; never invent a fact.
 - Lead: "" unless LEAD is given.
 - swaps: words of the draft that could be replaced 1-to-1 without changing its structure or facts (a verb, a
   near synonym), never a keyword; `phrase` copied exactly from the draft, 2-4 `options`, at most 3 swaps.
@@ -112,7 +112,9 @@ PLACE = """You find, for each of a job's KEYWORDS, the ONE achievement of the ca
 truthfully by changing a few words: the achievement already describes that thing with other words (a synonym, a
 concrete instance, the same activity). Rules:
 - bullet_id: an id from ACHIEVEMENTS, or "" when no achievement truly says it (then it is a real gap). Never pick
-  an achievement only because it is in the same domain: "retail" is not "customer-facing analytics".
+  an achievement only because it is in the same field or uses a different tool of the same kind (Excel for SQL).
+  An achievement that does the thing with other words IS a slot: "kept the payroll spreadsheets of 40 staff up to
+  date" fits "payroll", "Excel" and "record keeping".
 - Prefer an achievement where the change is smallest. Put keywords in the same achievement when they naturally
   belong together there (at most 3 per achievement).
 - why: one short line (what in the achievement the keyword describes, or why there is no slot).
@@ -153,10 +155,11 @@ def place(keywords: list[str], max_per_bullet: int = 3) -> dict:
         if not r["drafts"]:
             continue
         o, _ = owners[bullet_id]
-        placed.update(k for d in r["drafts"] for k in d["covers"])
+        covered = [k for k in kws if any(k in d["covers"] for d in r["drafts"])]  # only what the drafts say
+        placed.update(covered)
         placements.append({"bullet_id": bullet_id, "owner": getattr(o, "company", "") or getattr(o, "name", ""),
-                           "original": r["original"], "keywords": kws,
-                           "why": "; ".join(why[k] for k in kws if why.get(k)),
+                           "original": r["original"], "keywords": covered,
+                           "why": "; ".join(why[k] for k in covered if why.get(k)),
                            "drafts": r["drafts"]})
     no_slot = [{"keyword": k, "why": why.get(k, "")} for k in keywords if k not in placed]
     return {"placements": placements, "no_slot": no_slot}

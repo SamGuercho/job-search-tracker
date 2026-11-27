@@ -236,12 +236,12 @@ export function debounce(fn, ms = 300) {
 }
 
 /** Same rule as the server (master_cv.keyword_pattern): case-insensitive whole word,
- *  spaces/hyphens interchangeable, optional plural. */
+ *  spaces/hyphens interchangeable or left out ("Power BI" = "PowerBI"), optional plural. */
 export function keywordPattern(keyword, flags = "i") {
   const k = keyword.trim();
   const parts = k.split(/[\s-]+/).map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   const plural = /[A-Za-z0-9]$/.test(k) ? "(?:e?s)?" : "";
-  return new RegExp(`(?<![\\w])${parts.join("[\\s\\-]+")}${plural}(?![\\w])`, flags);
+  return new RegExp(`(?<![\\w])${parts.join("[\\s\\-]*")}${plural}(?![\\w])`, flags);
 }
 
 /** Google Maps search link for an application: exact address if known, else company + location. */

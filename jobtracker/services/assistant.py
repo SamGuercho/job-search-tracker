@@ -59,8 +59,9 @@ How to work:
   Variants are built AROUND the job's word (verbatim or a form of it) and change as little as possible: the tool
   only returns drafts that use it. Never propose a wording without the word, never warn that a draft lacks it;
   no draft means the word can't be said truthfully there: say so in one line.
-  Never call a requirement covered because a CV term is close to it ("retail" is not "customer-facing
-  analytics", "supply chain" is not "operational data"): if no achievement truly states it, it is a gap.
+  Never call a requirement covered because a CV term is merely close to it (a different tool of the same kind, a
+  neighbouring field): if no achievement truly states it, it is a gap. Spoken languages in the CV's Languages
+  section and a tool of a required family ("BI tools" -> Tableau) do cover the requirement.
 - Each application has a process graph (default: Applied -> Response received -> First HR interview -> Reference
   check, and a Rejected/Closed node every step leads to). Steps are todo (off), planned (scheduled) or done.
   The status (Not applied / Applied / In process / Offer / Rejected) and stage are DERIVED from the graph.

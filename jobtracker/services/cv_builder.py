@@ -189,6 +189,9 @@ def select_bullets(keywords: list[str], keep_unmatched_roles: bool = True,
     projects = tailored(cv.projects, TailoredProject, {"id", "name", "role", "link", "start", "end"}, is_project=True)
 
     covered |= skill_covered
+    # Degrees and spoken languages have their own sections: written there, they are on the CV (not a bullet's job)
+    elsewhere = [" ".join(x for x in (e.degree, e.school, e.details) if x) for e in cv.education] + cv.languages
+    covered |= {k.lower() for k in keywords if any(master_cv.keyword_pattern(k).search(t) for t in elsewhere)}
     return TailoredCV(
         keywords=keywords, required=list(required or []), profile=cv.profile, experiences=experiences,
         projects=projects, sections=cv.sections, font=cv.font, education=cv.education, skills=skills, languages=cv.languages,

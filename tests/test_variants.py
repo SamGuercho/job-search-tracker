@@ -76,7 +76,7 @@ class DraftTests(unittest.TestCase):
     def fake(self, drafts):
         def answer(instructions, text, schema):
             if schema.__name__ == "_Verdicts":  # the fact-check: every draft is true
-                return schema.model_validate({"verdicts": [{"draft": i, "true": True, "why": ""}
+                return schema.model_validate({"verdicts": [{"draft": i, "true": True, "natural": True, "why": ""}
                                                            for i in range(1, text.count("DRAFT ") + 1)]})
             return schema.model_validate(
                 {"drafts": [{"edit": "swap", "swaps": [], "evidence": "GPT-based", **d} for d in drafts]})

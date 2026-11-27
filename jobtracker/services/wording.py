@@ -11,7 +11,7 @@ Guards applied in code, whatever the model does:
   - a draft that writes a keyword's word more often than the original did is rejected (bolted on);
   - with target keywords, a draft must cite the words of the original the keyword names (`evidence`), and they
     must really be in it: a keyword with nothing behind it is not true there; then a second AI call checks that
-    the keyword honestly names those words (fact_check) and drops the drafts that only stretch to it;
+    the keyword honestly names those words and that the sentence reads naturally (fact_check), and drops the rest;
   - a draft identical to an existing wording is dropped;
   - keywords are only those literally written in the draft;
   - offered 1-to-1 swaps are kept only when their phrase is in the draft and no option adds a number.
@@ -55,19 +55,18 @@ Strict rules:
 - Change as little as possible. Draft 1 keeps the ORIGINAL word for word and replaces only the phrase the keyword
   stands for (edit = "swap"). Rework the sentence (edit = "restructure") only when the keyword cannot fit
   otherwise, or to give a genuinely different option in later drafts. Every draft must read naturally, as a
-  recruiter would write it: never bolt the keyword on ("a forecasting model using demand forecasting"). Fewer
-  drafts are better than awkward ones.
+  recruiter would write it: never bolt the keyword on next to words that already say it ("a CRM pipeline using
+  CRM", "managed payroll with payroll processing"). Fewer drafts are better than awkward ones.
 - evidence: copy EXACTLY the words of the ORIGINAL (or USER FACTS) that the keyword names: the thing it is
-  another word for, or a concrete instance of ("GPT-based" for LLM, "MongoDB" for NoSQL). If no words of the
-  original are that thing, the keyword isn't true here: return an empty list. A related topic is not evidence
-  ("data analysis" is not "causal inference", "decision trees" are not "deep learning", "projects" are not
-  "Agile").
+  another word for, a concrete instance of, or an activity that clearly is it ("Salesforce" for CRM, "AWS" for
+  cloud, "kept the monthly reports up to date" for reporting). If no words of the original are that thing, the
+  keyword isn't true here: return an empty list.
 - Same facts only. Do not add tools, numbers, team sizes, results, scope or responsibilities that are not in
   the ORIGINAL or in USER FACTS. A keyword is allowed only where it truthfully describes what the original says
-  ("GPT-based" can become "LLM-based"; adding "Kubernetes" when it is not mentioned is NOT allowed). If no
-  truthful draft can use the keyword, return an empty list.
+  ("Salesforce" can become "Salesforce CRM"; adding a tool, method or certification the original never mentions is
+  NOT allowed). If no truthful draft can use the keyword, return an empty list.
 - Fit the keyword to the sentence's grammar: singular or plural as needed ("vector databases" -> "as the vector
-  database"), and never a plural noun as a modifier ("an AI agent system", not "an AI agents system").
+  database"), and never a plural noun as a modifier ("a sales report pipeline", not "a sales reports pipeline").
 - One sentence, strong action verb, similar length (at most 20% longer). Keep the bold label (lead) as it is
   unless it contradicts the new wording; "" if there is none.
 - Each draft must differ from the original and from the other existing wordings.
@@ -124,6 +123,7 @@ def repeated(full: str, keywords: list[str], before: str) -> list[str]:
 class _Verdict(BaseModel):
     draft: int      # 1-based
     true: bool
+    natural: bool   # reads like a line a good recruiter would write (no redundant or bolted-on wording)
     why: str
 
 
@@ -132,12 +132,21 @@ class _Verdicts(BaseModel):
 
 
 CHECK = """You fact-check CV wordings written to contain a job's word (KEYWORD). The writer cited the words of the
-ORIGINAL achievement that the keyword is supposed to name (EVIDENCE). For each DRAFT answer `true` only if the
-keyword is a fair, honest name for what the original says: the same thing, a synonym, or a category the cited
-thing clearly belongs to ("GPT-based" -> LLM, "MongoDB" -> NoSQL, "LSTM" -> deep learning). Answer false when it is
-only a related topic or adds a claim the original doesn't make ("decision trees, SVMs" are not deep learning,
-"data analysis" is not causal inference, "led projects" is not Agile, "time-series forecasting" is not demand
-forecasting unless demand is what was forecast). A recruiter reading the CV must not be misled. why: a few words."""
+ORIGINAL achievement that the keyword is supposed to name (EVIDENCE). Judge like a fair recruiter, not a pedant.
+Answer `true` when a recruiter would accept the keyword as describing what the original says:
+- the same thing, another spelling or a synonym;
+- a category the cited thing belongs to ("Salesforce" -> CRM, "AWS" -> cloud platforms);
+- the activity the original clearly did ("built and maintained the sales reports" -> reporting; "ran split tests on
+  the landing page" -> A/B testing). Building, maintaining, creating or running something all count as working on it.
+Answer `false` only when the draft would mislead: a different tool or skill (Excel is not SQL), something the
+original never did (using a tool is not administering it), a stronger claim than the original (helped -> led,
+a user -> an expert), or a named tool, system, platform or certification the original doesn't name. When the
+keyword is a kind of software or system (a CRM, an ERP, a ticketing system, a data warehouse), the original must
+name a product of that kind; doing the work by hand or with unnamed tools ("contacted customers", "ordered from
+suppliers") does not count.
+natural: false when the sentence reads clumsily: a redundant pair ("managed inventory management", "X dashboards
+for data visualization dashboards"), the keyword stuck in as a label or modifier where it doesn't belong, or
+broken grammar. why: a few words on what is wrong ("" if nothing)."""
 
 
 def fact_check(original: str, keywords: list[str], drafts: list[tuple[str, str]]) -> list[_Verdict]:
@@ -145,7 +154,8 @@ def fact_check(original: str, keywords: list[str], drafts: list[tuple[str, str]]
     listing = "\n".join(f"DRAFT {i}: {text}\nEVIDENCE {i}: {ev}" for i, (ev, text) in enumerate(drafts, 1))
     out = llm.structured(CHECK, f"ORIGINAL: {original}\nKEYWORD: {', '.join(keywords)}\n\n{listing}", _Verdicts)
     by = {v.draft: v for v in out.verdicts}
-    return [by.get(i, _Verdict(draft=i, true=False, why="not checked")) for i in range(1, len(drafts) + 1)]
+    return [by.get(i, _Verdict(draft=i, true=False, natural=False, why="not checked"))
+            for i in range(1, len(drafts) + 1)]
 
 
 def _grounded(evidence: str, source: str) -> bool:
@@ -231,18 +241,33 @@ def draft_for(bullet, keywords: list[str], count: int = 3, facts: str = "", inst
                                "swaps": clean_swaps(d.text, d.swaps, allowed, found["spans"])})
         return missed
 
+    def check(found: list[dict]) -> tuple[list[dict], list[str]]:
+        """A second reader: is the job's word honestly what the original says, and does it read naturally?"""
+        if not (keywords and found):
+            return found, []
+        verdicts = fact_check(original, keywords, [(d["evidence"], f"{d['lead']} {d['text']}".strip()) for d in found])
+        kept, notes = [], []
+        for d, v in zip(found, verdicts, strict=True):
+            full = f"{d['lead']} {d['text']}".strip()
+            if v.true and v.natural:
+                kept.append(d)
+                continue
+            reason = f"not true here: {v.why}" if not v.true else f"reads clumsily: {v.why}"
+            rejected.append({"text": full, "reason": reason})
+            if v.true:  # true but clumsy: worth another try
+                notes.append(f"{full}  <- {reason}")
+        return kept, notes
+
     missed = review(llm.structured(instructions, prompt, _Drafts))
-    if not drafts and missed:  # one more try, told exactly what was wrong
-        retry = (prompt + "\n\nYOUR PREVIOUS DRAFTS WERE THROWN AWAY (no target keyword, or bolted on):\n"
-                 + "\n".join(f"- {m}" for m in missed)
-                 + f"\nWrite drafts that contain {' / '.join(keywords)} (or a form of the word), or return [] if"
-                   " it can't be said truthfully.")
+    drafts[:], clumsy = check(list(drafts))
+    if not drafts and (missed or clumsy):  # one more try, told exactly what was wrong
+        retry = (prompt + "\n\nYOUR PREVIOUS DRAFTS WERE THROWN AWAY:\n" + "\n".join(f"- {m}" for m in missed + clumsy)
+                 + f"\nWrite drafts that contain {' / '.join(keywords)} (or a form of the word) and read naturally: if"
+                   " inserting the word next to the existing phrase is clumsy, rewrite that clause around it. A category"
+                   " reads well with its product in parentheses or as an apposition (\"a CRM (HubSpot)\", \"tracked"
+                   " orders in Shopify, our e-commerce platform\"). Return [] if it can't be said truthfully.")
         review(llm.structured(instructions, retry, _Drafts))
-    if keywords and drafts:  # a second reader: is the job's word honestly what the original says?
-        verdicts = fact_check(original, keywords, [(d["evidence"], f"{d['lead']} {d['text']}".strip()) for d in drafts])
-        rejected += [{"text": f"{d['lead']} {d['text']}".strip(), "reason": f"not true here: {v.why}"}
-                     for d, v in zip(drafts, verdicts, strict=True) if not v.true]
-        drafts = [d for d, v in zip(drafts, verdicts, strict=True) if v.true]
+        drafts[:], _ = check(list(drafts))
     # Most keywords first, then the smallest change
     drafts.sort(key=lambda d: (-len(d["covers"]), d["edit"] != "swap"))
     return {"bullet_id": bullet_id, "original": f"{bullet.lead} {bullet.text}".strip(),

@@ -29,7 +29,7 @@ A variant exists to put the job's word in the CV, the way an ATS searches for it
 - Every variant is built AROUND the target keyword: it is written verbatim, or as a close form of the same word
   (analysis / analyzed / analytical, dashboard / dashboards). A wording without it is useless: don't propose it.
 - Change as little as possible. First choice: keep the achievement word for word and replace only the phrase the
-  keyword stands for ("GPT-based assistant" → "LLM-based assistant"). Rework the sentence only when the keyword
+  keyword stands for ("tracked leads in Salesforce" → "tracked leads in the Salesforce CRM"). Rework the sentence only when the keyword
   can't fit otherwise, and then keep the same facts.
 - The keyword must truthfully describe what the achievement says. If it doesn't, there is no variant: say so.
 - Other words that could be swapped 1-to-1 without changing the structure (a verb, a near synonym) are offered as

@@ -1,0 +1,1497 @@
+{
+ "about": "Synthetic CVs and job descriptions with answer keys for `python -m jobtracker eval matching`. No real person's data. status per CV: covered = the job's word (or another spelling, a form of it, a tool of a named family, the language, the degree level) is written in the CV; variant = the CV says it with other words, a wording should use the job's word; gap = nothing in the CV says it. Keywords with no status for a CV are scored for extraction only (judgement calls).",
+ "cvs": {
+  "analyst-junior": {
+   "experiences": [
+    {
+     "company": "FreshCart",
+     "role": "Operations Associate",
+     "bullets": [
+      {
+       "text": "Tracked weekly delivery delays for 12 stores in Excel and sent a summary to the regional manager."
+      },
+      {
+       "text": "Answered customer complaints by phone and email, logging each case in Zendesk."
+      }
+     ]
+    }
+   ],
+   "projects": [
+    {
+     "name": "Price Tracker",
+     "bullets": [
+      {
+       "text": "Built a price comparison pipeline in Python and SQL across 3 supermarket chains, and maintained dashboards in Tableau to spot the cheapest items, saving up to 30% on a weekly basket."
+      },
+      {
+       "text": "Cleaned and joined 50K rows of product data with window functions and CTEs in PostgreSQL."
+      }
+     ]
+    }
+   ],
+   "skills": [
+    {
+     "name": "Tools",
+     "items": [
+      "Python",
+      "SQL",
+      "Tableau",
+      "PowerBI",
+      "Excel",
+      "Zendesk"
+     ]
+    }
+   ],
+   "education": [
+    {
+     "degree": "B.Sc. in Biology",
+     "school": "Tel Aviv University"
+    },
+    {
+     "degree": "Data Analytics Bootcamp",
+     "school": "Coding Academy"
+    }
+   ],
+   "languages": [
+    "Hebrew (Native)",
+    "English (Fluent)"
+   ]
+  },
+  "marketer": {
+   "experiences": [
+    {
+     "company": "Bloom Studio",
+     "role": "Marketing Coordinator",
+     "bullets": [
+      {
+       "text": "Wrote and scheduled Instagram and LinkedIn posts for 4 clients, growing followers by 40% in a year."
+      },
+      {
+       "text": "Ran Google Ads campaigns with a monthly budget of $8K, cutting cost per lead by 22%."
+      },
+      {
+       "text": "Sent a weekly newsletter to 15K subscribers from HubSpot and tested subject lines to lift open rates from 18% to 26%."
+      }
+     ]
+    },
+    {
+     "company": "City Theatre",
+     "role": "Communications Intern",
+     "bullets": [
+      {
+       "text": "Designed posters and flyers in Canva for 10 shows."
+      }
+     ]
+    }
+   ],
+   "skills": [
+    {
+     "name": "Tools",
+     "items": [
+      "HubSpot",
+      "Google Ads",
+      "Canva",
+      "Meta Business Suite",
+      "Google Analytics"
+     ]
+    }
+   ],
+   "education": [
+    {
+     "degree": "BA in Communications",
+     "school": "University of Leeds"
+    }
+   ],
+   "languages": [
+    "English (Native)",
+    "Spanish (B2)"
+   ]
+  },
+  "ops-support": {
+   "experiences": [
+    {
+     "company": "ShopNest",
+     "role": "Customer Support Lead",
+     "bullets": [
+      {
+       "text": "Led a team of 6 agents handling 900 tickets a week in Zendesk, keeping first reply under 2 hours."
+      },
+      {
+       "text": "Trained new agents on refunds and order issues in Shopify."
+      },
+      {
+       "text": "Organized weekly inventory counts in the warehouse and reordered packaging from suppliers."
+      },
+      {
+       "text": "Built an Excel tracker of late deliveries by courier, used to renegotiate one courier contract."
+      }
+     ]
+    }
+   ],
+   "skills": [
+    {
+     "name": "Tools",
+     "items": [
+      "Zendesk",
+      "Shopify",
+      "Excel",
+      "Slack"
+     ]
+    }
+   ],
+   "education": [
+    {
+     "degree": "Certificate in Logistics",
+     "school": "Lyon Business College"
+    }
+   ],
+   "languages": [
+    "French (Native)",
+    "English (Fluent)"
+   ]
+  },
+  "engineer": {
+   "experiences": [
+    {
+     "company": "Parcelly",
+     "role": "Backend Software Engineer",
+     "bullets": [
+      {
+       "text": "Built REST APIs in Python and Django serving 2M requests a day, backed by PostgreSQL."
+      },
+      {
+       "text": "Containerized 5 services with Docker and deployed them on AWS (EC2, S3, RDS)."
+      },
+      {
+       "text": "Set up CI/CD pipelines with GitHub Actions running pytest unit tests on every pull request."
+      },
+      {
+       "text": "Cut the slowest API endpoint from 1.2s to 180ms by adding Redis caching and query indexes."
+      }
+     ]
+    }
+   ],
+   "skills": [
+    {
+     "name": "Tech",
+     "items": [
+      "Python",
+      "Django",
+      "PostgreSQL",
+      "Docker",
+      "AWS",
+      "Redis",
+      "Git",
+      "pytest"
+     ]
+    }
+   ],
+   "education": [
+    {
+     "degree": "BSc in Computer Science",
+     "school": "University of Toronto"
+    }
+   ],
+   "languages": [
+    "English (Native)"
+   ]
+  },
+  "accountant": {
+   "experiences": [
+    {
+     "company": "Hart & Co",
+     "role": "Staff Accountant",
+     "bullets": [
+      {
+       "text": "Ran the month-end close for 3 entities, including bank and intercompany reconciliations."
+      },
+      {
+       "text": "Processed accounts payable for 200 vendors in QuickBooks, paying on time 98% of the time."
+      },
+      {
+       "text": "Prepared quarterly VAT returns and supported the annual audit with schedules in Excel (pivot tables, VLOOKUP)."
+      },
+      {
+       "text": "Built a 12-month cash flow forecast in Excel used by the owners to plan hiring."
+      }
+     ]
+    }
+   ],
+   "skills": [
+    {
+     "name": "Tools",
+     "items": [
+      "QuickBooks",
+      "Excel",
+      "Xero"
+     ]
+    }
+   ],
+   "education": [
+    {
+     "degree": "BCom in Accounting",
+     "school": "University of Cape Town"
+    }
+   ],
+   "languages": [
+    "English (Fluent)",
+    "German (Native)"
+   ]
+  }
+ },
+ "jobs": [
+  {
+   "id": "data-analyst-ops",
+   "cvs": [
+    "analyst-junior",
+    "ops-support"
+   ],
+   "jd": "Data Analyst, Operations. We are looking for a curious Data Analyst to join our operations team.\nRequirements: Bachelor's degree in a quantitative field. Strong SQL skills (window functions, joins). Experience\nwith dashboard development in Power BI or other BI tools. Excellent communication skills and the ability to present\ndata-driven insights to stakeholders. Business curiosity and a hands-on approach. Fluent Hebrew and English\n(required). Nice to have: Python, Looker Studio, customer service operations experience.",
+   "keywords": [
+    {
+     "term": "SQL",
+     "aliases": [],
+     "required": true,
+     "status": {
+      "analyst-junior": "covered",
+      "ops-support": "gap"
+     }
+    },
+    {
+     "term": "window functions",
+     "aliases": [],
+     "required": true,
+     "status": {
+      "analyst-junior": "covered",
+      "ops-support": "gap"
+     }
+    },
+    {
+     "term": "joins",
+     "aliases": [],
+     "required": true,
+     "status": {
+      "analyst-junior": "covered",
+      "ops-support": "gap"
+     }
+    },
+    {
+     "term": "dashboards",
+     "aliases": [
+      "dashboard development"
+     ],
+     "required": true,
+     "status": {
+      "analyst-junior": "covered",
+      "ops-support": "gap"
+     }
+    },
+    {
+     "term": "Power BI",
+     "aliases": [],
+     "required": true,
+     "status": {
+      "analyst-junior": "covered",
+      "ops-support": "gap"
+     }
+    },
+    {
+     "term": "BI tools",
+     "aliases": [],
+     "required": true,
+     "status": {
+      "analyst-junior": "covered",
+      "ops-support": "gap"
+     }
+    },
+    {
+     "term": "Bachelor's degree",
+     "aliases": [
+      "Bachelor's degree in a quantitative field",
+      "Bachelor's"
+     ],
+     "required": true,
+     "status": {
+      "analyst-junior": "covered",
+      "ops-support": "gap"
+     }
+    },
+    {
+     "term": "Hebrew",
+     "aliases": [],
+     "required": true,
+     "status": {
+      "analyst-junior": "covered",
+      "ops-support": "gap"
+     }
+    },
+    {
+     "term": "English",
+     "aliases": [],
+     "required": true,
+     "status": {
+      "analyst-junior": "covered",
+      "ops-support": "covered"
+     }
+    },
+    {
+     "term": "stakeholders",
+     "aliases": [
+      "presenting to stakeholders",
+      "stakeholder communication",
+      "present data-driven insights to stakeholders"
+     ],
+     "required": true,
+     "status": {}
+    },
+    {
+     "term": "communication skills",
+     "aliases": [
+      "communication"
+     ],
+     "required": true,
+     "status": {}
+    },
+    {
+     "term": "Python",
+     "aliases": [],
+     "required": false,
+     "status": {
+      "analyst-junior": "covered",
+      "ops-support": "gap"
+     }
+    },
+    {
+     "term": "Looker Studio",
+     "aliases": [],
+     "required": false,
+     "status": {
+      "analyst-junior": "gap",
+      "ops-support": "gap"
+     }
+    },
+    {
+     "term": "customer service operations",
+     "aliases": [
+      "customer service"
+     ],
+     "required": false,
+     "status": {}
+    }
+   ],
+   "forbidden": [
+    "Data Analyst",
+    "business curiosity",
+    "curiosity",
+    "hands-on approach",
+    "data",
+    "operations"
+   ]
+  },
+  {
+   "id": "bi-analyst",
+   "cvs": [
+    "analyst-junior",
+    "engineer"
+   ],
+   "jd": "BI Analyst. You will own our reporting layer in Looker and help teams make decisions with data.\nWhat you need: 2+ years of SQL; experience with data modeling (dbt is a plus); Looker or Tableau; A/B testing\nand basic statistics; strong stakeholder management. Python is a plus. You are a self-starter who loves details.",
+   "keywords": [
+    {
+     "term": "SQL",
+     "aliases": [],
+     "required": true,
+     "status": {
+      "analyst-junior": "covered",
+      "engineer": "gap"
+     }
+    },
+    {
+     "term": "data modeling",
+     "aliases": [],
+     "required": true,
+     "status": {
+      "analyst-junior": "gap",
+      "engineer": "gap"
+     }
+    },
+    {
+     "term": "dbt",
+     "aliases": [],
+     "required": false,
+     "status": {
+      "analyst-junior": "gap",
+      "engineer": "gap"
+     }
+    },
+    {
+     "term": "Looker",
+     "aliases": [],
+     "required": true,
+     "status": {
+      "analyst-junior": "gap",
+      "engineer": "gap"
+     }
+    },
+    {
+     "term": "Tableau",
+     "aliases": [],
+     "required": true,
+     "status": {
+      "analyst-junior": "covered",
+      "engineer": "gap"
+     }
+    },
+    {
+     "term": "Looker or Tableau",
+     "aliases": [],
+     "required": true,
+     "status": {
+      "analyst-junior": "covered",
+      "engineer": "gap"
+     }
+    },
+    {
+     "term": "A/B testing",
+     "aliases": [],
+     "required": true,
+     "status": {
+      "analyst-junior": "gap",
+      "engineer": "gap"
+     }
+    },
+    {
+     "term": "statistics",
+     "aliases": [],
+     "required": true,
+     "status": {
+      "analyst-junior": "gap",
+      "engineer": "gap"
+     }
+    },
+    {
+     "term": "stakeholder management",
+     "aliases": [],
+     "required": true,
+     "status": {
+      "analyst-junior": "gap",
+      "engineer": "gap"
+     }
+    },
+    {
+     "term": "Python",
+     "aliases": [],
+     "required": false,
+     "status": {
+      "analyst-junior": "covered",
+      "engineer": "covered"
+     }
+    },
+    {
+     "term": "reporting",
+     "aliases": [
+      "reporting layer"
+     ],
+     "required": false,
+     "status": {}
+    }
+   ],
+   "forbidden": [
+    "BI Analyst",
+    "self-starter",
+    "loves details",
+    "2+ years",
+    "data"
+   ]
+  },
+  {
+   "id": "marketing-coordinator",
+   "cvs": [
+    "marketer",
+    "analyst-junior"
+   ],
+   "jd": "Marketing Coordinator (Hybrid). Join a friendly team! You will plan and publish content on our social\nmedia channels, run email marketing campaigns, and support events. Requirements: 1-2 years in a marketing role;\nsocial media marketing (Instagram, LinkedIn); email marketing with HubSpot or Mailchimp; Canva or Adobe\nCreative Suite; strong copywriting; Spanish is a plus. You are organized, creative and a great team player.",
+   "keywords": [
+    {
+     "term": "social media marketing",
+     "aliases": [
+      "social media"
+     ],
+     "required": true,
+     "status": {
+      "marketer": "variant",
+      "analyst-junior": "gap"
+     }
+    },
+    {
+     "term": "Instagram",
+     "aliases": [],
+     "required": true,
+     "status": {
+      "marketer": "covered",
+      "analyst-junior": "gap"
+     }
+    },
+    {
+     "term": "LinkedIn",
+     "aliases": [],
+     "required": true,
+     "status": {
+      "marketer": "covered",
+      "analyst-junior": "gap"
+     }
+    },
+    {
+     "term": "email marketing",
+     "aliases": [
+      "email marketing campaigns"
+     ],
+     "required": true,
+     "status": {
+      "marketer": "variant",
+      "analyst-junior": "gap"
+     }
+    },
+    {
+     "term": "HubSpot",
+     "aliases": [],
+     "required": true,
+     "status": {
+      "marketer": "covered",
+      "analyst-junior": "gap"
+     }
+    },
+    {
+     "term": "Mailchimp",
+     "aliases": [],
+     "required": false,
+     "status": {}
+    },
+    {
+     "term": "Canva",
+     "aliases": [],
+     "required": true,
+     "status": {
+      "marketer": "covered",
+      "analyst-junior": "gap"
+     }
+    },
+    {
+     "term": "Adobe Creative Suite",
+     "aliases": [],
+     "required": false,
+     "status": {
+      "marketer": "gap",
+      "analyst-junior": "gap"
+     }
+    },
+    {
+     "term": "copywriting",
+     "aliases": [],
+     "required": true,
+     "status": {
+      "marketer": "variant",
+      "analyst-junior": "gap"
+     }
+    },
+    {
+     "term": "Spanish",
+     "aliases": [],
+     "required": false,
+     "status": {
+      "marketer": "covered",
+      "analyst-junior": "gap"
+     }
+    },
+    {
+     "term": "events",
+     "aliases": [
+      "event support",
+      "events support"
+     ],
+     "required": false,
+     "status": {}
+    },
+    {
+     "term": "content",
+     "aliases": [
+      "content publishing",
+      "content planning",
+      "content creation"
+     ],
+     "required": false,
+     "status": {}
+    }
+   ],
+   "forbidden": [
+    "Marketing Coordinator",
+    "organized",
+    "creative",
+    "team player",
+    "1-2 years",
+    "Hybrid"
+   ]
+  },
+  {
+   "id": "performance-marketing",
+   "cvs": [
+    "marketer",
+    "analyst-junior"
+   ],
+   "jd": "Performance Marketing Specialist. Own our paid acquisition. Must have: hands-on Google Ads experience,\npaid social on Meta, Google Analytics 4, budget management, conversion rate optimization and A/B testing.\nNice to have: SEO, SQL or Looker Studio for reporting. Data-driven mindset.",
+   "keywords": [
+    {
+     "term": "Google Ads",
+     "aliases": [],
+     "required": true,
+     "status": {
+      "marketer": "covered",
+      "analyst-junior": "gap"
+     }
+    },
+    {
+     "term": "paid social",
+     "aliases": [],
+     "required": true,
+     "status": {
+      "marketer": "gap",
+      "analyst-junior": "gap"
+     }
+    },
+    {
+     "term": "Meta",
+     "aliases": [
+      "Meta Ads"
+     ],
+     "required": true,
+     "status": {
+      "marketer": "covered",
+      "analyst-junior": "gap"
+     }
+    },
+    {
+     "term": "Google Analytics 4",
+     "aliases": [
+      "GA4",
+      "Google Analytics"
+     ],
+     "required": true,
+     "status": {
+      "marketer": "covered",
+      "analyst-junior": "gap"
+     }
+    },
+    {
+     "term": "budget management",
+     "aliases": [
+      "budget"
+     ],
+     "required": true,
+     "status": {
+      "marketer": "variant",
+      "analyst-junior": "gap"
+     }
+    },
+    {
+     "term": "conversion rate optimization",
+     "aliases": [
+      "CRO"
+     ],
+     "required": true,
+     "status": {
+      "marketer": "gap",
+      "analyst-junior": "gap"
+     }
+    },
+    {
+     "term": "A/B testing",
+     "aliases": [],
+     "required": true,
+     "status": {
+      "marketer": "variant",
+      "analyst-junior": "gap"
+     }
+    },
+    {
+     "term": "SEO",
+     "aliases": [],
+     "required": false,
+     "status": {
+      "marketer": "gap",
+      "analyst-junior": "gap"
+     }
+    },
+    {
+     "term": "SQL",
+     "aliases": [],
+     "required": false,
+     "status": {
+      "marketer": "gap",
+      "analyst-junior": "covered"
+     }
+    },
+    {
+     "term": "Looker Studio",
+     "aliases": [],
+     "required": false,
+     "status": {
+      "marketer": "gap",
+      "analyst-junior": "gap"
+     }
+    },
+    {
+     "term": "paid acquisition",
+     "aliases": [],
+     "required": false,
+     "status": {}
+    },
+    {
+     "term": "reporting",
+     "aliases": [],
+     "required": false,
+     "status": {}
+    }
+   ],
+   "forbidden": [
+    "Performance Marketing Specialist",
+    "data-driven mindset",
+    "hands-on"
+   ]
+  },
+  {
+   "id": "support-team-lead",
+   "cvs": [
+    "ops-support",
+    "marketer"
+   ],
+   "jd": "Customer Support Team Lead. Lead a team of 8 agents across email and chat. Requirements: 2+ years of\npeople management in customer support; Zendesk or Freshdesk; coaching and training agents; SLA and CSAT\nreporting; process improvement. French and English required. Empathetic, calm under pressure.",
+   "keywords": [
+    {
+     "term": "people management",
+     "aliases": [
+      "team leadership"
+     ],
+     "required": true,
+     "status": {
+      "ops-support": "variant",
+      "marketer": "gap"
+     }
+    },
+    {
+     "term": "customer support",
+     "aliases": [
+      "chat support",
+      "email support"
+     ],
+     "required": true,
+     "status": {
+      "ops-support": "covered",
+      "marketer": "gap"
+     }
+    },
+    {
+     "term": "Zendesk",
+     "aliases": [],
+     "required": true,
+     "status": {
+      "ops-support": "covered",
+      "marketer": "gap"
+     }
+    },
+    {
+     "term": "Freshdesk",
+     "aliases": [],
+     "required": false,
+     "status": {}
+    },
+    {
+     "term": "coaching",
+     "aliases": [
+      "coaching agents"
+     ],
+     "required": true,
+     "status": {
+      "ops-support": "variant",
+      "marketer": "gap"
+     }
+    },
+    {
+     "term": "training",
+     "aliases": [
+      "training agents"
+     ],
+     "required": true,
+     "status": {
+      "ops-support": "covered",
+      "marketer": "gap"
+     }
+    },
+    {
+     "term": "SLA",
+     "aliases": [
+      "SLA reporting"
+     ],
+     "required": true,
+     "status": {
+      "ops-support": "variant",
+      "marketer": "gap"
+     }
+    },
+    {
+     "term": "CSAT",
+     "aliases": [
+      "CSAT reporting"
+     ],
+     "required": true,
+     "status": {
+      "ops-support": "gap",
+      "marketer": "gap"
+     }
+    },
+    {
+     "term": "process improvement",
+     "aliases": [],
+     "required": false,
+     "status": {
+      "marketer": "gap"
+     }
+    },
+    {
+     "term": "French",
+     "aliases": [],
+     "required": true,
+     "status": {
+      "ops-support": "covered",
+      "marketer": "gap"
+     }
+    },
+    {
+     "term": "English",
+     "aliases": [],
+     "required": true,
+     "status": {
+      "ops-support": "covered",
+      "marketer": "covered"
+     }
+    }
+   ],
+   "forbidden": [
+    "Customer Support Team Lead",
+    "Team Lead",
+    "Agents",
+    "empathetic",
+    "calm under pressure",
+    "2+ years"
+   ]
+  },
+  {
+   "id": "ecommerce-ops",
+   "cvs": [
+    "ops-support",
+    "analyst-junior"
+   ],
+   "jd": "E-commerce Operations Coordinator. Keep our online store running: order management in Shopify,\ninventory management, coordination with couriers and suppliers. Requirements: Shopify; inventory management;\nlogistics or supply chain background; advanced Excel; experience with an ERP (NetSuite preferred). Detail-oriented.",
+   "keywords": [
+    {
+     "term": "Shopify",
+     "aliases": [],
+     "required": true,
+     "status": {
+      "ops-support": "covered",
+      "analyst-junior": "gap"
+     }
+    },
+    {
+     "term": "order management",
+     "aliases": [],
+     "required": true,
+     "status": {
+      "ops-support": "variant",
+      "analyst-junior": "gap"
+     }
+    },
+    {
+     "term": "inventory management",
+     "aliases": [],
+     "required": true,
+     "status": {
+      "ops-support": "variant",
+      "analyst-junior": "gap"
+     }
+    },
+    {
+     "term": "logistics",
+     "aliases": [],
+     "required": true,
+     "status": {
+      "ops-support": "covered"
+     }
+    },
+    {
+     "term": "supply chain",
+     "aliases": [],
+     "required": false,
+     "status": {}
+    },
+    {
+     "term": "Excel",
+     "aliases": [
+      "advanced Excel"
+     ],
+     "required": true,
+     "status": {
+      "ops-support": "covered",
+      "analyst-junior": "covered"
+     }
+    },
+    {
+     "term": "ERP",
+     "aliases": [],
+     "required": true,
+     "status": {
+      "ops-support": "gap",
+      "analyst-junior": "gap"
+     }
+    },
+    {
+     "term": "NetSuite",
+     "aliases": [],
+     "required": false,
+     "status": {
+      "ops-support": "gap",
+      "analyst-junior": "gap"
+     }
+    },
+    {
+     "term": "couriers",
+     "aliases": [
+      "courier coordination",
+      "supplier coordination",
+      "suppliers"
+     ],
+     "required": false,
+     "status": {}
+    }
+   ],
+   "forbidden": [
+    "E-commerce Operations Coordinator",
+    "detail-oriented"
+   ]
+  },
+  {
+   "id": "backend-engineer",
+   "cvs": [
+    "engineer",
+    "analyst-junior"
+   ],
+   "jd": "Backend Engineer (Python). Build and scale the APIs behind our logistics platform. You have: strong Python;\nDjango or FastAPI; designing REST APIs; PostgreSQL; Docker; AWS; writing unit tests; CI/CD. Bonus: Kubernetes,\nRedis, experience with high-traffic systems. BSc in Computer Science or equivalent.",
+   "keywords": [
+    {
+     "term": "Python",
+     "aliases": [],
+     "required": true,
+     "status": {
+      "engineer": "covered",
+      "analyst-junior": "covered"
+     }
+    },
+    {
+     "term": "Django",
+     "aliases": [],
+     "required": true,
+     "status": {
+      "engineer": "covered",
+      "analyst-junior": "gap"
+     }
+    },
+    {
+     "term": "FastAPI",
+     "aliases": [],
+     "required": false,
+     "status": {}
+    },
+    {
+     "term": "REST APIs",
+     "aliases": [],
+     "required": true,
+     "status": {
+      "engineer": "covered",
+      "analyst-junior": "gap"
+     }
+    },
+    {
+     "term": "PostgreSQL",
+     "aliases": [],
+     "required": true,
+     "status": {
+      "engineer": "covered",
+      "analyst-junior": "covered"
+     }
+    },
+    {
+     "term": "Docker",
+     "aliases": [],
+     "required": true,
+     "status": {
+      "engineer": "covered",
+      "analyst-junior": "gap"
+     }
+    },
+    {
+     "term": "AWS",
+     "aliases": [],
+     "required": true,
+     "status": {
+      "engineer": "covered",
+      "analyst-junior": "gap"
+     }
+    },
+    {
+     "term": "unit tests",
+     "aliases": [
+      "unit testing"
+     ],
+     "required": true,
+     "status": {
+      "engineer": "covered",
+      "analyst-junior": "gap"
+     }
+    },
+    {
+     "term": "CI/CD",
+     "aliases": [],
+     "required": true,
+     "status": {
+      "engineer": "covered",
+      "analyst-junior": "gap"
+     }
+    },
+    {
+     "term": "Kubernetes",
+     "aliases": [],
+     "required": false,
+     "status": {
+      "engineer": "gap",
+      "analyst-junior": "gap"
+     }
+    },
+    {
+     "term": "Redis",
+     "aliases": [],
+     "required": false,
+     "status": {
+      "engineer": "covered",
+      "analyst-junior": "gap"
+     }
+    },
+    {
+     "term": "high-traffic systems",
+     "aliases": [],
+     "required": false,
+     "status": {}
+    },
+    {
+     "term": "Bachelor's degree",
+     "aliases": [
+      "BSc in Computer Science",
+      "BSc",
+      "Bachelor's"
+     ],
+     "required": true,
+     "status": {
+      "engineer": "covered",
+      "analyst-junior": "covered"
+     }
+    }
+   ],
+   "forbidden": [
+    "Backend Engineer",
+    "logistics platform"
+   ]
+  },
+  {
+   "id": "platform-engineer",
+   "cvs": [
+    "engineer",
+    "ops-support"
+   ],
+   "jd": "Platform Engineer. Own our cloud infrastructure on AWS. Requirements: infrastructure as code with Terraform;\nKubernetes; CI/CD pipelines (GitHub Actions or GitLab CI); monitoring with Prometheus and Grafana; Linux; scripting\nin Python or Bash. On-call rotation. Strong ownership mindset.",
+   "keywords": [
+    {
+     "term": "AWS",
+     "aliases": [],
+     "required": true,
+     "status": {
+      "engineer": "covered",
+      "ops-support": "gap"
+     }
+    },
+    {
+     "term": "Terraform",
+     "aliases": [
+      "infrastructure as code"
+     ],
+     "required": true,
+     "status": {
+      "engineer": "gap",
+      "ops-support": "gap"
+     }
+    },
+    {
+     "term": "Kubernetes",
+     "aliases": [],
+     "required": true,
+     "status": {
+      "engineer": "gap",
+      "ops-support": "gap"
+     }
+    },
+    {
+     "term": "CI/CD",
+     "aliases": [
+      "CI/CD pipelines"
+     ],
+     "required": true,
+     "status": {
+      "engineer": "covered",
+      "ops-support": "gap"
+     }
+    },
+    {
+     "term": "GitHub Actions",
+     "aliases": [],
+     "required": true,
+     "status": {
+      "engineer": "covered",
+      "ops-support": "gap"
+     }
+    },
+    {
+     "term": "Prometheus",
+     "aliases": [],
+     "required": true,
+     "status": {
+      "engineer": "gap",
+      "ops-support": "gap"
+     }
+    },
+    {
+     "term": "Grafana",
+     "aliases": [],
+     "required": true,
+     "status": {
+      "engineer": "gap",
+      "ops-support": "gap"
+     }
+    },
+    {
+     "term": "Linux",
+     "aliases": [],
+     "required": true,
+     "status": {
+      "engineer": "gap",
+      "ops-support": "gap"
+     }
+    },
+    {
+     "term": "Python",
+     "aliases": [],
+     "required": true,
+     "status": {
+      "engineer": "covered",
+      "ops-support": "gap"
+     }
+    },
+    {
+     "term": "Bash",
+     "aliases": [],
+     "required": false,
+     "status": {}
+    },
+    {
+     "term": "monitoring",
+     "aliases": [],
+     "required": false,
+     "status": {}
+    },
+    {
+     "term": "on-call",
+     "aliases": [
+      "on-call rotation"
+     ],
+     "required": false,
+     "status": {}
+    }
+   ],
+   "forbidden": [
+    "Platform Engineer",
+    "ownership mindset"
+   ]
+  },
+  {
+   "id": "accountant",
+   "cvs": [
+    "accountant",
+    "ops-support"
+   ],
+   "jd": "Accountant. Join our finance team of 5. Requirements: Bachelor's degree in Accounting or Finance; month-end\nclose; account reconciliations; accounts payable and receivable; VAT; QuickBooks or Xero; advanced Excel\n(pivot tables, VLOOKUP). German is a strong plus. Accurate, reliable, discreet.",
+   "keywords": [
+    {
+     "term": "Bachelor's degree",
+     "aliases": [
+      "Bachelor's degree in Accounting or Finance",
+      "Bachelor's"
+     ],
+     "required": true,
+     "status": {
+      "accountant": "covered",
+      "ops-support": "gap"
+     }
+    },
+    {
+     "term": "month-end close",
+     "aliases": [],
+     "required": true,
+     "status": {
+      "accountant": "covered",
+      "ops-support": "gap"
+     }
+    },
+    {
+     "term": "reconciliations",
+     "aliases": [
+      "account reconciliations"
+     ],
+     "required": true,
+     "status": {
+      "accountant": "covered",
+      "ops-support": "gap"
+     }
+    },
+    {
+     "term": "accounts payable",
+     "aliases": [],
+     "required": true,
+     "status": {
+      "accountant": "covered",
+      "ops-support": "gap"
+     }
+    },
+    {
+     "term": "accounts receivable",
+     "aliases": [],
+     "required": true,
+     "status": {
+      "accountant": "gap",
+      "ops-support": "gap"
+     }
+    },
+    {
+     "term": "VAT",
+     "aliases": [],
+     "required": true,
+     "status": {
+      "accountant": "covered",
+      "ops-support": "gap"
+     }
+    },
+    {
+     "term": "QuickBooks",
+     "aliases": [],
+     "required": true,
+     "status": {
+      "accountant": "covered",
+      "ops-support": "gap"
+     }
+    },
+    {
+     "term": "Xero",
+     "aliases": [],
+     "required": true,
+     "status": {
+      "accountant": "covered",
+      "ops-support": "gap"
+     }
+    },
+    {
+     "term": "Excel",
+     "aliases": [
+      "advanced Excel"
+     ],
+     "required": true,
+     "status": {
+      "accountant": "covered",
+      "ops-support": "covered"
+     }
+    },
+    {
+     "term": "pivot tables",
+     "aliases": [],
+     "required": true,
+     "status": {
+      "accountant": "covered",
+      "ops-support": "gap"
+     }
+    },
+    {
+     "term": "VLOOKUP",
+     "aliases": [],
+     "required": true,
+     "status": {
+      "accountant": "covered",
+      "ops-support": "gap"
+     }
+    },
+    {
+     "term": "German",
+     "aliases": [],
+     "required": false,
+     "status": {
+      "accountant": "covered",
+      "ops-support": "gap"
+     }
+    }
+   ],
+   "forbidden": [
+    "Accountant",
+    "accurate",
+    "reliable",
+    "discreet",
+    "finance team"
+   ]
+  },
+  {
+   "id": "fpa-analyst",
+   "cvs": [
+    "accountant",
+    "analyst-junior"
+   ],
+   "jd": "FP&A Analyst. Partner with department heads on budgets and forecasts. Requirements: financial modeling in\nExcel; budgeting and forecasting; variance analysis; SQL is a plus; Power BI or Tableau dashboards; presenting to\nsenior leadership. CPA or CFA progress preferred. Strong analytical skills.",
+   "keywords": [
+    {
+     "term": "financial modeling",
+     "aliases": [],
+     "required": true,
+     "status": {
+      "accountant": "variant",
+      "analyst-junior": "gap"
+     }
+    },
+    {
+     "term": "Excel",
+     "aliases": [],
+     "required": true,
+     "status": {
+      "accountant": "covered",
+      "analyst-junior": "covered"
+     }
+    },
+    {
+     "term": "budgeting",
+     "aliases": [
+      "budgets"
+     ],
+     "required": true,
+     "status": {
+      "accountant": "gap",
+      "analyst-junior": "gap"
+     }
+    },
+    {
+     "term": "forecasting",
+     "aliases": [
+      "forecasts"
+     ],
+     "required": true,
+     "status": {
+      "accountant": "covered",
+      "analyst-junior": "gap"
+     }
+    },
+    {
+     "term": "variance analysis",
+     "aliases": [],
+     "required": true,
+     "status": {
+      "accountant": "gap",
+      "analyst-junior": "gap"
+     }
+    },
+    {
+     "term": "SQL",
+     "aliases": [],
+     "required": false,
+     "status": {
+      "accountant": "gap",
+      "analyst-junior": "covered"
+     }
+    },
+    {
+     "term": "Power BI",
+     "aliases": [],
+     "required": true,
+     "status": {
+      "accountant": "gap",
+      "analyst-junior": "covered"
+     }
+    },
+    {
+     "term": "Tableau",
+     "aliases": [],
+     "required": true,
+     "status": {
+      "accountant": "gap",
+      "analyst-junior": "covered"
+     }
+    },
+    {
+     "term": "dashboards",
+     "aliases": [],
+     "required": true,
+     "status": {
+      "accountant": "gap",
+      "analyst-junior": "covered"
+     }
+    },
+    {
+     "term": "presenting to senior leadership",
+     "aliases": [
+      "presenting",
+      "senior leadership"
+     ],
+     "required": true,
+     "status": {}
+    },
+    {
+     "term": "CPA",
+     "aliases": [],
+     "required": false,
+     "status": {
+      "accountant": "gap",
+      "analyst-junior": "gap"
+     }
+    },
+    {
+     "term": "FP&A",
+     "aliases": [],
+     "required": false,
+     "status": {}
+    },
+    {
+     "term": "CFA",
+     "aliases": [],
+     "required": false,
+     "status": {
+      "accountant": "gap",
+      "analyst-junior": "gap"
+     }
+    }
+   ],
+   "forbidden": [
+    "FP&A Analyst",
+    "analytical skills",
+    "department heads",
+    "Leadership"
+   ]
+  }
+ ]
+}
